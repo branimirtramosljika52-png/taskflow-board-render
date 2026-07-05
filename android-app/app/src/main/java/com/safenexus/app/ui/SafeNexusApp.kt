@@ -10240,6 +10240,7 @@ private fun DocumentationManualPhysicalFactorsBlocks(
                                 .distinctBy { it.lowercase(Locale.getDefault()) }
                                 .map { name -> name to name },
                             requireSpaceSelection = true,
+                            measurementSheets = measurementSheets,
                             onSheetChange = { nextSheet -> onMeasurementSheetChange(stateKey, nextSheet) },
                         )
                     }
@@ -31006,7 +31007,11 @@ private fun measurementTableUsagePayloadKeys(
 
 private fun defaultIncludedMeasurementTableKeys(templates: List<WorkOrderDocumentationTemplate>): Set<String> =
     templates
-        .flatMap { template -> template.measurementTables.map { table -> measurementTablePrimaryUsageKey(template, table) } }
+        .flatMap { template ->
+            template.measurementTables
+                .filter { it.includeInReport }
+                .map { table -> measurementTablePrimaryUsageKey(template, table) }
+        }
         .filter { it.isNotBlank() }
         .toSet()
 
@@ -31016,7 +31021,7 @@ private fun buildIncludedMeasurementTablePayloadKeys(
 ): List<String> =
     templates
         .flatMap { template ->
-            template.measurementTables.flatMap { table ->
+            template.measurementTables.filter { it.includeInReport }.flatMap { table ->
                 if (measurementTablePrimaryUsageKey(template, table) in includedPrimaryKeys) {
                     measurementTableUsagePayloadKeys(template, table)
                 } else {
@@ -31027,7 +31032,7 @@ private fun buildIncludedMeasurementTablePayloadKeys(
         .distinctBy { it.lowercase(Locale.getDefault()) }
 
 private fun measurementTableCandidateKeys(table: WorkOrderMeasurementTable): List<String> =
-    listOf(table.key, table.id, table.tokenKey, table.label)
+    listOf(table.key, table.id, table.tokenKey, table.sourceSheet, table.label)
         .map { it.trim() }
         .filter { it.isNotBlank() }
         .distinctBy { it.lowercase(Locale.getDefault()) }
@@ -31683,7 +31688,7 @@ private fun buildMeasurementSheetPayload(
     templates.forEach { template ->
         template.measurementTables.forEach { table ->
             val sheet = sheets[measurementSheetStateKey(template, table)] ?: table.sheet
-            listOf(table.id, table.key, table.tokenKey)
+            listOf(table.id, table.key, table.tokenKey, table.sourceSheet)
                 .map { it.trim() }
                 .filter { it.isNotBlank() }
                 .forEach { key -> flatSheets[key] = sheet }
@@ -31692,6 +31697,7 @@ private fun buildMeasurementSheetPayload(
                 templateSheets.getOrPut(template.id) { mutableMapOf() }[payloadKey] = sheet
                 if (table.id.isNotBlank()) templateSheets.getOrPut(template.id) { mutableMapOf() }[table.id] = sheet
                 if (table.tokenKey.isNotBlank()) templateSheets.getOrPut(template.id) { mutableMapOf() }[table.tokenKey] = sheet
+                if (table.sourceSheet.isNotBlank()) templateSheets.getOrPut(template.id) { mutableMapOf() }[table.sourceSheet] = sheet
             }
         }
     }
@@ -32724,8 +32730,109 @@ private fun parseMeasurementCellReferenceMobile(reference: String): MeasurementC
     return if (rowIndex >= 0 && columnIndex >= 0) MeasurementCellSelection(rowIndex, columnIndex) else null
 }
 
+private fun splitMobileMeasurementSheetReference(reference: String): Pair<String, String>? {
+    val trimmed = reference.trim()
+    var inQuote = false
+    trimmed.forEachIndexed { index, char ->
+        if (char == '\'') {
+            inQuote = !inQuote
+        } else if (char == '!' && !inQuote) {
+            val sheetName = trimmed.substring(0, index).trim().removeSurrounding("'").replace("''", "'")
+            val cell = trimmed.substring(index + 1).trim()
+            if (sheetName.isNotBlank() && cell.isNotBlank()) {
+                return sheetName to cell
+            }
+        }
+    }
+    return null
+}
+
 private fun parseMeasurementNumberMobile(value: String): Double? =
     value.trim().replace(",", ".").toDoubleOrNull()
+
+private data class MobileMeasurementFormulaEntry(
+    val key: String,
+    val table: WorkOrderMeasurementTable?,
+    val sheet: WorkOrderMeasurementSheet,
+    val index: Int,
+)
+
+private data class MobileMeasurementFormulaContext(
+    val entries: List<MobileMeasurementFormulaEntry>,
+    val lookup: Map<String, MobileMeasurementFormulaEntry>,
+    val current: MobileMeasurementFormulaEntry?,
+)
+
+private fun mobileMeasurementFormulaLookupKey(value: String): String =
+    Normalizer.normalize(value.trim().lowercase(Locale.getDefault()), Normalizer.Form.NFD)
+        .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+        .replace(Regex("[^a-z0-9]+"), "")
+
+private fun mobileMeasurementFormulaAliases(table: WorkOrderMeasurementTable, index: Int): List<String> = listOf(
+    table.id,
+    table.key,
+    table.tokenKey,
+    table.label,
+    table.summary,
+    table.sourceSheet,
+    "Sheet${index + 1}",
+    "Sheet ${index + 1}",
+    "Excel${index + 1}",
+    "Excel ${index + 1}",
+    "Excel tablica ${index + 1}",
+).filter { it.isNotBlank() }
+
+private fun buildMobileMeasurementFormulaContext(
+    template: WorkOrderDocumentationTemplate,
+    currentTable: WorkOrderMeasurementTable,
+    currentSheet: WorkOrderMeasurementSheet,
+    measurementSheets: Map<String, WorkOrderMeasurementSheet>,
+): MobileMeasurementFormulaContext {
+    val entries = template.measurementTables.mapIndexedNotNull { index, table ->
+        val stateKey = measurementSheetStateKey(template, table)
+        val sheet = if (table.key == currentTable.key && table.id == currentTable.id) {
+            currentSheet
+        } else {
+            measurementSheets[stateKey] ?: table.sheet
+        }
+        if (sheet.columns.isEmpty()) {
+            null
+        } else {
+            MobileMeasurementFormulaEntry(
+                key = table.key.ifBlank { table.id.ifBlank { "measurement-table-${index + 1}" } },
+                table = table,
+                sheet = sheet,
+                index = index,
+            )
+        }
+    }
+    val lookup = mutableMapOf<String, MobileMeasurementFormulaEntry>()
+    entries.forEach { entry ->
+        entry.table?.let { table ->
+            mobileMeasurementFormulaAliases(table, entry.index).forEach { alias ->
+                val rawKey = alias.trim().lowercase(Locale.getDefault())
+                val normalizedKey = mobileMeasurementFormulaLookupKey(alias)
+                if (rawKey.isNotBlank()) lookup.putIfAbsent(rawKey, entry)
+                if (normalizedKey.isNotBlank()) lookup.putIfAbsent(normalizedKey, entry)
+            }
+        }
+    }
+    val current = entries.firstOrNull { it.table?.key == currentTable.key && it.table?.id == currentTable.id }
+    return MobileMeasurementFormulaContext(entries, lookup, current)
+}
+
+private fun resolveMobileMeasurementFormulaEntry(
+    reference: String,
+    formulaContext: MobileMeasurementFormulaContext?,
+    currentEntry: MobileMeasurementFormulaEntry?,
+): MobileMeasurementFormulaEntry? {
+    val sheetName = splitMobileMeasurementSheetReference(reference)?.first
+    if (sheetName.isNullOrBlank()) return currentEntry ?: formulaContext?.current
+    return formulaContext?.lookup?.get(mobileMeasurementFormulaLookupKey(sheetName))
+        ?: formulaContext?.lookup?.get(sheetName.lowercase(Locale.getDefault()))
+        ?: currentEntry
+        ?: formulaContext?.current
+}
 
 private fun WorkOrderMeasurementSheet.measurementRaw(rowIndex: Int, columnIndex: Int): String {
     val row = rows.getOrNull(rowIndex) ?: return ""
@@ -32753,7 +32860,13 @@ private fun formatMeasurementNumberMobile(value: Double): String {
     return formatter.format(value)
 }
 
-private fun WorkOrderMeasurementSheet.measurementCellDisplay(rowIndex: Int, columnIndex: Int, stack: Set<String> = emptySet()): String {
+private fun WorkOrderMeasurementSheet.measurementCellDisplay(
+    rowIndex: Int,
+    columnIndex: Int,
+    stack: Set<String> = emptySet(),
+    formulaContext: MobileMeasurementFormulaContext? = null,
+    sheetEntry: MobileMeasurementFormulaEntry? = null,
+): String {
     val column = columns.getOrNull(columnIndex) ?: return ""
     if (column.computed.equals("average", ignoreCase = true)) {
         return measurementAverage(rowIndex)?.let(::formatMeasurementNumberMobile).orEmpty()
@@ -32763,7 +32876,7 @@ private fun WorkOrderMeasurementSheet.measurementCellDisplay(rowIndex: Int, colu
         return raw
     }
     return runCatching {
-        evaluateMeasurementFormulaValueMobile(raw, this, rowIndex, columnIndex, stack).displayText()
+        evaluateMeasurementFormulaValueMobile(raw, this, rowIndex, columnIndex, stack, formulaContext, sheetEntry).displayText()
     }.getOrElse { "#ERROR" }
 }
 
@@ -32773,6 +32886,8 @@ private class MobileMeasurementFormulaParser(
     private val currentRowIndex: Int,
     private val currentColumnIndex: Int,
     private val stack: Set<String>,
+    private val formulaContext: MobileMeasurementFormulaContext? = null,
+    private val sheetEntry: MobileMeasurementFormulaEntry? = null,
 ) {
     private var index = 0
 
@@ -32834,6 +32949,7 @@ private class MobileMeasurementFormulaParser(
             requireClosing(')')
             return value
         }
+        readSheetQualifiedCellOrRange()?.let { return it }
         if (peek() == '"') return MobileFormulaValue.scalar(parseString())
         if (peek()?.isDigit() == true || peek() == '.') return MobileFormulaValue.scalar(parseNumber())
         if (peek()?.isLetter() == true || peek() == '$') return parseIdentifierOrCell()
@@ -32868,9 +32984,57 @@ private class MobileMeasurementFormulaParser(
         return evaluateFunction(normalizedToken, readFunctionArgumentExpressions())
     }
 
+    private fun readSheetQualifiedCellOrRange(): MobileFormulaValue? {
+        val startIndex = index
+        val sheetName = readSheetNamePrefixOrNull() ?: return null
+        val firstCell = runCatching { readCellToken() }.getOrElse {
+            index = startIndex
+            return null
+        }
+        val firstReference = "$sheetName!$firstCell"
+        val first = readCellValue(firstReference)
+        skipWhitespace()
+        if (!consume(':')) return first
+        val endSheetName = readSheetNamePrefixOrNull() ?: sheetName
+        val endCell = readCellToken()
+        return MobileFormulaValue.matrix(readRangeValues(firstReference, "$endSheetName!$endCell"))
+    }
+
+    private fun readSheetNamePrefixOrNull(): String? {
+        skipWhitespace()
+        val start = index
+        if (peek() == '\'') {
+            index += 1
+            val nameStart = index
+            while (index < expression.length && expression[index] != '\'') index += 1
+            if (index >= expression.length || expression.getOrNull(index + 1) != '!') {
+                index = start
+                return null
+            }
+            val sheetName = expression.substring(nameStart, index)
+            index += 2
+            return sheetName
+        }
+        if (peek()?.isLetter() != true) return null
+        var cursor = index
+        while (cursor < expression.length) {
+            val char = expression[cursor]
+            if (char == '!') {
+                val sheetName = expression.substring(start, cursor).trim()
+                index = cursor + 1
+                return sheetName.takeIf { it.isNotBlank() }
+            }
+            if (char.isWhitespace() || char in listOf('(', ')', '+', '-', '*', '/', '=', '<', '>', ';', ',', ':')) {
+                break
+            }
+            cursor += 1
+        }
+        return null
+    }
+
     private fun evaluateFunction(name: String, args: List<String>): MobileFormulaValue {
         fun evaluate(argument: String): MobileFormulaValue =
-            MobileMeasurementFormulaParser(argument, sheet, currentRowIndex, currentColumnIndex, stack).parse()
+            MobileMeasurementFormulaParser(argument, sheet, currentRowIndex, currentColumnIndex, stack, formulaContext, sheetEntry).parse()
 
         fun numericValues(): List<Double> =
             args.flatMap { evaluate(it).flatten() }
@@ -32886,6 +33050,7 @@ private class MobileMeasurementFormulaParser(
                 if (args.size != 2) error("IFERROR trazi 2 argumenta.")
                 runCatching { evaluate(args[0]) }.getOrElse { evaluate(args[1]) }
             }
+            "AND" -> MobileFormulaValue.scalar(args.all { evaluate(it).asBoolean() })
             "SUM" -> MobileFormulaValue.scalar(numericValues().sum())
             "AVERAGE" -> {
                 val values = numericValues()
@@ -32959,7 +33124,7 @@ private class MobileMeasurementFormulaParser(
     private fun evaluateRowFunction(args: List<String>): Double {
         if (args.isEmpty()) return (currentRowIndex + 1).toDouble()
         if (args.size != 1) error("ROW trazi 0 ili 1 argument.")
-        val cell = parseMeasurementCellReferenceMobile(args[0].trim())
+        val cell = parseMeasurementCellReferenceMobile(splitMobileMeasurementSheetReference(args[0])?.second ?: args[0].trim())
         if (cell != null) return (cell.rowIndex + 1).toDouble()
         return (currentRowIndex + 1).toDouble()
     }
@@ -32969,16 +33134,16 @@ private class MobileMeasurementFormulaParser(
         val argument = args[0].trim()
         val parts = argument.split(":", limit = 2)
         if (parts.size == 1) {
-            val cell = parseMeasurementCellReferenceMobile(parts[0])
+            val cell = parseMeasurementCellReferenceMobile(splitMobileMeasurementSheetReference(parts[0])?.second ?: parts[0])
             if (cell != null) return (cell.rowIndex + 1).toDouble()
         } else {
-            val start = parseMeasurementCellReferenceMobile(parts[0])
-            val end = parseMeasurementCellReferenceMobile(parts[1])
+            val start = parseMeasurementCellReferenceMobile(splitMobileMeasurementSheetReference(parts[0])?.second ?: parts[0])
+            val end = parseMeasurementCellReferenceMobile(splitMobileMeasurementSheetReference(parts[1])?.second ?: parts[1])
             if (start != null && end != null) {
                 return (kotlin.math.abs(end.rowIndex - start.rowIndex) + 1).toDouble()
             }
         }
-        val evaluated = MobileMeasurementFormulaParser(argument, sheet, currentRowIndex, currentColumnIndex, stack).parse()
+        val evaluated = MobileMeasurementFormulaParser(argument, sheet, currentRowIndex, currentColumnIndex, stack, formulaContext, sheetEntry).parse()
         return if (evaluated.isMatrix()) evaluated.matrixRows().size.toDouble() else 1.0
     }
 
@@ -32995,17 +33160,37 @@ private class MobileMeasurementFormulaParser(
     }
 
     private fun readCellValue(reference: String): MobileFormulaValue {
-        val address = parseMeasurementCellReferenceMobile(reference) ?: error("Neispravna referenca.")
-        return MobileFormulaValue.scalar(sheet.measurementCellValue(address.rowIndex, address.columnIndex, stack))
+        val split = splitMobileMeasurementSheetReference(reference)
+        val cellReference = split?.second ?: reference
+        val address = parseMeasurementCellReferenceMobile(cellReference) ?: error("Neispravna referenca.")
+        val targetEntry = split?.let { resolveMobileMeasurementFormulaEntry(reference, formulaContext, sheetEntry) } ?: sheetEntry
+        val targetSheet = targetEntry?.sheet ?: sheet
+        return MobileFormulaValue.scalar(
+            targetSheet.measurementCellValue(
+                address.rowIndex,
+                address.columnIndex,
+                stack,
+                formulaContext,
+                targetEntry,
+            ),
+        )
     }
 
     private fun readRangeValues(startReference: String, endReference: String): List<List<Any?>> {
-        val start = parseMeasurementCellReferenceMobile(startReference) ?: error("Neispravna referenca.")
-        val end = parseMeasurementCellReferenceMobile(endReference) ?: error("Neispravna referenca.")
+        val startSplit = splitMobileMeasurementSheetReference(startReference)
+        val endSplit = splitMobileMeasurementSheetReference(endReference)
+        val start = parseMeasurementCellReferenceMobile(startSplit?.second ?: startReference) ?: error("Neispravna referenca.")
+        val end = parseMeasurementCellReferenceMobile(endSplit?.second ?: endReference) ?: error("Neispravna referenca.")
+        val targetEntry = startSplit?.let { resolveMobileMeasurementFormulaEntry(startReference, formulaContext, sheetEntry) }
+            ?: endSplit?.let { resolveMobileMeasurementFormulaEntry(endReference, formulaContext, sheetEntry) }
+            ?: sheetEntry
+        val targetSheet = targetEntry?.sheet ?: sheet
         val rowRange = minOf(start.rowIndex, end.rowIndex)..maxOf(start.rowIndex, end.rowIndex)
         val columnRange = minOf(start.columnIndex, end.columnIndex)..maxOf(start.columnIndex, end.columnIndex)
         return rowRange.map { rowIndex ->
-            columnRange.map { columnIndex -> sheet.measurementCellValue(rowIndex, columnIndex, stack) }
+            columnRange.map { columnIndex ->
+                targetSheet.measurementCellValue(rowIndex, columnIndex, stack, formulaContext, targetEntry)
+            }
         }
     }
 
@@ -33320,15 +33505,17 @@ private fun WorkOrderMeasurementSheet.measurementCellValue(
     rowIndex: Int,
     columnIndex: Int,
     stack: Set<String>,
+    formulaContext: MobileMeasurementFormulaContext? = null,
+    sheetEntry: MobileMeasurementFormulaEntry? = null,
 ): Any? {
     if (rowIndex !in rows.indices || columnIndex !in columns.indices) return ""
-    val key = "$rowIndex:$columnIndex"
+    val key = "${sheetEntry?.key ?: "current"}:$rowIndex:$columnIndex"
     if (stack.contains(key)) error("Kružna referenca.")
     val column = columns[columnIndex]
     if (column.computed.equals("average", ignoreCase = true)) return measurementAverage(rowIndex) ?: ""
     val raw = measurementRaw(rowIndex, columnIndex)
     return if (raw.trim().startsWith("=")) {
-        evaluateMeasurementFormulaValueMobile(raw, this, rowIndex, columnIndex, stack + key).value
+        evaluateMeasurementFormulaValueMobile(raw, this, rowIndex, columnIndex, stack + key, formulaContext, sheetEntry).value
     } else {
         raw
     }
@@ -33340,13 +33527,15 @@ private fun evaluateMeasurementFormulaValueMobile(
     rowIndex: Int,
     columnIndex: Int,
     stack: Set<String>,
+    formulaContext: MobileMeasurementFormulaContext? = null,
+    sheetEntry: MobileMeasurementFormulaEntry? = null,
 ): MobileFormulaValue {
     val expression = rawFormula.trim()
         .removePrefix("=")
         .replace(Regex("'RO-F\\.3'!", RegexOption.IGNORE_CASE), "")
         .replace(Regex("RO-F\\.3!", RegexOption.IGNORE_CASE), "")
     if (expression.isBlank()) return MobileFormulaValue.scalar(0.0)
-    return MobileMeasurementFormulaParser(expression, sheet, rowIndex, columnIndex, stack).parse()
+    return MobileMeasurementFormulaParser(expression, sheet, rowIndex, columnIndex, stack, formulaContext, sheetEntry).parse()
 }
 
 @Composable
@@ -33922,6 +34111,7 @@ private fun DocumentationMeasurementPreviewContent(
                 enabled = enabled,
                 expanded = true,
                 tableOnly = true,
+                measurementSheets = measurementSheets,
                 onSheetChange = { nextSheet -> onSheetChange(stateKey, nextSheet) },
                 onTableIncludedChange = { included -> onTableIncludedChange(usageKey, included) },
             )
@@ -34180,6 +34370,7 @@ private fun MeasurementTableEditor(
     expanded: Boolean = false,
     tableOnly: Boolean = false,
     showIncludedToggle: Boolean = true,
+    measurementSheets: Map<String, WorkOrderMeasurementSheet> = emptyMap(),
     onSheetChange: (WorkOrderMeasurementSheet) -> Unit,
     onTableIncludedChange: (Boolean) -> Unit = {},
 ) {
@@ -34293,7 +34484,15 @@ private fun MeasurementTableEditor(
     val selectedRaw = selectedRow?.cells?.get(selectedColumn?.id.orEmpty()).orEmpty()
     val selectedEditable = selectedColumn?.isEditableMeasurementColumn() == true
     val selectedRequiresSpaceSelection = requireSpaceSelection && selectedColumn?.isPhysicalFactorsSpaceSelectorColumn() == true
-    val selectedDisplay = sheet.measurementCellDisplay(selectedCell.rowIndex, selectedCell.columnIndex)
+    val formulaContext = remember(template.measurementTables, table, sheet, measurementSheets) {
+        buildMobileMeasurementFormulaContext(template, table, sheet, measurementSheets)
+    }
+    val selectedDisplay = sheet.measurementCellDisplay(
+        selectedCell.rowIndex,
+        selectedCell.columnIndex,
+        formulaContext = formulaContext,
+        sheetEntry = formulaContext.current,
+    )
     val selectedFormat = selectedRow?.formats?.get(selectedColumn?.id.orEmpty())
     val selectedFormatType = selectedFormat.measurementFormatString("type").ifBlank { "general" }
     val selectedFormatDecimals = selectedFormat.measurementFormatInt("decimals", 2).coerceIn(0, 6)
@@ -34379,7 +34578,7 @@ private fun MeasurementTableEditor(
                     }
                 }
             }
-            if (showIncludedToggle) {
+            if (showIncludedToggle && table.includeInReport) {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -34761,7 +34960,12 @@ private fun MeasurementTableEditor(
                                         ?: (columnWindowStart + columnIndex)
                                     MeasurementGridCell(
                                         column = column,
-                                        displayValue = sheet.measurementCellDisplay(rowIndex, absoluteColumnIndex),
+                                        displayValue = sheet.measurementCellDisplay(
+                                            rowIndex,
+                                            absoluteColumnIndex,
+                                            formulaContext = formulaContext,
+                                            sheetEntry = formulaContext.current,
+                                        ),
                                         rawValue = if (selectedCell.rowIndex == rowIndex && selectedCell.columnIndex == absoluteColumnIndex) {
                                             editingValue
                                         } else {
@@ -35764,6 +35968,7 @@ private fun DocumentationSprTemplateSectionPanel(
                                             sheet = standardControls.measurementSheets[stateKey] ?: table.sheet,
                                             enabled = enabled,
                                             showIncludedToggle = false,
+                                            measurementSheets = standardControls.measurementSheets,
                                             onSheetChange = { nextSheet ->
                                                 standardControls.onMeasurementSheetChange(stateKey, nextSheet)
                                             },
@@ -36738,6 +36943,7 @@ private fun TemplateBlockSectionCard(
                                 table = table,
                                 sheet = standardControls.measurementSheets[stateKey] ?: table.sheet,
                                 enabled = standardControls.enabled,
+                                measurementSheets = standardControls.measurementSheets,
                                 onSheetChange = { nextSheet ->
                                     standardControls.onMeasurementSheetChange(stateKey, nextSheet)
                                 },

@@ -33,6 +33,47 @@ function cleanMultiline(value = "") {
   return String(value ?? "").normalize("NFC").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
 }
 
+function normalizePdfFormulaLookupKey(value = "") {
+  return clean(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function getPdfFormulaReferenceSheetName(reference = "") {
+  if (reference && typeof reference === "object" && !Array.isArray(reference)) {
+    return clean(reference.sheetName ?? reference.sheet ?? "");
+  }
+  const text = String(reference || "").trim();
+  let inQuote = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "'") {
+      inQuote = !inQuote;
+    } else if (char === "!" && !inQuote) {
+      return text.slice(0, index).replace(/^'|'$/g, "").replace(/''/g, "'").trim();
+    }
+  }
+  return "";
+}
+
+function addPdfFormulaSheetAlias(lookup, alias = "", entry = null) {
+  if (!lookup || !entry) {
+    return;
+  }
+  const rawAlias = clean(alias);
+  const keys = Array.from(new Set([
+    rawAlias.toLowerCase(),
+    normalizePdfFormulaLookupKey(rawAlias),
+  ].filter(Boolean)));
+  keys.forEach((key) => {
+    if (!lookup.has(key)) {
+      lookup.set(key, entry);
+    }
+  });
+}
+
 function formatDocumentDate(value = "") {
   const text = clean(value);
   let match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
@@ -1275,9 +1316,107 @@ function normalizePdfMeasurementSheet(sheet = {}) {
   };
 }
 
-function getPdfMeasurementCellRawValue(sheet, rowIndex, columnIndex, stack = new Set()) {
-  const row = sheet?.rows?.[rowIndex];
-  const column = sheet?.columns?.[columnIndex];
+function getPdfMeasurementFormulaAliases(table = {}, index = 0) {
+  return [
+    table.id,
+    table.key,
+    table.tokenKey,
+    table.label,
+    table.summary,
+    table.sourceSheet,
+    table.chapterTitle,
+    table.assessmentLabel,
+    `Sheet${index + 1}`,
+    `Sheet ${index + 1}`,
+    `Excel${index + 1}`,
+    `Excel ${index + 1}`,
+    `Excel tablica ${index + 1}`,
+  ].filter(Boolean);
+}
+
+function buildPdfMeasurementFormulaContext(tables = [], currentTable = null) {
+  const lookup = new Map();
+  const entries = [];
+  let current = null;
+  const currentKey = normalizePdfFormulaLookupKey([
+    currentTable?.id,
+    currentTable?.key,
+    currentTable?.sourceSheet,
+    currentTable?.label,
+  ].filter(Boolean).join("|"));
+
+  (Array.isArray(tables) ? tables : []).forEach((table, index) => {
+    const sheet = normalizePdfMeasurementSheet(table.sheet);
+    if (!sheet.columns.length) {
+      return;
+    }
+    const entry = {
+      key: clean(table.key || table.id || `measurement-table-${index + 1}`),
+      table,
+      sheet,
+      index,
+    };
+    const tableKey = normalizePdfFormulaLookupKey([
+      table.id,
+      table.key,
+      table.sourceSheet,
+      table.label,
+    ].filter(Boolean).join("|"));
+    entries.push(entry);
+    if (currentKey && tableKey === currentKey) {
+      current = entry;
+    }
+    getPdfMeasurementFormulaAliases(table, index).forEach((alias) => addPdfFormulaSheetAlias(lookup, alias, entry));
+  });
+
+  return { entries, lookup, current };
+}
+
+function attachPdfMeasurementFormulaContexts(tables = []) {
+  const baseTables = (Array.isArray(tables) ? tables : []).map((table) => ({ ...table }));
+  return baseTables.map((table) => ({
+    ...table,
+    formulaContext: buildPdfMeasurementFormulaContext(baseTables, table),
+  }));
+}
+
+function resolvePdfMeasurementFormulaEntry(reference = "", formulaContext = null, currentEntry = null) {
+  const sheetName = getPdfFormulaReferenceSheetName(reference);
+  const fallbackEntry = currentEntry || formulaContext?.current || null;
+  if (!sheetName) {
+    return fallbackEntry;
+  }
+  const lookupKey = normalizePdfFormulaLookupKey(sheetName);
+  return formulaContext?.lookup?.get(lookupKey)
+    || formulaContext?.lookup?.get(clean(sheetName).toLowerCase())
+    || fallbackEntry;
+}
+
+function getPdfMeasurementFormulaRangeDescriptor(startReference, endReference, formulaContext = null, currentEntry = null, currentSheet = null) {
+  const startEntry = resolvePdfMeasurementFormulaEntry(startReference, formulaContext, currentEntry);
+  const endEntry = resolvePdfMeasurementFormulaEntry(endReference, formulaContext, currentEntry);
+  const targetEntry = startEntry || currentEntry || formulaContext?.current || null;
+  const targetSheet = targetEntry?.sheet || currentSheet;
+  const start = parseMeasurementCellReference(startReference);
+  const end = parseMeasurementCellReference(endReference);
+  if ((startEntry?.key || currentEntry?.key || "current") !== (endEntry?.key || currentEntry?.key || "current")) {
+    return null;
+  }
+  return {
+    targetEntry,
+    targetSheet,
+    startRowIndex: Math.max(0, Math.min(start.rowIndex, end.rowIndex)),
+    endRowIndex: Math.max(start.rowIndex, end.rowIndex),
+    startColumnIndex: Math.max(0, Math.min(start.columnIndex, end.columnIndex)),
+    endColumnIndex: Math.max(start.columnIndex, end.columnIndex),
+  };
+}
+
+function getPdfMeasurementCellRawValue(sheet, rowIndex, columnIndex, stack = new Set(), formulaContext = null, sheetEntry = null) {
+  const currentSheet = sheet || sheetEntry?.sheet || null;
+  const currentEntry = sheetEntry || formulaContext?.current || { key: "current", sheet: currentSheet };
+  const row = currentSheet?.rows?.[rowIndex];
+  const column = currentSheet?.columns?.[columnIndex];
   if (!row || !column) {
     return "";
   }
@@ -1285,7 +1424,7 @@ function getPdfMeasurementCellRawValue(sheet, rowIndex, columnIndex, stack = new
   if (!isMeasurementFormula(rawValue)) {
     return rawValue;
   }
-  const cellKey = `${rowIndex}:${columnIndex}`;
+  const cellKey = `${currentEntry?.key || "current"}:${rowIndex}:${columnIndex}`;
   if (stack.has(cellKey)) {
     return "";
   }
@@ -1293,12 +1432,45 @@ function getPdfMeasurementCellRawValue(sheet, rowIndex, columnIndex, stack = new
   try {
     const value = evaluateMeasurementFormula(rawValue, {
       resolveCellReference(reference) {
+        const targetEntry = resolvePdfMeasurementFormulaEntry(reference, formulaContext, currentEntry);
+        const targetSheet = targetEntry?.sheet || currentSheet;
         const parsed = parseMeasurementCellReference(reference);
         if (!parsed) {
           return "";
         }
         const { rowIndex: referenceRowIndex, columnIndex: referenceColumnIndex } = parsed;
-        return getPdfMeasurementCellRawValue(sheet, referenceRowIndex, referenceColumnIndex, stack);
+        return getPdfMeasurementCellRawValue(targetSheet, referenceRowIndex, referenceColumnIndex, stack, formulaContext, targetEntry || currentEntry);
+      },
+      resolveRange(startReference, endReference) {
+        const descriptor = getPdfMeasurementFormulaRangeDescriptor(startReference, endReference, formulaContext, currentEntry, currentSheet);
+        if (!descriptor) {
+          return [];
+        }
+        const matrix = [];
+        for (let referenceRowIndex = descriptor.startRowIndex; referenceRowIndex <= descriptor.endRowIndex; referenceRowIndex += 1) {
+          const rowValues = [];
+          for (let referenceColumnIndex = descriptor.startColumnIndex; referenceColumnIndex <= descriptor.endColumnIndex; referenceColumnIndex += 1) {
+            if (
+              referenceRowIndex < 0
+              || referenceColumnIndex < 0
+              || referenceRowIndex >= (descriptor.targetSheet?.rows?.length || 0)
+              || referenceColumnIndex >= (descriptor.targetSheet?.columns?.length || 0)
+            ) {
+              rowValues.push("");
+              continue;
+            }
+            rowValues.push(getPdfMeasurementCellRawValue(
+              descriptor.targetSheet,
+              referenceRowIndex,
+              referenceColumnIndex,
+              stack,
+              formulaContext,
+              descriptor.targetEntry || currentEntry,
+            ));
+          }
+          matrix.push(rowValues);
+        }
+        return matrix;
       },
     });
     return clean(value);
@@ -1353,7 +1525,7 @@ function normalizePdfMeasurementTables(model = {}, legacyRows = []) {
   const sourceTables = Array.isArray(model.measurementTables) && model.measurementTables.length > 0
     ? model.measurementTables
     : createDocumentationMeasurementTablesForService(getServiceCode(model));
-  return sourceTables.filter((table) => table?.enabled !== false).map((table, index) => {
+  const normalizedTables = sourceTables.filter((table) => table?.enabled !== false).map((table, index) => {
     const base = table && typeof table === "object" ? table : {};
     const withLegacyRows = index === 0 && Array.isArray(legacyRows) && legacyRows.length > 0
       ? { ...base, sheet: mapLegacyRowsToSheet(legacyRows, base) }
@@ -1365,10 +1537,14 @@ function normalizePdfMeasurementTables(model = {}, legacyRows = []) {
       summary: clean(withLegacyRows.summary || withLegacyRows.label || getMeasurementTableTitle(model)),
       assessmentLabel: clean(withLegacyRows.assessmentLabel || ""),
       chapterTitle: clean(withLegacyRows.chapterTitle || ""),
+      sourceSheet: clean(withLegacyRows.sourceSheet || ""),
+      includeInReport: withLegacyRows.includeInReport !== false,
+      formulaOnly: withLegacyRows.formulaOnly === true,
       pageOrientation: getPdfMeasurementOrientation(withLegacyRows),
       sheet: normalizePdfMeasurementSheet(withLegacyRows.sheet),
     };
   });
+  return attachPdfMeasurementFormulaContexts(normalizedTables);
 }
 
 function getPdfMeasurementTableRows(table = {}) {
@@ -1378,7 +1554,7 @@ function getPdfMeasurementTableRows(table = {}) {
       ...row,
       rowIndex,
       cells: Object.fromEntries(sheet.columns.map((column, columnIndex) => {
-        const value = clean(getPdfMeasurementCellRawValue(sheet, rowIndex, columnIndex));
+        const value = clean(getPdfMeasurementCellRawValue(sheet, rowIndex, columnIndex, new Set(), table.formulaContext, table.formulaContext?.current));
         return [column.id, columnIndex === 0 && !value ? String(rowIndex + 1) : value];
       })),
       formats: row.formats || {},
@@ -1538,7 +1714,7 @@ function drawMeasurementTablePage(pdfDoc, model, table, fonts, rows, pageIndex =
 }
 
 function drawMeasurementTablePages(pdfDoc, model, rows, fonts) {
-  const tables = normalizePdfMeasurementTables(model, rows);
+  const tables = normalizePdfMeasurementTables(model, rows).filter((table) => table.includeInReport !== false);
   let pageCount = 0;
   tables.forEach((table) => {
     const sheet = normalizePdfMeasurementSheet(table.sheet);

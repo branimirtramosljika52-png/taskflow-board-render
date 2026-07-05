@@ -114,7 +114,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.333.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.334.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -21835,6 +21835,9 @@ function buildMobileMeasurementSheetFormulaEntries(template = {}, fieldSheets = 
         field?.key,
         field?.label,
         field?.wordLabel,
+        field?.sourceSheet,
+        field?.sheetName,
+        field?.measurementTable?.sourceSheet,
       ].map(normalizeInputValue).filter(Boolean),
     });
   });
@@ -23694,6 +23697,9 @@ function buildMobileDocumentTemplateMeasurementTables(template = {}, workOrder =
         label: normalizeInputValue(field?.label || field?.wordLabel || recordKey) || "Excel tablica",
         helpText: normalizeInputValue(field?.helpText || field?.description || field?.hint),
         summary: getMobileMeasurementSheetSummary(sheet),
+        sourceSheet: normalizeInputValue(field?.sourceSheet || field?.sheetName || field?.measurementTable?.sourceSheet),
+        includeInReport: field?.includeInReport !== false,
+        formulaOnly: field?.formulaOnly === true,
         sheet,
       };
     })
@@ -25292,7 +25298,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     { value: "ZADOVOLJAVA", label: "Zadovoljava" },
     { value: "NE ZADOVOLJAVA", label: "Ne zadovoljava" },
   ];
-  const measurementTableUseFields = measurementTables.map((table, index) => buildMobileNativeDocumentationField(
+  const measurementTableUseFields = measurementTables.filter((table) => table.includeInReport !== false).map((table, index) => buildMobileNativeDocumentationField(
     table.enabledFieldId || `use-${table.key || table.id || index + 1}`,
     `Koristi ${normalizeInputValue(table.chapterTitle || table.label || `tablicu ${index + 1}`)}`,
     "toggle",
@@ -25434,6 +25440,9 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       || `gridline-results-${index + 1}`;
     const title = normalizeInputValue(table?.chapterTitle || table?.label || `Gridline tablica ${index + 1}`);
     const enabledFieldId = table.enabledFieldId || `use-${tableKey}`;
+    if (table?.includeInReport === false) {
+      return [measurementFieldBlocks[index]];
+    }
     const sectionBlocks = [
       buildMobileNativeDocumentationBlock(`chapter-${tableKey}`, title, "chapter", {
         typeLabel: "Poglavlje",

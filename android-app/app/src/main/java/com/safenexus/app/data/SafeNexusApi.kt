@@ -3207,6 +3207,9 @@ private fun JSONArray?.toWorkOrderMeasurementTables(): List<WorkOrderMeasurement
                     label = item.firstClean("label").ifBlank { "Excel tablica" },
                     helpText = item.firstClean("helpText"),
                     summary = item.firstClean("summary"),
+                    sourceSheet = item.firstClean("sourceSheet", "sheetName"),
+                    includeInReport = item.optBoolean("includeInReport", true),
+                    formulaOnly = item.optBoolean("formulaOnly", false),
                     sheet = if (sheet.pageOrientation.isBlank() && tableOrientation.isNotBlank()) {
                         sheet.copy(pageOrientation = tableOrientation)
                     } else {

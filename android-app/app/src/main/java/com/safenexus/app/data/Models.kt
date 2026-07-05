@@ -851,6 +851,9 @@ data class WorkOrderMeasurementTable(
     val label: String,
     val helpText: String,
     val summary: String,
+    val sourceSheet: String = "",
+    val includeInReport: Boolean = true,
+    val formulaOnly: Boolean = false,
     val sheet: WorkOrderMeasurementSheet,
 )
 

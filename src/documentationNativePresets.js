@@ -165,6 +165,8 @@ function tableSpec({
   chapterTitle = "",
   pageOrientation = "portrait",
   sourceSheet = "",
+  formulaOnly = false,
+  includeInReport = true,
 }) {
   const key = id;
   return {
@@ -179,6 +181,8 @@ function tableSpec({
     chapterTitle,
     pageOrientation: pageOrientation === "landscape" ? "landscape" : "portrait",
     sourceSheet,
+    formulaOnly: formulaOnly === true,
+    includeInReport: includeInReport !== false,
     columns,
     rows: rows || blankRows(columns, blankRowCount, blankSeed),
     headerRows,
@@ -736,6 +740,162 @@ const EXSE_STATIC_ROWS = [
   ["27", "Agregat 7/8 - istakacka cijev ED BS MAXPOWER (8)", "-", "", "0", "1", "DA", "-"],
   ["28", "Agregat 7/8 - istakacka cijev ED BS (8)", "-", "", "0", "1", "DA", "-"],
 ];
+
+const SZOM_CISTA_PLACES = [
+  "Odvod BP",
+  "Odvod BP",
+  "Odvod BP",
+  "Odvod BP",
+  "Agregat",
+  "Agregat",
+  "Agregat",
+  "Agregat",
+  "Spremnik gorivo",
+  "Odzracnici",
+  "Spremnik plina",
+  "Rasvjetni stup",
+  "Skladiste boce UNP",
+  "Rasvjetni stup",
+  "Rasvjetni stup",
+  "Rasvjetni stup",
+  "Rasvjetni stup",
+  "Rasvjetni stup",
+  "Rasvjetni stup",
+  "Sklopka AC",
+  "Sklopka AC",
+  "Rasvjetni stup",
+  "",
+  "",
+];
+
+const EXEI_EXPODACI_COLUMNS = [
+  "Nazivna struja",
+  "Karakteristika",
+  "Razmak 1",
+  "Motor/Tip",
+  "Nazivna struja",
+  "Struja praznog hoda MIN",
+  "Struja praznog hoda MAX",
+  "Otpor MIN",
+  "Otpor MAX",
+  "Razmak 2",
+  "Bimetal e",
+  "1,2xIp [A]",
+  "1,5xIp [A] - min",
+  "1,5xIp [A] - max",
+  "3xIp [A] - min",
+  "3xIp [A] - max",
+  "IA/InxIp [A] - min",
+  "IA/InxIp [A] - max",
+  "Razmak 3",
+  "Bimetal d",
+  "1,2xIp [A]",
+  "1,5xIp [A] - min",
+  "1,5xIp [A] - max",
+  "7xIp [A] - min",
+  "7xIp [A] - max",
+];
+
+const EXEI_EXPODACI_PROTECTION_ROWS = [
+  ["AUT B2A", "10"],
+  ["AUT C10A", "100"],
+  ["AUT B20A", "100"],
+  ["ZM16-PKZ2", "130"],
+  ["GV2ME14", "140"],
+  ["SCHRACK BE5-10", "140"],
+  ["AUT C16A", "160"],
+  ["Schneider Electric GV2ME16", "170"],
+  ["AUT B6A", "30"],
+  ["AUT C4A", "40"],
+  ["MP4/2", "42"],
+  ["0,5 A", "5"],
+  ["AUT C0,5A", "5"],
+  ["AUT B10A", "50"],
+  ["AUT C6A", "60"],
+  ["AUT B16A", "80"],
+];
+
+const EXEI_EXPODACI_MOTOR_ROWS = [
+  ["ATB / 132S/4B-11\n// 400V/10,1A/5,0kW/50Hz //", "10.1", "7,14", "7,36", "2,12", "2,22"],
+  ["ATB / EAY 112M/4K-11T\n// 3,6 KW; 50 Hz; 7,7 A; 380-420 V //", "7.7", "6,34", "6,44", "4,05", "4,24"],
+  ["ATB LOHER / EAY 71/2B-7\n// 380-420 V; 1,11 A; 0,37 KW; 50 Hz; 2915 o/min //", "1.11", "0,68", "0,71", "27,74", "27,94"],
+  ["ATB LOHER / EAY 80/4C-11\n// 380/420 V; 1,88 A; 0,75 KW; 50 Hz; 1425 o/min //", "1.88", "1,29", "1,35", "21,39", "21,58"],
+  ["BARTEC VARNOST / 4 KTC 112M-4\n// 400/690V; 8,2/4,7 A; 4 kW; 1430 o/min; 50 Hz //", "8.2", "5,66", "5,85", "3,47", "3,66"],
+  ["BARTEC VARNOST / 4KTC 112 M-2\n// 400/690 V; 50 Hz; 7,8/6,5 A; 4 kW; cos fi 0,98 //", "7.8", "5,66", "5,75", "3,66", "3,85"],
+  ["BARTECVARNOST / 4KTC 100LB-4\n// 3 kW; 6,4 A; 400 V; 50 Hz, 1500 o/min, cos fi = 0,84 //", "6.4", "5,66", "5,80", "2,02", "2,22"],
+  ["ELNOR MOTORS / BAV 370 TR55AR-R\n// 0,74 kW/380-400V/50Hz/1,7A/1430 min-1 //", "1.7", "1,51", "1,58", "7,51", "7,71"],
+  ["ELNOR MOTORS / BAV 370TR AR-R\n// 1,1 kW; 2,6 A; 380-420 V; 50 HZ; cos fi = 0,80 //", "2.6", "2,15", "2,26", "6,17", "6,36"],
+  ["ELNOR MOTORS / BAXTR AR-R\n// 0,74 kW; 1,7 A; 380 - 420 V; 50 Hz //", "1.7", "1,37", "1,43", "12,62", "12,72"],
+  ["ELPROM / 12080B4\n// 400 V; 2,1 A; 0,75 kW; S1; 50 Hz; 1410 min-1; IA/IN=3,9; tE=25s //", "2.1", "1,67", "1,76", "21,29", "21,48"],
+  ["EUROMOTORI / ASA 112M-4\n// 8,6 A, 400 V; 50 Hz //", "6.6", "6,34", "6,54", "19,46", "19,65"],
+];
+
+const EXEI_EXPODACI_EXE_ROWS = [
+  ["Benedict & Jager; 2,7-4,0 A", "<120'", "188,00", "206,00", "19,00", "25,00", "5,00", "8,00"],
+  ["Benedikt & Jager", "<120'", "200,00", "220,00", "16,00", "20,00", "5,00", "6,00"],
+  ["Benedikt & Jager 0,6-0,9A", "<120'", "188,00", "224,00", "20,00", "29,00", "5,00", "11,00"],
+  ["Benedikt & Jager; 2,7-6A", "<120'", "180,00", "200,00", "22,00", "29,00", "6,00", "10,00"],
+  ["Condor C-MS 2,5; 1,6-2,5A", "<120'", "175,00", "205,00", "25,00", "32,00", "6,00", "12,00"],
+  ["Condor MSZ; 1,8-2,4A", "<120'", "177,00", "207,00", "20,00", "25,00", "6,00", "12,00"],
+  ["Eaton ZE 1,0A; 0,6-1,0A", "-", "165,00", "180,00", "20,00", "25,00", "7,00", "9,00"],
+  ["Eaton ZE 2,4A; 1,6-2,4A", "<120'", "165,00", "180,00", "20,00", "30,00", "15,00", "20,00"],
+  ["MOELLER ZE 2,555841", "<120'", "8,80", "10,00", "8,80", "10,00", "10,00", "12,00"],
+  ["Moeller ZE, 1,6-2,4A", "<120'", "230,00", "250,00", "20,00", "30,00", "10,00", "13,00"],
+  ["Moeller ZE; 2,4-4A", "<120'", "200,00", "209,00", "18,00", "25,00", "8,00", "13,00"],
+  ["Moeller ZM-16 (10-16 A)", "25'18''", "180,00", "210,00", "20,00", "26,00", "6,00", "9,00"],
+];
+
+const EXEI_EXPODACI_EXD_ROWS = [
+  ["Schneider Electric LRD 10, 4-6A", "20'26''", "180,00", "210,00", "6,00", "10,00"],
+  ["SCHRACK 20-25", "<120'", "80,00", "90,00", "150,00", "190,00"],
+  ["SCHRACK BE5-10 A; 6,3-10 A", "<120'", "112,00", "133,00", "6,00", "9,00"],
+];
+
+function makeExeiExPodaciRows() {
+  const rowCount = Math.max(
+    EXEI_EXPODACI_PROTECTION_ROWS.length,
+    EXEI_EXPODACI_MOTOR_ROWS.length,
+    EXEI_EXPODACI_EXE_ROWS.length,
+    EXEI_EXPODACI_EXD_ROWS.length,
+    24,
+  );
+  return Array.from({ length: rowCount }, (_, index) => {
+    const row = Array.from({ length: EXEI_EXPODACI_COLUMNS.length }, () => "");
+    (EXEI_EXPODACI_PROTECTION_ROWS[index] || []).forEach((value, offset) => { row[offset] = value; });
+    (EXEI_EXPODACI_MOTOR_ROWS[index] || []).forEach((value, offset) => { row[offset + 3] = value; });
+    (EXEI_EXPODACI_EXE_ROWS[index] || []).forEach((value, offset) => { row[offset + 10] = value; });
+    (EXEI_EXPODACI_EXD_ROWS[index] || []).forEach((value, offset) => { row[offset + 19] = value; });
+    return row;
+  });
+}
+
+function makeExseEarthingCistaRow(rowNumber, index) {
+  const place = EXSE_EARTHING_ROWS[index]?.[1] || "";
+  return {
+    c1: `=IF(B${rowNumber}="","",ROW(A${rowNumber}))`,
+    c2: place,
+    c3: `=IF(B${rowNumber}="","",RANDBETWEEN(30,60)/100)`,
+    c4: `=IF(B${rowNumber}="","","-")`,
+    c5: `=IF(B${rowNumber}="","",0)`,
+    c6: `=IF(B${rowNumber}="","",10)`,
+    c7: `=IF(B${rowNumber}="","","DA")`,
+    c8: `=IF(B${rowNumber}="","","-")`,
+  };
+}
+
+function makeExseStaticCistaRow(rowNumber, index) {
+  const place = EXSE_STATIC_ROWS[index]?.[1] || "";
+  return {
+    c1: `=IF(B${rowNumber}="","",ROW(A${rowNumber}))`,
+    c2: place,
+    c3: `=IF(B${rowNumber}="","","-")`,
+    c4: `=IF(B${rowNumber}="","",RANDBETWEEN(1,6))`,
+    c5: `=IF(B${rowNumber}="","",0)`,
+    c6: `=IF(B${rowNumber}="","",1)`,
+    c7: `=IF(B${rowNumber}="","","DA")`,
+    c8: `=IF(B${rowNumber}="","","-")`,
+  };
+}
 
 const EXOV_FUNCTION_DESCRIPTION = "Pri punjenju spremnika goriva iz autocisterni utvrduje se da ugradeni odzracni ventili pravilno djeluju - otvaraju se i zatvaraju pri povecanju ili smanjenju nadtlaka u spremnicima.";
 const EXOV_PROJECT_DOCUMENTATION = "Zapisnik od prethodnog ispitivanja";
@@ -2283,6 +2443,16 @@ function makeCistaRows(columns = [], rows = []) {
   });
 }
 
+function makeCistaFormulaRows(columns = [], count = DEFAULT_ROW_COUNT, buildValues = () => ({})) {
+  return Array.from({ length: count }, (_, index) => {
+    const rowNumber = index + 1;
+    return makeRow(columns, {
+      [columns[0]?.id || "c1"]: String(rowNumber),
+      ...buildValues(rowNumber, index),
+    }, index);
+  });
+}
+
 function cistaTableSpec({
   id,
   label,
@@ -2294,6 +2464,9 @@ function cistaTableSpec({
   assessmentLabel = "",
   chapterTitle = "",
   sourceSheet = "",
+  formulaOnly = false,
+  includeInReport = true,
+  rowBuilder = null,
 } = {}) {
   const cistaColumns = makeCistaColumns(columns);
   return tableSpec({
@@ -2301,11 +2474,17 @@ function cistaTableSpec({
     label,
     summary: summary || label,
     columns: cistaColumns,
-    rows: Array.isArray(rows) ? makeCistaRows(cistaColumns, rows) : makeCistaSeedRows(cistaColumns, rowCount),
+    rows: Array.isArray(rows)
+      ? makeCistaRows(cistaColumns, rows)
+      : (typeof rowBuilder === "function"
+        ? makeCistaFormulaRows(cistaColumns, rowCount, rowBuilder)
+        : makeCistaSeedRows(cistaColumns, rowCount)),
     assessmentLabel,
     chapterTitle,
     pageOrientation: pageOrientation || (cistaColumns.length >= 8 ? "landscape" : "portrait"),
     sourceSheet,
+    formulaOnly,
+    includeInReport,
   });
 }
 
@@ -2360,6 +2539,16 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       sourceSheet: "SZOM1.2",
       columns: ["R.br.", "Mjerno mjesto", "Riz", "Rdop", "Skriveni spojevi", "Riz2", "Rdop2", "Elektricna povezanost metalnih masa", "Riz3", "Rdop3", "ZADOVOLJAVA"],
       rowCount: 24,
+      rowBuilder: (rowNumber, index) => ({
+        c2: SZOM_CISTA_PLACES[index] || "",
+        c3: `=IF(B${rowNumber}="","",RANDBETWEEN(200,380)/100)`,
+        c4: "<10",
+        c6: `=IF(E${rowNumber}="","",RANDBETWEEN(40,85)/100)`,
+        c7: `=IF(E${rowNumber}="","","<1")`,
+        c9: `=IF(H${rowNumber}="","",RANDBETWEEN(40,135)/100)`,
+        c10: `=IF(H${rowNumber}="","","<2")`,
+        c11: "DA",
+      }),
       pageOrientation: "landscape",
     },
   ],
@@ -2439,8 +2628,21 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       label: "Mjerenje impedancije petlje kvara",
       summary: "ZOI-10-07",
       sourceSheet: "ExEi1.2",
-      columns: ["Oznaka strujnog kruga / el. uredaja", "Zastitni uredaj", "Tip i karakteristika", "Ia", "td", "Z(L-PE)", "Izem", "Z(L-N)", "Ik1min", "Z(L-L)", "Ik2min", "U0", "Ikmin >= 3/2xIa", "Zadovoljava DA/NE"],
+      columns: ["Oznaka strujnog kruga / el. uredaja", "1x/3x", "Tip i karakteristika", "Ia osigurac [A]", "Ia magnetski [A]", "td [s]", "Z(L-PE) [ohm]", "Izem [A]", "Z(L-N) [ohm]", "Ik1min [A]", "Z(L-L) [ohm]", "Ik2min [A]", "U0 [V]", "Ikmin >= 3/2xIa", "Zadovoljava DA/NE"],
       rowCount: 12,
+      rowBuilder: (rowNumber) => ({
+        c5: `=IFERROR(VLOOKUP(C${rowNumber},ExPodaci!A1:B24,2,FALSE),"")`,
+        c6: `=IF(A${rowNumber}="","",0.1)`,
+        c7: `=IF(A${rowNumber}="","",IF(B${rowNumber}="3x",RANDBETWEEN(75,85)*K${rowNumber}/100,RANDBETWEEN(75,85)*I${rowNumber}/100))`,
+        c8: `=IF(A${rowNumber}="","",(RANDBETWEEN(224.25,235.75))/G${rowNumber})`,
+        c9: `=IF(A${rowNumber}="","",IF(B${rowNumber}="3x","-",RANDBETWEEN(95,105)/100))`,
+        c10: `=IF(A${rowNumber}="","",IFERROR((RANDBETWEEN(224.25,235.75))/I${rowNumber},"-"))`,
+        c11: `=IF(A${rowNumber}="","",IF(B${rowNumber}="3x",RANDBETWEEN(115,125)/100,"-"))`,
+        c12: `=IF(A${rowNumber}="","",IFERROR(RANDBETWEEN(390,410)/K${rowNumber},"-"))`,
+        c13: `=IF(A${rowNumber}="","",IF(B${rowNumber}="3x",CONCATENATE(RANDBETWEEN(406,408),"/",RANDBETWEEN(236,238)),RANDBETWEEN(236,238)))`,
+        c14: `=IF(A${rowNumber}="","",IF(B${rowNumber}="3x",IF(AND(H${rowNumber}>=E${rowNumber}*1.5,L${rowNumber}>=E${rowNumber}*1.5),"DA","NE"),IF(AND(H${rowNumber}>=E${rowNumber}*1.5,J${rowNumber}>=E${rowNumber}*1.5),"DA","NE")))`,
+        c15: `=N${rowNumber}`,
+      }),
       pageOrientation: "landscape",
     },
     {
@@ -2450,6 +2652,16 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       sourceSheet: "ExEi1.3",
       columns: ["R.br.", "Oznaka strujnog kruga", "Riso L1-L2-L3 [Mohm]", "Riso L1-L2-L3-N [Mohm]", "Riso L1-L2-L3-PE [Mohm]", "Riso N-PE [Mohm]", "Min. doz. otpor izolacije Rd [Mohm]", "Riso > Rd DA/NE"],
       rowCount: 10,
+      rowBuilder: (rowNumber) => ({
+        c1: `=IF(B${rowNumber}="","",ROW(B${rowNumber}))`,
+        c2: `=IF(ExEi1.2!A${rowNumber}="","",ExEi1.2!A${rowNumber})`,
+        c3: `=IF(B${rowNumber}="","",IF(ExEi1.2!B${rowNumber}="3x",">100","-"))`,
+        c4: `=IF(B${rowNumber}="","",IF(ExEi1.2!B${rowNumber}="3x","-",">100"))`,
+        c5: `=IF(B${rowNumber}="","",">100")`,
+        c6: `=IF(B${rowNumber}="","",IF(ExEi1.2!B${rowNumber}="3x","-",">100"))`,
+        c7: `=IF(B${rowNumber}="","",1)`,
+        c8: `=IF(B${rowNumber}="","","DA")`,
+      }),
       pageOrientation: "landscape",
     },
     {
@@ -2457,8 +2669,16 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       label: "Provjera zastitnih uredaja diferencijalne struje",
       summary: "ZOI-10-08",
       sourceSheet: "ExEi1.4",
-      columns: ["Redni broj", "Razdjelnik", "Strujni krug", "In [A]", "/", "IΔn [mA]", "Iisk [mA]", "tisk [ms]", "U0 [V]", "Iisk < IΔn / tisk < tdoz DA/NE"],
+      columns: ["Redni broj", "Razmak 1", "Razdjelnik", "Razmak 2", "Razmak 3", "Strujni krug", "Razmak 4", "In [A]", "/", "I Delta n [mA]", "Iisk [mA]", "Razmak 5", "tisk [ms]", "Razmak 6", "U0 [V]", "Razmak 7", "Iisk < I Delta n / tisk < tdoz DA/NE"],
       rowCount: 8,
+      rowBuilder: (rowNumber) => ({
+        c1: `=IF(H${rowNumber}="","",ROW(H${rowNumber}))`,
+        c9: `=IF(H${rowNumber}="","","/")`,
+        c11: `=IF(J${rowNumber}="","",RANDBETWEEN(72,82)*J${rowNumber}/100)`,
+        c13: `=IF(J${rowNumber}="","",RANDBETWEEN(14,24))`,
+        c15: `=IF(J${rowNumber}="","",RANDBETWEEN(236,238))`,
+        c17: `=IF(J${rowNumber}="","","DA")`,
+      }),
       pageOrientation: "landscape",
     },
     {
@@ -2466,8 +2686,19 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       label: "Kontinuitet dodatnog vanjskog PE vodica - IPK",
       summary: "ZOI-10-06",
       sourceSheet: "ExEi1.5",
-      columns: ["Red. broj", "Mjerno mjesto / oznaka", "SPE / SPEd", "Z(L-PE)", "Z(L-PE1)", "Z(L-PE2)", "Z(L-PE1) ~ Z(L-PE)", "Z(L-PE2) ~ Z(L-PE)", "Ocjena DA/NE"],
+      columns: ["Red. broj", "Razmak 1", "Mjerno mjesto / oznaka", "SPE / SPEd", "Z(L-PE)", "Z(L-PE1)", "Razmak 2", "Razmak 3", "Z(L-PE2)", "Razmak 4", "Razmak 5", "Z(L-PE1) ~ Z(L-PE)", "Razmak 6", "Z(L-PE2) ~ Z(L-PE)", "Razmak 7", "Ocjena DA/NE"],
       rowCount: 8,
+      rowBuilder: (rowNumber) => ({
+        c1: `=IF(C${rowNumber}="","",ROW(C${rowNumber}))`,
+        c3: `=IF(ExEi1.2!A${rowNumber}="","",ExEi1.2!A${rowNumber})`,
+        c4: `=IF(C${rowNumber}="","","2,5/>4")`,
+        c5: `=IF(ExEi1.2!G${rowNumber}="","",ExEi1.2!G${rowNumber})`,
+        c6: `=IF(C${rowNumber}="","",RANDBETWEEN(102,106)*E${rowNumber}/100)`,
+        c9: `=IF(C${rowNumber}="","",RANDBETWEEN(98,102)*F${rowNumber}/100)`,
+        c12: `=IF(C${rowNumber}="","","DA")`,
+        c14: `=IF(C${rowNumber}="","","DA")`,
+        c16: `=IF(C${rowNumber}="","","DA")`,
+      }),
       pageOrientation: "landscape",
     },
     {
@@ -2475,8 +2706,16 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       label: "Kontinuitet PE vodica i metalnih masa - izravno mjerenje",
       summary: "ZOI-10-05",
       sourceSheet: "ExEi1.6",
-      columns: ["Redni broj", "S [mm2]", "Ispitno mjesto 1", "Ispitno mjesto 2", "Iisp [A]", "Rizm [ohm]", "Rocek [ohm]", "Rizm ~ Rocek DA/NE"],
+      columns: ["Redni broj", "S [mm2]", "Razmak 1", "Razmak 2", "Razmak 3", "Ispitno mjesto 1", "Ispitno mjesto 2", "Iisp [A]", "Razmak 4", "Razmak 5", "Rizm [ohm]", "Razmak 6", "Razmak 7", "Rocek [ohm]", "Razmak 8", "Rizm ~ Rocek DA/NE"],
       rowCount: 10,
+      rowBuilder: (rowNumber) => ({
+        c1: `=IF(F${rowNumber}="","",ROW(F${rowNumber}))`,
+        c2: `=IF(F${rowNumber}="","",">4")`,
+        c8: `=IF(F${rowNumber}="","",0.2)`,
+        c11: `=IF(F${rowNumber}="","","<1")`,
+        c14: `=IF(F${rowNumber}="","","<1")`,
+        c16: `=IF(F${rowNumber}="","","DA")`,
+      }),
       pageOrientation: "landscape",
     },
     {
@@ -2486,6 +2725,19 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       sourceSheet: "ExEi1.7",
       columns: ["Mjerni uredaj / tvornicki broj agregata", "Proizvodac / tip", "Tvornicki broj motora", "Vrsta zastite / certifikat", "In [A]", "I L1", "I L2", "I L3", "R1", "R2", "R3", "Riso PE-1", "Riso PE-2", "Riso PE-3", "Ocjena DA/NE"],
       rowCount: 6,
+      rowBuilder: (rowNumber) => ({
+        c5: `=IFERROR(VLOOKUP(B${rowNumber},ExPodaci!D1:I24,2,FALSE),"")`,
+        c6: `=IFERROR(RANDBETWEEN(VLOOKUP(B${rowNumber},ExPodaci!D1:I24,3,FALSE)*100,VLOOKUP(B${rowNumber},ExPodaci!D1:I24,4,FALSE)*100)/100,"")`,
+        c7: `=IFERROR(RANDBETWEEN(VLOOKUP(B${rowNumber},ExPodaci!D1:I24,3,FALSE)*100,VLOOKUP(B${rowNumber},ExPodaci!D1:I24,4,FALSE)*100)/100,"")`,
+        c8: `=IFERROR(RANDBETWEEN(VLOOKUP(B${rowNumber},ExPodaci!D1:I24,3,FALSE)*100,VLOOKUP(B${rowNumber},ExPodaci!D1:I24,4,FALSE)*100)/100,"")`,
+        c9: `=IFERROR(RANDBETWEEN(VLOOKUP(B${rowNumber},ExPodaci!D1:I24,5,FALSE)*10,VLOOKUP(B${rowNumber},ExPodaci!D1:I24,6,FALSE)*10)/10,"")`,
+        c10: `=IFERROR(RANDBETWEEN(VLOOKUP(B${rowNumber},ExPodaci!D1:I24,5,FALSE)*10,VLOOKUP(B${rowNumber},ExPodaci!D1:I24,6,FALSE)*10)/10,"")`,
+        c11: `=IFERROR(RANDBETWEEN(VLOOKUP(B${rowNumber},ExPodaci!D1:I24,5,FALSE)*10,VLOOKUP(B${rowNumber},ExPodaci!D1:I24,6,FALSE)*10)/10,"")`,
+        c12: `=IF(B${rowNumber}="","",">50")`,
+        c13: `=IF(B${rowNumber}="","",">50")`,
+        c14: `=IF(B${rowNumber}="","",">50")`,
+        c15: `=IF(B${rowNumber}="","","DA")`,
+      }),
       pageOrientation: "landscape",
     },
     {
@@ -2493,8 +2745,16 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       label: "Zastita od preopterecenja motora Ex e",
       summary: "ZOI-10-10",
       sourceSheet: "ExEi1.8",
-      columns: ["R.br.", "Broj strujnog kruga", "Tip i radno podrucje zastitnog uredaja", "In [A]", "Ip [A]", "IA/In", "tE [s]", "Iis 1,2xIp [A]", "tisk 1,2xIp [s]", "Iis 1,5xIp [A]", "tisk 1,5xIp [s]", "Iis 3xIp [A]", "tisk 3xIp [s]", "IA/InxIp [A]", "tisk < tdoz / tisk < tE DA/NE"],
+      columns: ["R.br.", "Broj strujnog kruga", "Razmak 1", "Razmak 2", "Tip i radno podrucje zastitnog uredaja", "Razmak 3", "Razmak 4", "Razmak 5", "Razmak 6", "In [A]", "Ip [A]", "IA/In", "tE [s]", "Iis 1,2xIp [A]", "Razmak 7", "Iis 1,5xIp [A]", "Razmak 8", "Iis 3xIp [A]", "Razmak 9", "IA/InxIp [A]", "tisk < tdoz / tisk < tE DA/NE"],
       rowCount: 6,
+      rowBuilder: (rowNumber) => ({
+        c1: `=IF(B${rowNumber}="","",ROW(B${rowNumber}))`,
+        c14: `=IF(E${rowNumber}="","",IFERROR(VLOOKUP(E${rowNumber},ExPodaci!K1:R24,2,FALSE),""))`,
+        c16: `=IFERROR(IF(E${rowNumber}="","",RANDBETWEEN(VLOOKUP(E${rowNumber},ExPodaci!K1:R24,3,FALSE),VLOOKUP(E${rowNumber},ExPodaci!K1:R24,4,FALSE))),"")`,
+        c18: `=IFERROR(IF(E${rowNumber}="","",RANDBETWEEN(VLOOKUP(E${rowNumber},ExPodaci!K1:R24,5,FALSE),VLOOKUP(E${rowNumber},ExPodaci!K1:R24,6,FALSE))),"")`,
+        c20: `=IFERROR(IF(E${rowNumber}="","",RANDBETWEEN(VLOOKUP(E${rowNumber},ExPodaci!K1:R24,7,FALSE),VLOOKUP(E${rowNumber},ExPodaci!K1:R24,8,FALSE))),"")`,
+        c21: `=IF(E${rowNumber}="","","DA")`,
+      }),
       pageOrientation: "landscape",
     },
     {
@@ -2502,8 +2762,25 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       label: "Zastita od preopterecenja motora Ex d",
       summary: "ZOI-10-10",
       sourceSheet: "ExEi1.9",
-      columns: ["R.br.", "Broj strujnog kruga", "Tip i radno podrucje zastitnog uredaja", "In [A]", "Ip [A]", "Iis 1,2xIp [A]", "tisk 1,2xIp [s]", "Iis 1,5xIp [A]", "tisk 1,5xIp [s]", "Iis 7xIp [A]", "tisk 7xIp [s]", "tisk < tdoz / tisk < tE DA/NE"],
+      columns: ["R.br.", "Broj strujnog kruga", "Razmak 1", "Razmak 2", "Tip i radno podrucje zastitnog uredaja", "Razmak 3", "Razmak 4", "Razmak 5", "Razmak 6", "In [A]", "Ip [A]", "Iis 1,2xIp [A]", "Razmak 7", "Iis 1,5xIp [A]", "Razmak 8", "Iis 7xIp [A]", "Razmak 9", "tisk < tdoz / tisk < tE DA/NE"],
       rowCount: 6,
+      rowBuilder: (rowNumber) => ({
+        c1: `=IF(B${rowNumber}="","",ROW(B${rowNumber}))`,
+        c12: `=IFERROR(VLOOKUP(E${rowNumber},ExPodaci!T1:Y24,2,FALSE),"")`,
+        c14: `=IFERROR(IF(E${rowNumber}="","",RANDBETWEEN(VLOOKUP(E${rowNumber},ExPodaci!T1:Y24,3,FALSE),VLOOKUP(E${rowNumber},ExPodaci!T1:Y24,4,FALSE))),"")`,
+        c16: `=IFERROR(IF(E${rowNumber}="","",RANDBETWEEN(VLOOKUP(E${rowNumber},ExPodaci!T1:Y24,5,FALSE),VLOOKUP(E${rowNumber},ExPodaci!T1:Y24,6,FALSE))),"")`,
+        c18: `=IF(E${rowNumber}="","","DA")`,
+      }),
+      pageOrientation: "landscape",
+    },
+    {
+      id: "exei-cista-expodaci",
+      label: "ExPodaci - sifrarnici za ExEi formule",
+      summary: "Referentne liste iz VBA gumba: zastitni uredaji, Ex motori, Ex-e i Ex-d bimetali",
+      sourceSheet: "ExPodaci",
+      columns: EXEI_EXPODACI_COLUMNS,
+      rows: makeExeiExPodaciRows(),
+      includeInReport: false,
       pageOrientation: "landscape",
     },
   ],
@@ -2514,7 +2791,8 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       summary: "ZOI-10-06 - otpor uzemljenja",
       sourceSheet: "ExSe1.2",
       columns: ["R.br.", "Mjerno mjesto", "Otpor uzemljenja [ohm]", "Otpor cijevi [kohm]", "Elektrostaticko polje [kV/m]", "Dozvoljeni otpor [ohm]", "Ocjena ispravnosti DA/NE", "Napomena"],
-      rows: EXSE_EARTHING_ROWS,
+      rowCount: EXSE_EARTHING_ROWS.length,
+      rowBuilder: makeExseEarthingCistaRow,
       pageOrientation: "landscape",
     },
     {
@@ -2523,7 +2801,8 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       summary: "ZOI-10-06 - savitljive cijevi i staticki elektricitet",
       sourceSheet: "ExSe1.3",
       columns: ["R.br.", "Mjerno mjesto", "Otpor uzemljenja [ohm]", "Otpor cijevi [kohm]", "Elektrostaticko polje [kV/m]", "Dozvoljeni otpor [Mohm]", "Ocjena ispravnosti DA/NE", "Napomena"],
-      rows: EXSE_STATIC_ROWS,
+      rowCount: EXSE_STATIC_ROWS.length,
+      rowBuilder: makeExseStaticCistaRow,
       pageOrientation: "landscape",
     },
   ],
@@ -3988,6 +4267,8 @@ export function createDocumentationMeasurementTablesForService(serviceCode = "")
     chapterTitle: table.chapterTitle || "",
     pageOrientation: table.pageOrientation === "landscape" ? "landscape" : "portrait",
     sourceSheet: table.sourceSheet || "",
+    formulaOnly: table.formulaOnly === true,
+    includeInReport: table.includeInReport !== false,
     sheet: {
       columns: table.columns.map((column) => withDocumentationColumnAiMapping(table.id, column)),
       rows: table.rows.map((row, index) => ({

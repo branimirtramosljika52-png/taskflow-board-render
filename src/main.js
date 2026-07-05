@@ -45521,6 +45521,9 @@ function getDocumentTemplateMeasurementFieldAliases(field = {}, fieldIndex = 0, 
     field.key,
     field.label,
     field.wordLabel,
+    field.sourceSheet,
+    field.sheetName,
+    field.measurementTable?.sourceSheet,
     token,
     String(token || "").replace(/[{}]/g, ""),
     `Sheet${excelIndex + 1}`,
@@ -58777,6 +58780,8 @@ function cloneDocumentationSprMeasurementTable(table = {}, index = 0) {
     helpText: String(table.helpText || "").trim(),
     summary: String(table.summary || table.label || `Tablica ${index + 1}`).trim(),
     sourceSheet: String(table.sourceSheet || "").trim(),
+    formulaOnly: table.formulaOnly === true,
+    includeInReport: table.includeInReport !== false,
     enabled: table.enabled !== false,
     enabledByDefault: table.enabledByDefault !== false,
     enabledFieldId: String(table.enabledFieldId || `use-${key}`).trim(),
@@ -58836,6 +58841,8 @@ function mergeDocumentationSprMeasurementTableWithDefault(defaultTable = {}, exi
     helpText: String(existingTable.helpText || defaultTable.helpText || "").trim(),
     summary: String(existingTable.summary || defaultTable.summary || existingTable.label || defaultTable.label || "").trim(),
     sourceSheet: String(existingTable.sourceSheet || defaultTable.sourceSheet || "").trim(),
+    formulaOnly: existingTable.formulaOnly === true || defaultTable.formulaOnly === true,
+    includeInReport: existingTable.includeInReport === false || defaultTable.includeInReport === false ? false : true,
     chapterTitle: String(existingTable.chapterTitle || defaultTable.chapterTitle || "").trim(),
     assessmentLabel: String(existingTable.assessmentLabel || defaultTable.assessmentLabel || "").trim(),
     pageOrientation: existingTable.pageOrientation || existingTable.orientation || defaultTable.pageOrientation,
@@ -64469,6 +64476,92 @@ function buildDocumentationSprMeasurementSheetFromGridlineModel(model = {}, fall
   };
 }
 
+function getDocumentationSprMeasurementTableFormulaAliases(table = {}, index = 0) {
+  return [
+    table.id,
+    table.key,
+    table.tokenKey,
+    table.label,
+    table.summary,
+    table.sourceSheet,
+    table.sheetName,
+    table.chapterTitle,
+    table.assessmentLabel,
+    `Sheet${index + 1}`,
+    `Sheet ${index + 1}`,
+    `Excel${index + 1}`,
+    `Excel ${index + 1}`,
+    `Excel tablica ${index + 1}`,
+  ].filter(Boolean);
+}
+
+function getDocumentationSprMeasurementTableFormulaKey(table = {}) {
+  return normalizeMeasurementSheetFormulaLookupKey([
+    table?.id,
+    table?.key,
+    table?.tokenKey,
+    table?.sourceSheet,
+    table?.label,
+  ].filter(Boolean).join("|"));
+}
+
+function buildDocumentationSprMeasurementTableFormulaContext(tables = [], currentTable = null, currentSheet = null) {
+  const lookup = new Map();
+  const entries = [];
+  const currentKey = getDocumentationSprMeasurementTableFormulaKey(currentTable);
+  let currentEntry = null;
+
+  (Array.isArray(tables) ? tables : []).forEach((table, index) => {
+    const tableKey = getDocumentationSprMeasurementTableFormulaKey(table);
+    const sheet = currentKey && tableKey === currentKey && currentSheet ? currentSheet : table?.sheet;
+    if (!sheet?.columns?.length) {
+      return;
+    }
+
+    const key = String(table?.key || table?.id || table?.tokenKey || `measurement-table-${index + 1}`).trim()
+      || `measurement-table-${index + 1}`;
+    const entry = {
+      key,
+      table,
+      sheet,
+      index,
+    };
+
+    entries.push(entry);
+    if (currentKey && tableKey === currentKey) {
+      currentEntry = entry;
+    }
+
+    getDocumentationSprMeasurementTableFormulaAliases(table, index)
+      .forEach((alias) => addMeasurementFormulaSheetAlias(lookup, alias, entry));
+  });
+
+  if (!currentEntry && currentSheet?.columns?.length) {
+    currentEntry = {
+      key: "current",
+      table: currentTable || null,
+      sheet: currentSheet,
+      index: -1,
+    };
+    addMeasurementFormulaSheetAlias(lookup, "Current", currentEntry);
+    addMeasurementFormulaSheetAlias(lookup, "Sheet", currentEntry);
+  }
+
+  return {
+    entries,
+    lookup,
+    current: currentEntry,
+  };
+}
+
+function attachDocumentationSprMeasurementTableFormulaContexts(tables = []) {
+  const baseTables = (Array.isArray(tables) ? tables : []).map((table) => ({ ...table }));
+  return baseTables.map((table) => ({
+    ...table,
+    formulaContext: buildDocumentationSprMeasurementTableFormulaContext(baseTables, table, table.sheet),
+  }));
+}
+
 function getDocumentationSprMeasurementTablesForModel(model = documentationSprModel) {
   const normalized = normalizeDocumentationSprModel(model);
   if (getDocumentationSprServiceCode(normalized) === "EXOV") {
@@ -64480,12 +64573,12 @@ function getDocumentationSprMeasurementTablesForModel(model = documentationSprMo
     return [];
   }
   if (isDocumentationSprNativeMeasurementMode(normalized)) {
-    return tables;
+    return attachDocumentationSprMeasurementTableFormulaContexts(tables);
   }
   const primarySheet = buildDocumentationSprMeasurementSheetFromGridlineModel(normalized, tables[0]);
   const primaryTitle = String(normalized.gridlineModel?.title || "").trim();
   const primarySubtitle = String(normalized.gridlineModel?.subtitle || "").trim();
-  return [
+  return attachDocumentationSprMeasurementTableFormulaContexts([
     {
       ...tables[0],
       label: primaryTitle || tables[0].label,
@@ -64493,7 +64586,7 @@ function getDocumentationSprMeasurementTablesForModel(model = documentationSprMo
       sheet: primarySheet,
     },
     ...tables.slice(1),
-  ];
+  ]);
 }
 
 function getDocumentationSprMeasurementTableRowsForRender(table = {}) {
