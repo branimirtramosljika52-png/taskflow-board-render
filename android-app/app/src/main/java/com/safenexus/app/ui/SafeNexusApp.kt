@@ -440,6 +440,8 @@ private const val FIELD_INQUIRY_ATTACHMENT_MAX_INLINE_FILE_BYTES = 8L * 1024L * 
 private const val FIELD_INQUIRY_ATTACHMENT_MAX_INLINE_FILES = 8
 private const val ISZNR_RO_ATTACHMENT_MAX_INLINE_FILE_BYTES = 8L * 1024L * 1024L
 private const val ISZNR_RO_ATTACHMENT_MAX_INLINE_FILES = 80
+private const val ISZNR_RO_IMAGE_MAX_DIMENSION_PX = 1600
+private const val ISZNR_RO_IMAGE_JPEG_QUALITY = 82
 private const val ISZNR_RO_BATCH_ATTACHMENT_MAX_INLINE_FILES = 80
 
 private val workOrderDocumentAllowedMimeTypes = arrayOf(
@@ -39291,11 +39293,8 @@ private suspend fun buildIsznrRoAttachmentFiles(
         error("Možeš dodati najviše $maxFiles privitaka za RO zapisnik.")
     }
     uris.take(availableSlots).mapIndexed { index, uri ->
-        val bytes = readUriBytes(context, uri)
+        val rawBytes = readUriBytes(context, uri)
         val name = resolveUriDisplayName(context, uri, existingCount + index, mode)
-        if (bytes.size.toLong() > ISZNR_RO_ATTACHMENT_MAX_INLINE_FILE_BYTES) {
-            error("Privitak $name mora biti manji od 8 MB.")
-        }
         val mimeType = resolveUriMimeType(context, uri, name).ifBlank {
             if (mode == WorkOrderDocumentInputMode.Pdf) "application/pdf" else "image/jpeg"
         }
@@ -39304,17 +39303,63 @@ private suspend fun buildIsznrRoAttachmentFiles(
         if (!isImage && !(allowPdf && isPdf)) {
             error(if (allowPdf) "Možeš dodati samo slike ili PDF za RO privitke." else "Možeš dodati samo slike za RO privitke.")
         }
+        val attachmentBytes = if (isImage) normalizeRoImageAttachmentBytes(rawBytes) else rawBytes
+        if (attachmentBytes.size.toLong() > ISZNR_RO_ATTACHMENT_MAX_INLINE_FILE_BYTES) {
+            error("Privitak $name mora biti manji od 8 MB.")
+        }
+        val attachmentMimeType = if (isImage) "image/jpeg" else mimeType
         val resolvedRole = role.ifBlank { if (isPdf) "document" else "image" }
         IsznrRoAttachmentFile(
             id = "${System.currentTimeMillis()}-${existingCount + index}-${name.hashCode()}",
-            fileName = name.withFallbackExtension(mimeType),
-            fileType = mimeType,
-            fileSize = bytes.size.toLong(),
-            contentDataUrl = "data:$mimeType;base64,${Base64.getEncoder().encodeToString(bytes)}",
+            fileName = name.withFallbackExtension(attachmentMimeType),
+            fileType = attachmentMimeType,
+            fileSize = attachmentBytes.size.toLong(),
+            contentDataUrl = "data:$attachmentMimeType;base64,${Base64.getEncoder().encodeToString(attachmentBytes)}",
             role = resolvedRole,
             includeInReport = true,
         )
     }
+}
+
+private fun normalizeRoImageAttachmentBytes(bytes: ByteArray): ByteArray {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return bytes
+
+    var sampleSize = 1
+    val largestSide = maxOf(bounds.outWidth, bounds.outHeight)
+    while ((largestSide / sampleSize) > ISZNR_RO_IMAGE_MAX_DIMENSION_PX * 2) {
+        sampleSize *= 2
+    }
+
+    val decoded = BitmapFactory.decodeByteArray(
+        bytes,
+        0,
+        bytes.size,
+        BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.RGB_565
+        },
+    ) ?: return bytes
+
+    val scaled = if (maxOf(decoded.width, decoded.height) > ISZNR_RO_IMAGE_MAX_DIMENSION_PX) {
+        val ratio = ISZNR_RO_IMAGE_MAX_DIMENSION_PX.toFloat() / maxOf(decoded.width, decoded.height).toFloat()
+        Bitmap.createScaledBitmap(
+            decoded,
+            (decoded.width * ratio).toInt().coerceAtLeast(1),
+            (decoded.height * ratio).toInt().coerceAtLeast(1),
+            true,
+        )
+    } else {
+        decoded
+    }
+
+    val output = ByteArrayOutputStream()
+    scaled.compress(Bitmap.CompressFormat.JPEG, ISZNR_RO_IMAGE_JPEG_QUALITY, output)
+    if (scaled !== decoded) scaled.recycle()
+    decoded.recycle()
+    val normalized = output.toByteArray()
+    return if (normalized.isNotEmpty()) normalized else bytes
 }
 
 private fun readUriBytes(context: Context, uri: Uri): ByteArray =
