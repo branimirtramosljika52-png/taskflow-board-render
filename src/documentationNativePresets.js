@@ -630,6 +630,40 @@ const EX_TECHNICAL_FIELDS = [
   technicalField("documentation", "Projektna / Ex dokumentacija", ""),
 ];
 
+const EXEI_TECHNICAL_FIELDS = [
+  technicalField("inspectionArea", "Prostor ispitivanja", "Benzinska postaja sa pratecim sadrzajem"),
+  technicalField("earthingSystem", "Sustav uzemljenja", "TN C/S"),
+  technicalField("earthingType", "Vrsta uzemljivaca", "FeZn traka"),
+  technicalField("weatherConditions", "Vrijeme", ""),
+  technicalField("soilCondition", "Stanje tla", ""),
+  technicalField("explosiveAtmosphereArea", "Podrucje s eksplozivnom atmosferom", "Benzinska postaja"),
+  technicalField("exDocumentation", "Ex dokumentacija", "Ex nalaz, popis opreme u Ex izvedbi"),
+];
+
+const EXEI_PROJECT_DOCUMENTATION = [
+  "Zapisnik od prethodnog ispitivanja",
+  "Jednopolne elektrosheme razdjelnika",
+  "Tehnicki katalog motora",
+  "Ex nalaz",
+  "Popis opreme u Ex izvedbi",
+].join("\n");
+
+const EXEI_RESULTS_TEXT = [
+  "Ispitivanje instalacija u podrucjima s eksplozivnom atmosferom obuhvaca mjerenje impedancije petlje kvara, mjerenje otpora izolacije vodova, provjeru zastitnih uredaja diferencijalne struje, mjerenje kontinuiteta zastitnog i dodatnog vanjskog PE vodica elektricnih uredaja, mjerenje kontinuiteta PE vodica i neelektricnih uredaja i metalnih masa, ispitivanje zastite od preopterecenja, mjerenje struje praznog hoda elektromotora, mjerenje otpora namota elektromotora i mjerenje otpora izolacije elektromotora.",
+  "Rezultati se vode u zasebnim ExEi ispitnim listovima prema CISTA predlosku i koriste se za zajednicku ocjenu rezultata ispitivanja.",
+].join("\n\n");
+
+const EXEI_MEASUREMENT_ASSESSMENTS = Object.freeze([
+  { id: "exei-assessment-ipk", key: "exei-assessment-ipk", label: "Impedancija petlje kvara", enabledFieldId: "use-exei-cista-ipk", defaultValue: "ZADOVOLJAVA" },
+  { id: "exei-assessment-oi", key: "exei-assessment-oi", label: "Otpor izolacije vodova", enabledFieldId: "use-exei-cista-oi", defaultValue: "ZADOVOLJAVA" },
+  { id: "exei-assessment-zuds", key: "exei-assessment-zuds", label: "Zastitni uredaji diferencijalne struje", enabledFieldId: "use-exei-cista-zuds", defaultValue: "ZADOVOLJAVA" },
+  { id: "exei-assessment-pe-ipk", key: "exei-assessment-pe-ipk", label: "Kontinuitet dodatnog vanjskog PE vodica - IPK", enabledFieldId: "use-exei-cista-pe-ipk", defaultValue: "ZADOVOLJAVA" },
+  { id: "exei-assessment-pe-direct", key: "exei-assessment-pe-direct", label: "Kontinuitet PE vodica i metalnih masa - izravno mjerenje", enabledFieldId: "use-exei-cista-pe-direct", defaultValue: "ZADOVOLJAVA" },
+  { id: "exei-assessment-motors", key: "exei-assessment-motors", label: "Otpor izolacije, namoti i struja praznog hoda elektromotora", enabledFieldId: "use-exei-cista-motors", defaultValue: "ZADOVOLJAVA" },
+  { id: "exei-assessment-overload-e", key: "exei-assessment-overload-e", label: "Zastita od preopterecenja motora Ex e", enabledFieldId: "use-exei-cista-overload-e", defaultValue: "ZADOVOLJAVA" },
+  { id: "exei-assessment-overload-d", key: "exei-assessment-overload-d", label: "Zastita od preopterecenja motora Ex d", enabledFieldId: "use-exei-cista-overload-d", defaultValue: "ZADOVOLJAVA" },
+]);
+
 const FIRE_SYSTEM_TECHNICAL_FIELDS = [
   technicalField("protectedArea", "Predmet zastite / opis prostora", ""),
   technicalField("centralUnit", "Centrala / upravljacki uredjaj", ""),
@@ -2308,7 +2342,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
     {
       id: "exei-cista-ipk",
       label: "Mjerenje impedancije petlje kvara",
-      summary: "ZOI-10-01",
+      summary: "ZOI-10-07",
       sourceSheet: "ExEi1.2",
       columns: ["Oznaka strujnog kruga / el. uredaja", "Zastitni uredaj", "Tip i karakteristika", "Ia", "td", "Z(L-PE)", "Izem", "Z(L-N)", "Ik1min", "Z(L-L)", "Ik2min", "U0", "Ikmin >= 3/2xIa", "Zadovoljava DA/NE"],
       rowCount: 12,
@@ -2317,7 +2351,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
     {
       id: "exei-cista-oi",
       label: "Mjerenje otpora izolacije vodova",
-      summary: "ZOI-10-02",
+      summary: "ZOI-10-03",
       sourceSheet: "ExEi1.3",
       columns: ["R.br.", "Oznaka strujnog kruga", "Riso L1-L2-L3 [Mohm]", "Riso L1-L2-L3-N [Mohm]", "Riso L1-L2-L3-PE [Mohm]", "Riso N-PE [Mohm]", "Min. doz. otpor izolacije Rd [Mohm]", "Riso > Rd DA/NE"],
       rowCount: 10,
@@ -2326,7 +2360,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
     {
       id: "exei-cista-zuds",
       label: "Provjera zastitnih uredaja diferencijalne struje",
-      summary: "ZOI-10-03",
+      summary: "ZOI-10-08",
       sourceSheet: "ExEi1.4",
       columns: ["Redni broj", "Razdjelnik", "Strujni krug", "In [A]", "/", "IΔn [mA]", "Iisk [mA]", "tisk [ms]", "U0 [V]", "Iisk < IΔn / tisk < tdoz DA/NE"],
       rowCount: 8,
@@ -3313,16 +3347,17 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
   EXEI: createNativeReportPreset({
     serviceCode: "EXEI",
     serviceName: "Elektricne instalacije u Ex prostoru",
-    reportTitle: "ISPITIVANJE ELEKTRICNIH INSTALACIJA U EX PROSTORU",
-    coverSubtitle: "O ISPITIVANJU ELEKTRICNIH INSTALACIJA U EX PROSTORU",
-    measurementTableTitle: "Tablica 1. - Ex ispitivanja",
-    resultsText: makeSimpleResultText("elektricne instalacije u Ex prostoru", "Ispitivanje obuhvaca impedanciju petlje kvara, otpor izolacije, ZUDS, kontinuitet PE vodica i Ex opremu."),
-    notes: ["ExEi koristi vise Gridline tablica jer CISTA sadrzi vise ispitnih listova."],
-    assessmentLabel: "Elektricne instalacije u Ex prostoru",
-    conclusionLead: "Temeljem rezultata mjerenja moze se zakljuciti da ispitivane elektricne instalacije u Ex prostoru na dan predmetnog ispitivanja",
+    reportTitle: "ISPITIVANJE INSTALACIJA U PODRUCJIMA S EKSPLOZIVNOM ATMOSFEROM",
+    coverSubtitle: "O ISPITIVANJU INSTALACIJA U PODRUCJIMA S EKSPLOZIVNOM ATMOSFEROM",
+    measurementTableTitle: "ExEi ispitni listovi",
+    resultsText: EXEI_RESULTS_TEXT,
+    notes: ["ExEi koristi vise Gridline tablica jer CISTA sadrzi osam ispitnih listova i zavrsnu ocjenu."],
+    assessmentLabel: "Mjerenje u prostorima ugrozenim eksplozivnom atmosferom",
+    conclusionLead: "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivane instalacije u prostorima ugrozenim eksplozivnom atmosferom na dan predmetnog ispitivanja",
     signatureAreas: ["elektro", "ex"],
-    technicalDataFields: EX_TECHNICAL_FIELDS,
-    measurementAssessments: makeAssessmentEntries("EXEI", ["Impedancija petlje kvara Ex", "Otpor izolacije Ex", "ZUDS Ex", "Kontinuitet dodatnog PE vodica", "Ex motori/oprema", "Bimetal e i d"]),
+    technicalDataFields: EXEI_TECHNICAL_FIELDS,
+    projectDocumentation: EXEI_PROJECT_DOCUMENTATION,
+    measurementAssessments: EXEI_MEASUREMENT_ASSESSMENTS,
     tables: [
       tableSpec({ id: "exei-ipk", label: "Impedancija petlje kvara Ex", summary: "IL - ExEi.IPK", columns: EXEI_IPK_COLUMNS, blankRowCount: 12, blankSeed: { pass: "DA" }, pageOrientation: "landscape" }),
       tableSpec({ id: "exei-oi", label: "Otpor izolacije Ex", summary: "IL - ExEi.OI", columns: EIZ_OI_COLUMNS, blankRowCount: 12, blankSeed: { rd: ">1", pass: "DA" }, pageOrientation: "landscape" }),
