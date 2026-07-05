@@ -34131,6 +34131,7 @@ private fun MeasurementTableEditor(
     requireSpaceSelection: Boolean = false,
     expanded: Boolean = false,
     tableOnly: Boolean = false,
+    showIncludedToggle: Boolean = true,
     onSheetChange: (WorkOrderMeasurementSheet) -> Unit,
     onTableIncludedChange: (Boolean) -> Unit = {},
 ) {
@@ -34330,43 +34331,45 @@ private fun MeasurementTableEditor(
                     }
                 }
             }
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable(enabled = enabled) { onTableIncludedChange(!tableIncluded) },
-                shape = RoundedCornerShape(12.dp),
-                color = if (tableIncluded) {
-                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.32f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f)
-                },
-                border = BorderStroke(
-                    1.dp,
-                    if (tableIncluded) {
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
+            if (showIncludedToggle) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(enabled = enabled) { onTableIncludedChange(!tableIncluded) },
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (tableIncluded) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.32f)
                     } else {
-                        MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f)
                     },
-                ),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    border = BorderStroke(
+                        1.dp,
+                        if (tableIncluded) {
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
+                        } else {
+                            MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)
+                        },
+                    ),
                 ) {
-                    Checkbox(
-                        checked = tableIncluded,
-                        onCheckedChange = { checked -> onTableIncludedChange(checked) },
-                        enabled = enabled,
-                    )
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text("Koristi se u zapisniku", fontWeight = FontWeight.Black)
-                        Text(
-                            if (tableIncluded) "Tablica ide u PDF zapisnik." else "Tablica ostaje u predlošku, ali se ne prikazuje u PDF-u.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = tableIncluded,
+                            onCheckedChange = { checked -> onTableIncludedChange(checked) },
+                            enabled = enabled,
                         )
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text("Koristi se u zapisniku", fontWeight = FontWeight.Black)
+                            Text(
+                                if (tableIncluded) "Tablica ide u PDF zapisnik." else "Tablica ostaje u predlošku, ali se ne prikazuje u PDF-u.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                            )
+                        }
                     }
                 }
             }
@@ -35557,6 +35560,16 @@ private fun DocumentationSprTemplateSectionPanel(
     val isAttachmentSection = remember(entry.section) { isDocumentationAttachmentTemplateSection(entry.section) }
     val isResultsTextSection = remember(entry.section) { isDocumentationResultsTextSection(entry.section) }
     val isAssessmentSection = remember(entry.section) { isDocumentationAssessmentSection(entry.section) }
+    val isMeasurementSection = remember(entry.section) { isMeasurementTemplateSection(entry.section) }
+    val measurementSectionTables = if (isMeasurementSection) {
+        getMeasurementTablesForSection(entry.template, entry.section)
+    } else {
+        emptyList()
+    }
+    val measurementSectionRowCount = measurementSectionTables.sumOf { table ->
+        val sheet = standardControls.measurementSheets[measurementSheetStateKey(entry.template, table)] ?: table.sheet
+        sheet.rows.size
+    }
     val hideDefects = remember(entry.template, entry.section.blocks, values) {
         shouldHideDocumentationDefects(entry.template, entry.section.blocks, values)
     }
@@ -35609,6 +35622,8 @@ private fun DocumentationSprTemplateSectionPanel(
                                 "Popis ocjena"
                             } else if (isBasicSection) {
                                 "Osnovni podaci"
+                            } else if (isMeasurementSection) {
+                                "${measurementSectionTables.size.coerceAtLeast(1)} Gridline tablica · $measurementSectionRowCount redaka"
                             } else if (visibleBlocks.isNotEmpty()) {
                                 "${visibleBlocks.size} polja"
                             } else {
@@ -35681,18 +35696,30 @@ private fun DocumentationSprTemplateSectionPanel(
                             "legal_list" -> TemplateLegalControls(standardControls)
                             "measurement_table" -> {
                                 val blockTables = getMeasurementTablesForBlock(entry.template, block)
-                                val blockRowCount = blockTables.sumOf { table ->
-                                    val sheet = standardControls.measurementSheets[measurementSheetStateKey(entry.template, table)] ?: table.sheet
-                                    sheet.rows.size
+                                if (blockTables.isEmpty()) {
+                                    DocumentationSprGridlineInlineCard(
+                                        title = block.label,
+                                        summary = block.summary,
+                                        tableCount = 0,
+                                        rowCount = 0,
+                                        enabled = enabled,
+                                        onOpenMeasurements = onOpenMeasurements,
+                                    )
+                                } else {
+                                    blockTables.forEach { table ->
+                                        val stateKey = measurementSheetStateKey(entry.template, table)
+                                        MeasurementTableEditor(
+                                            template = entry.template,
+                                            table = table,
+                                            sheet = standardControls.measurementSheets[stateKey] ?: table.sheet,
+                                            enabled = enabled,
+                                            showIncludedToggle = false,
+                                            onSheetChange = { nextSheet ->
+                                                standardControls.onMeasurementSheetChange(stateKey, nextSheet)
+                                            },
+                                        )
+                                    }
                                 }
-                                DocumentationSprGridlineInlineCard(
-                                    title = blockTables.firstOrNull()?.label ?: block.label,
-                                    summary = blockTables.firstOrNull()?.summary ?: block.summary,
-                                    tableCount = blockTables.size,
-                                    rowCount = blockRowCount,
-                                    enabled = enabled,
-                                    onOpenMeasurements = onOpenMeasurements,
-                                )
                             }
                             else -> {
                                 TemplateBlockDetailRow(
@@ -38230,6 +38257,7 @@ private fun isMeasurementTemplateSection(section: TemplateBlockSection): Boolean
 }
 
 private fun isDocumentationResultsTextSection(section: TemplateBlockSection): Boolean {
+    if (isMeasurementTemplateSection(section)) return false
     val lookup = section.lookupText()
     return lookup.contains("rezultati ispitivanja") &&
         !lookup.contains("ocjena rezultata") &&
