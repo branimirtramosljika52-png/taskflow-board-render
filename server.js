@@ -23818,6 +23818,9 @@ function inferMobileNativeDocumentationServiceCode(value = "") {
   if (/\bspr\b/u.test(lookup) || lookup.includes("panik rasvjet") || lookup.includes("sigurnosna rasvjet")) {
     return "SPR";
   }
+  if (/\bsvz\b/u.test(lookup) || (lookup.includes("dojav") && lookup.includes("pozar")) || lookup.includes("vatrodojav")) {
+    return "SVZ";
+  }
   if (/\beiz\b/u.test(lookup) || lookup.includes("elektricn")) {
     return "EIZ";
   }
@@ -23885,6 +23888,47 @@ function getMobileTemplateNativeDocumentationServiceCode(template = {}) {
     template?.documentName,
     template?.dataSourceTitle,
   ].filter(Boolean).join(" "));
+}
+
+function getMobileTemplateNativeDocumentationServiceCodes(template = {}) {
+  const codes = new Set();
+  [
+    template?.serviceCode,
+    template?.code,
+    template?.serviceBinding?.serviceCode,
+    template?.model?.serviceCode,
+    template?.model?.serviceBinding?.serviceCode,
+  ].forEach((value) => {
+    const code = normalizeMobileNativeMeasurementServiceCode(value);
+    if (code) {
+      codes.add(code);
+    }
+  });
+  [
+    template?.serviceName,
+    template?.documentType,
+    template?.title,
+    template?.documentName,
+    template?.dataSourceTitle,
+    template?.model?.serviceName,
+    template?.model?.templateCode,
+    template?.model?.reportTitle,
+    template?.model?.coverSubtitle,
+  ].forEach((value) => {
+    const code = inferMobileNativeDocumentationServiceCode(value);
+    if (code) {
+      codes.add(code);
+    }
+  });
+  return codes;
+}
+
+function mobileDocumentTemplateMatchesNativeServiceCode(template = {}, serviceCode = "") {
+  const normalizedServiceCode = normalizeMobileNativeMeasurementServiceCode(serviceCode);
+  if (!normalizedServiceCode) {
+    return true;
+  }
+  return getMobileTemplateNativeDocumentationServiceCodes(template).has(normalizedServiceCode);
 }
 
 function mobileDocumentRecordMatchesTemplateService(record = {}, template = {}) {
@@ -28231,9 +28275,12 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
   const seenPairs = new Set();
 
   const appendEntriesForService = (service, serviceIndex, generationWorkOrder = workOrder, options = {}) => {
+    const nativePreset = getMobileNativeDocumentationPresetForService(service, serviceIndex, scopedSnapshot);
+    const nativeServiceCode = nativePreset?.serviceCode || "";
     const linkedTemplates = getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot)
       .map((templateId) => templateById.get(String(templateId)))
-      .filter(isActiveMobileDocumentTemplate);
+      .filter(isActiveMobileDocumentTemplate)
+      .filter((template) => mobileDocumentTemplateMatchesNativeServiceCode(template, nativeServiceCode));
     const nativeTemplate = linkedTemplates.length === 0
       ? buildMobileNativeDocumentationTemplate(service, serviceIndex, generationWorkOrder, scopedSnapshot)
       : null;
