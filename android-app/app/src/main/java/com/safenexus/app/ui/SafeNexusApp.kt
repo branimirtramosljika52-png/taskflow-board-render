@@ -10580,25 +10580,6 @@ private fun defaultEquipmentInspectionElectricalOptions(): List<WorkOrderDocumen
         "Opremljenost električnim oznakama upozorenja",
     ).mapIndexed { index, label -> localEquipmentInspectionOption("electrical", index + 1, label) }
 
-private fun defaultStrojeviInspectionItemOptions(): List<WorkOrderDocumentationOption> =
-    listOf(
-        "Zaštita od pokretnih dijelova - pogonski mehanizam",
-        "Način postavljanja / osiguranje stabilnosti",
-        "Promjene nastale uporabom",
-        "Ostvarivanje gibanja i djelovanja stroja i uređaja prema oznakama vrsta i smjerova kretanja",
-        "Djelovanje signalnih uređaja",
-        "Djelovanje uređaja za upravljanje",
-        "Djelovanje uređaja za uključivanje i isključivanje",
-        "Zaštita od povrata napona",
-        "Zaštita od pokretnih dijelova - prijenosnici snage i gibanja",
-        "Zaštita od pokretnih dijelova - radni elementi",
-        "Otpor izolacije [Ω]",
-        "Zaštita od izravnog dodira dijelova pod naponom",
-        "Način priključka na električnu mrežu, nazivni napon",
-        "Vrsta kabela, presjek vodiča, stanje izolacije",
-        "Smještaj i osiguranje slobodnog prostora za kretanje i rad",
-    ).mapIndexed { index, label -> localEquipmentInspectionOption("strojevi", index + 1, label) }
-
 @Composable
 private fun DocumentationEquipmentInspectionLocalList(
     manualEquipments: List<IsznrManualWorkEquipment>,
@@ -10621,7 +10602,7 @@ private fun DocumentationEquipmentInspectionLocalList(
     val isStrojeviTemplate = normalizeDocumentationServiceCodeToken(serviceCode) == "STROJEVI"
     val resolvedMechanicalOptions = remember(mechanicalOptions, isStrojeviTemplate) {
         if (isStrojeviTemplate) {
-            defaultStrojeviInspectionItemOptions()
+            emptyList()
         } else {
             mechanicalOptions.ifEmpty { defaultEquipmentInspectionMechanicalOptions() }
         }
@@ -10679,7 +10660,11 @@ private fun DocumentationEquipmentInspectionLocalList(
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     AssistChip(onClick = {}, enabled = false, label = { Text("${manualEquipments.size.coerceAtLeast(1)} stupac(a)") })
-                    AssistChip(onClick = {}, enabled = false, label = { Text("${resolvedMechanicalOptions.size} stavki") })
+                    AssistChip(
+                        onClick = {},
+                        enabled = false,
+                        label = { Text(if (isStrojeviTemplate) "slobodne stavke" else "${resolvedMechanicalOptions.size} stavki") },
+                    )
                     if (!isStrojeviTemplate) {
                         AssistChip(onClick = {}, enabled = false, label = { Text("${resolvedElectricalOptions.size} elektro") })
                     }
@@ -13254,11 +13239,11 @@ private fun ManualWorkEquipmentInlineEditor(
             OutlinedTextField(equipment.methodsProceduresAndNorms, { onEquipmentChange(equipment.copy(methodsProceduresAndNorms = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text(if (isStrojeviTemplate) "Metode korištene prilikom pregleda i ispitivanja" else "Metode, postupci i norme") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
 
             if (isStrojeviTemplate) {
-                ManualWorkEquipmentAssessmentEditor(
+                ManualStrojeviSequentialInspectionEditor(
                     title = "Ispitne stavke",
-                    options = mechanicalOptions,
                     items = equipment.mechanicalItems,
                     onItemsChange = { onEquipmentChange(equipment.copy(mechanicalItems = it)) },
+                    enabled = enabled,
                 )
             } else {
                 ManualWorkEquipmentAssessmentEditor(
@@ -14106,6 +14091,148 @@ private fun normalizeRoAssessmentNote(value: String): String =
 
 private fun IsznrRoAssessmentItem.noteValue(): String =
     measuredValue.ifBlank { customContent }.take(RO_ASSESSMENT_NOTE_MAX_LENGTH)
+
+@Composable
+private fun ManualStrojeviSequentialInspectionEditor(
+    title: String,
+    items: List<IsznrRoAssessmentItem>,
+    onItemsChange: (List<IsznrRoAssessmentItem>) -> Unit,
+    enabled: Boolean,
+) {
+    fun updateItem(index: Int, item: IsznrRoAssessmentItem) {
+        val baseItems = if (items.isEmpty()) listOf(IsznrRoAssessmentItem()) else items
+        onItemsChange(baseItems.mapIndexed { itemIndex, current -> if (itemIndex == index) item else current })
+    }
+
+    val visibleItems = if (items.isEmpty()) listOf(IsznrRoAssessmentItem()) else items
+
+    ManualWorkEquipmentSectionTitle(title)
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
+        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                "STROJEVI nema fiksne stavke. Upisuješ ih redom dolje, a predložak puni Stavka 1, Zaključak 1, Stavka 2, Zaključak 2...",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+            )
+            visibleItems.forEachIndexed { index, item ->
+                val noteValue = item.noteValue()
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Surface(shape = CircleShape, color = Color(0xFFDBEAFE), modifier = Modifier.size(30.dp)) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        "${index + 1}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Black,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                            Text(
+                                "Stavka ${index + 1}",
+                                modifier = Modifier.weight(1f),
+                                fontWeight = FontWeight.Black,
+                            )
+                            IconButton(
+                                onClick = { onItemsChange(items.filterIndexed { itemIndex, _ -> itemIndex != index }) },
+                                enabled = enabled && items.isNotEmpty(),
+                                modifier = Modifier.size(34.dp),
+                            ) {
+                                Icon(Icons.Rounded.Delete, contentDescription = "Ukloni stavku", tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        OutlinedTextField(
+                            value = item.label,
+                            onValueChange = { value ->
+                                updateItem(index, item.copy(label = value.take(RO_ASSESSMENT_NOTE_MAX_LENGTH)))
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Naziv stavke") },
+                            placeholder = { Text("Npr. Zaštita od pokretnih dijelova") },
+                            minLines = 1,
+                            maxLines = 3,
+                            enabled = enabled,
+                            shape = RoundedCornerShape(14.dp),
+                        )
+                        OutlinedTextField(
+                            value = noteValue,
+                            onValueChange = { value ->
+                                updateItem(
+                                    index,
+                                    item.copy(
+                                        customContent = limitRoAssessmentNoteInput(value),
+                                        measuredValue = "",
+                                    ),
+                                )
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 116.dp),
+                            label = { Text("Zaključak / vrijednost") },
+                            placeholder = { Text("Upiši zaključak koji ide u predložak") },
+                            minLines = 3,
+                            maxLines = 6,
+                            enabled = enabled,
+                            shape = RoundedCornerShape(14.dp),
+                        )
+                        Text(
+                            "${noteValue.length}/$RO_ASSESSMENT_NOTE_MAX_LENGTH",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f),
+                        )
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = item.meetsConditions,
+                                onClick = { updateItem(index, item.copy(meetsConditions = true)) },
+                                enabled = enabled,
+                                label = { Text("Zadovoljava") },
+                                leadingIcon = if (item.meetsConditions) {
+                                    { Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                                } else null,
+                            )
+                            FilterChip(
+                                selected = !item.meetsConditions,
+                                onClick = { updateItem(index, item.copy(meetsConditions = false)) },
+                                enabled = enabled,
+                                label = { Text("Ne zadovoljava") },
+                                leadingIcon = if (!item.meetsConditions) {
+                                    { Icon(Icons.Rounded.ErrorOutline, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                                } else null,
+                            )
+                        }
+                    }
+                }
+            }
+            OutlinedButton(
+                onClick = { onItemsChange(items + IsznrRoAssessmentItem()) },
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Dodaj stavku")
+            }
+        }
+    }
+}
 
 @Composable
 private fun ManualWorkEquipmentAssessmentEditor(

@@ -114,7 +114,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.320.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.321.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -26883,8 +26883,9 @@ function buildMobileStrojeviManualMeasurementTable(baseTable = {}, common = {}) 
     return null;
   }
   const columns = [
-    { id: "item", label: "STAVKA*", width: 420, placeholder: "" },
-    { id: "pass", label: "ZADOVOLJAVA DA/NE", width: 150, placeholder: "DA/NE" },
+    { id: "item", label: "STAVKA*", width: 310, placeholder: "" },
+    { id: "conclusion", label: "ZAKLJUČAK / VRIJEDNOST", width: 300, placeholder: "" },
+    { id: "pass", label: "ZADOVOLJAVA DA/NE", width: 140, placeholder: "DA/NE" },
   ];
   const rows = [];
   records.forEach((equipment, equipmentIndex) => {
@@ -26894,6 +26895,7 @@ function buildMobileStrojeviManualMeasurementTable(baseTable = {}, common = {}) 
         id: `strojevi-equipment-${equipmentIndex + 1}`,
         cells: {
           item: records.length > 1 ? `Stroj / uredaj: ${equipmentTitle}` : equipmentTitle,
+          conclusion: "",
           pass: "",
         },
         formats: {},
@@ -26901,16 +26903,24 @@ function buildMobileStrojeviManualMeasurementTable(baseTable = {}, common = {}) 
     }
     const items = Array.isArray(equipment.mechanicalItems) ? equipment.mechanicalItems : [];
     items
-      .map((item) => ({
-        text: getMobileStrojeviAssessmentItemText(item),
-        pass: Number(item?.meetsConditions) === 0 ? "NE" : "DA",
-      }))
-      .filter((item) => item.text)
+      .map((sourceItem) => {
+        const item = {
+          item: normalizeInputValue(sourceItem?.label || sourceItem?.item || sourceItem?.title),
+          conclusion: normalizeInputValue(sourceItem?.measuredValue || sourceItem?.customContent || sourceItem?.value || sourceItem?.note),
+          pass: Number(sourceItem?.meetsConditions) === 0 ? "NE" : "DA",
+        };
+        if (!item.item && !item.conclusion) {
+          item.item = getMobileStrojeviAssessmentItemText(sourceItem);
+        }
+        return item;
+      })
+      .filter((item) => item.item || item.conclusion)
       .forEach((item, itemIndex) => {
         rows.push({
           id: `strojevi-${equipmentIndex + 1}-item-${itemIndex + 1}`,
           cells: {
-            item: item.text,
+            item: item.item,
+            conclusion: item.conclusion,
             pass: item.pass,
           },
           formats: {},
