@@ -1611,6 +1611,455 @@ function normalizePdfMeasurementTables(model = {}, legacyRows = []) {
   return attachPdfMeasurementFormulaContexts(normalizedTables, normalizePdfFormulaSheets(model));
 }
 
+function escapeNativeHtml(value = "") {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function normalizeNativeHtmlAttributeValue(value = "") {
+  return escapeNativeHtml(String(value ?? "").replace(/[^\w\s:;,.%#/-]/g, "").slice(0, 120));
+}
+
+function sanitizeNativeRichHtml(value = "") {
+  const allowedTags = new Set([
+    "p",
+    "br",
+    "strong",
+    "b",
+    "em",
+    "i",
+    "u",
+    "ul",
+    "ol",
+    "li",
+    "table",
+    "thead",
+    "tbody",
+    "tfoot",
+    "tr",
+    "th",
+    "td",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "div",
+    "span",
+  ]);
+  return String(value ?? "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<\s*(script|style|iframe|object|embed)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, "")
+    .replace(/<\s*\/?\s*([a-z][\w:-]*)\b([^>]*)>/gi, (match, tagName, rawAttributes) => {
+      const tag = String(tagName || "").toLowerCase();
+      if (!allowedTags.has(tag)) {
+        return " ";
+      }
+      const closing = /^<\s*\//.test(match);
+      if (closing) {
+        return `</${tag}>`;
+      }
+      if (tag === "br") {
+        return "<br>";
+      }
+      const attributes = [];
+      if (tag === "td" || tag === "th") {
+        const colspan = String(rawAttributes || "").match(/\bcolspan\s*=\s*(["']?)(\d{1,2})\1/i)?.[2];
+        const rowspan = String(rawAttributes || "").match(/\browspan\s*=\s*(["']?)(\d{1,2})\1/i)?.[2];
+        if (colspan) attributes.push(`colspan="${normalizeNativeHtmlAttributeValue(colspan)}"`);
+        if (rowspan) attributes.push(`rowspan="${normalizeNativeHtmlAttributeValue(rowspan)}"`);
+      }
+      return `<${tag}${attributes.length ? ` ${attributes.join(" ")}` : ""}>`;
+    });
+}
+
+function formatNativeRichTextHtml(value = "") {
+  const source = cleanMultiline(value);
+  if (!source) {
+    return `<p class="muted">Nije upisano.</p>`;
+  }
+  if (/<[a-z][\s\S]*>/i.test(source)) {
+    return sanitizeNativeRichHtml(source);
+  }
+  const lines = source.split("\n").map((line) => line.trim()).filter(Boolean);
+  const html = [];
+  let listItems = [];
+  const flushList = () => {
+    if (!listItems.length) return;
+    html.push(`<ul>${listItems.map((item) => `<li>${escapeNativeHtml(item)}</li>`).join("")}</ul>`);
+    listItems = [];
+  };
+  lines.forEach((line) => {
+    const bulletMatch = line.match(/^\s*(?:[-*]|\d+[.)])\s+(.+)$/);
+    if (bulletMatch) {
+      listItems.push(bulletMatch[1]);
+      return;
+    }
+    flushList();
+    html.push(`<p>${escapeNativeHtml(line)}</p>`);
+  });
+  flushList();
+  return html.join("\n");
+}
+
+function renderNativeHtmlKeyValueRows(rows = []) {
+  return rows
+    .map(([label, value]) => [clean(label), clean(value)])
+    .filter(([label, value]) => label || value)
+    .map(([label, value]) => `
+      <tr>
+        <th>${escapeNativeHtml(label)}</th>
+        <td>${escapeNativeHtml(value || "-")}</td>
+      </tr>
+    `)
+    .join("");
+}
+
+function getNativeHtmlChecklists(model = {}) {
+  const preset = getReportPreset(model);
+  const source = Array.isArray(model.checklists) && model.checklists.length > 0
+    ? model.checklists
+    : (Array.isArray(preset.checklists) ? preset.checklists : []);
+  return source
+    .filter((checklist) => checklist?.enabled !== false)
+    .map((checklist, index) => ({
+      id: clean(checklist.id || checklist.key || `checklist-${index + 1}`),
+      label: clean(checklist.label || checklist.summary || `Pregled ${index + 1}`),
+      summary: clean(checklist.summary || ""),
+      items: (Array.isArray(checklist.items) ? checklist.items : [])
+        .map((item, itemIndex) => ({
+          label: clean(item?.label || item?.title || `Stavka ${itemIndex + 1}`),
+          value: clean(item?.value || item?.defaultValue || "DA"),
+        }))
+        .filter((item) => item.label),
+    }))
+    .filter((checklist) => checklist.items.length > 0);
+}
+
+function getNativeHtmlStatusClass(value = "") {
+  const text = normalizePdfFormulaLookupKey(value);
+  if (text.includes("nezadovoljava") || text === "ne" || text === "0") {
+    return " status-fail";
+  }
+  if (text.includes("zadovoljava") || text === "da" || text === "1") {
+    return " status-pass";
+  }
+  return "";
+}
+
+function renderNativeHtmlChecklists(model = {}) {
+  const checklists = getNativeHtmlChecklists(model);
+  if (!checklists.length) {
+    return "";
+  }
+  return checklists.map((checklist) => `
+    <section class="sn-ex-section">
+      <h2>${escapeNativeHtml(checklist.label)}</h2>
+      ${checklist.summary ? `<p class="section-lead">${escapeNativeHtml(checklist.summary)}</p>` : ""}
+      <table class="sn-ex-checklist">
+        <thead>
+          <tr><th>Stavka</th><th>Ocjena</th></tr>
+        </thead>
+        <tbody>
+          ${checklist.items.map((item) => `
+            <tr>
+              <td>${escapeNativeHtml(item.label)}</td>
+              <td class="status${getNativeHtmlStatusClass(item.value)}">${escapeNativeHtml(item.value || "-")}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </section>
+  `).join("");
+}
+
+function renderNativeHtmlAssessments(model = {}) {
+  const assessments = normalizePdfMeasurementAssessments(model);
+  const entries = assessments.length > 0
+    ? assessments
+    : [{ label: getAssessmentLabel(model), value: clean(model.resultStatus || "ZADOVOLJAVA") }];
+  return `
+    <table class="sn-ex-assessments">
+      <tbody>
+        ${entries.map((entry) => `
+          <tr>
+            <th>${escapeNativeHtml(entry.label)}</th>
+            <td class="status${getNativeHtmlStatusClass(entry.value)}">${escapeNativeHtml(entry.value || "-")}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function getNativeHtmlColumnPercentages(columns = []) {
+  const total = columns.reduce((sum, column) => sum + (Number(column.width) || 120), 0) || columns.length || 1;
+  return columns.map((column) => `${Math.max(4, ((Number(column.width) || 120) / total) * 100).toFixed(3)}%`);
+}
+
+function renderNativeHtmlMeasurementTable(table = {}, model = {}) {
+  const sheet = normalizePdfMeasurementSheet(table.sheet);
+  const columns = sheet.columns.length ? sheet.columns : [
+    { id: "number", label: "R. br.", width: 70 },
+    { id: "place", label: "Mjesto ispitivanja", width: 240 },
+    { id: "pass", label: "ZADOVOLJAVA", width: 120 },
+  ];
+  const rows = getPdfMeasurementTableRows({ ...table, sheet });
+  const widths = getNativeHtmlColumnPercentages(columns);
+  const orientation = getPdfMeasurementOrientation(table);
+  const tableTitle = [
+    clean(table.label || getMeasurementTableTitle(model)),
+    clean(table.summary || "").toLowerCase() !== clean(table.label || "").toLowerCase() ? clean(table.summary || "") : "",
+  ].filter(Boolean).join(" - ");
+
+  const bodyHtml = rows.length
+    ? rows.map((row) => {
+      const isHeader = sheet.headerRows.includes(row.rowIndex);
+      const cellHtml = columns.map((column, columnIndex) => {
+        if (isPdfMeasurementCoveredByMerge(sheet, row.rowIndex, columnIndex)) {
+          return "";
+        }
+        const merge = getPdfMeasurementMerge(sheet, row.rowIndex, columnIndex);
+        const tag = isHeader ? "th" : "td";
+        const attributes = [];
+        if (merge && merge.row === row.rowIndex && merge.column === columnIndex) {
+          if (merge.columnSpan > 1) attributes.push(`colspan="${merge.columnSpan}"`);
+          if (merge.rowSpan > 1) attributes.push(`rowspan="${merge.rowSpan}"`);
+        }
+        const value = row.cells?.[column.id] ?? "";
+        const statusClass = column.id === "pass" ? getNativeHtmlStatusClass(value) : "";
+        return `<${tag}${attributes.length ? ` ${attributes.join(" ")}` : ""} class="${column.id === "pass" ? `status${statusClass}` : ""}">${escapeNativeHtml(value || "")}</${tag}>`;
+      }).join("");
+      return `<tr class="${isHeader ? "grid-subheader" : ""}">${cellHtml}</tr>`;
+    }).join("")
+    : `<tr><td colspan="${columns.length}" class="muted">Nema upisanih redaka.</td></tr>`;
+
+  return `
+    <section class="sn-ex-section sn-ex-table-section ${orientation === "landscape" ? "landscape" : "portrait"}">
+      <div class="table-heading">
+        <h2>${escapeNativeHtml(tableTitle || getMeasurementTableTitle(model))}</h2>
+        <span>${escapeNativeHtml(getServiceCode(model))}</span>
+      </div>
+      <table class="sn-ex-grid ${columns.length > 8 ? "dense" : ""}">
+        <colgroup>
+          ${widths.map((width) => `<col style="width:${width}">`).join("")}
+        </colgroup>
+        <thead>
+          <tr>
+            ${columns.map((column) => `<th>${escapeNativeHtml(column.label || column.id)}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>${bodyHtml}</tbody>
+      </table>
+    </section>
+  `;
+}
+
+function renderNativeHtmlMeasurementTables(model = {}, rows = []) {
+  const tables = normalizePdfMeasurementTables(model, rows).filter((table) => table.includeInReport !== false);
+  if (!tables.length) {
+    return "";
+  }
+  return tables.map((table) => renderNativeHtmlMeasurementTable(table, model)).join("");
+}
+
+function renderNativeHtmlSignature(model = {}) {
+  const fieldName = clean(model.signatureMode).toLowerCase() === "digital" ? signatureFieldName(model) : "";
+  return `
+    <div class="signature-row">
+      <div class="stamp-box">M.P.</div>
+      <div class="signature-box">
+        <p>Dokaze iz Zapisnika ocijenio:</p>
+        <strong>${escapeNativeHtml(clean(model.responsiblePerson) || "Ispitivac")}</strong>
+        ${clean(model.signatureClass) ? `<span>KLASA: ${escapeNativeHtml(model.signatureClass)}</span>` : ""}
+        ${clean(model.signatureNumber) ? `<span>${escapeNativeHtml(model.signatureNumber)}</span>` : ""}
+        ${fieldName ? `<small>${escapeNativeHtml(fieldName)}</small>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+export function buildDocumentationNativeHtml({
+  model = {},
+  rows = [],
+} = {}) {
+  const serviceCode = clean(getServiceCode(model)).toUpperCase() || "ZAPISNIK";
+  const title = clean(model.reportTitle || getReportServiceTitle(model));
+  const hasTechnicalData = splitTextLines(model.technicalData).length > 0;
+  const metaRows = [
+    ["Narucitelj", `${clean(model.companyName)}; ${clean(model.companyAddress)}; OIB: ${clean(model.companyOib)}`],
+    ["Korisnik prostora", model.spaceUser],
+    ["Mjesto ispitivanja", model.inspectionPlace],
+    ["Objekt ispitivanja", model.inspectionObject],
+    ["Vrsta ispitivanja", model.inspectionType],
+    ["Datum ispitivanja", formatDocumentDate(model.inspectionDate)],
+    ["Broj zapisnika", model.recordNumber],
+  ];
+  const technicalRows = getPdfTechnicalDataEntries(model.technicalData);
+  const issuedText = [clean(model.issuePlace || "Zagreb"), formatDocumentDate(model.issueDate)].filter(Boolean).join(", ");
+  const conclusionStatus = clean(model.resultStatus || "ZADOVOLJAVA");
+
+  return `<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8">
+  <title>${escapeNativeHtml(clean(model.recordNumber || title || "Zapisnik"))}</title>
+  <style>
+    @page { size: A4; margin: 12mm; }
+    @page sn-ex-landscape { size: A4 landscape; margin: 9mm; }
+    html, body { margin: 0; padding: 0; background: #fff; color: #111827; font-family: "DejaVu Sans", Arial, sans-serif; font-size: 10px; line-height: 1.38; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    * { box-sizing: border-box; }
+    .sn-ex-document { width: 100%; }
+    .sn-ex-section { break-inside: avoid; page-break-inside: avoid; margin: 0 0 12px; }
+    .sn-ex-cover { min-height: 250mm; position: relative; page-break-after: always; }
+    .sn-ex-cover::before { content: ""; position: absolute; left: -5mm; top: 18mm; bottom: 14mm; width: 3px; background: #0f72ba; }
+    .doc-header { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; border-bottom: 2px solid #0f72ba; padding-bottom: 10px; margin-bottom: 24px; }
+    .doc-header .brand { font-weight: 700; color: #0f172a; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+    .doc-header .code { color: #475569; font-size: 10px; text-align: right; }
+    .cover-title { text-align: center; margin: 34px 0 24px; }
+    .cover-title .eyebrow { color: #0f72ba; font-weight: 700; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+    h1 { margin: 8px 0 10px; font-size: 25px; line-height: 1.15; text-align: center; text-transform: uppercase; }
+    h2 { margin: 0 0 8px; color: #111827; font-size: 13px; line-height: 1.2; text-transform: uppercase; }
+    h3 { margin: 10px 0 6px; font-size: 11px; color: #0f172a; }
+    .subtitle { max-width: 170mm; margin: 0 auto; font-weight: 700; font-size: 12px; text-align: center; text-transform: uppercase; color: #334155; }
+    .section-label { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 5px 9px; background: #e5e7eb; color: #111827; font-weight: 700; text-transform: uppercase; }
+    .section-lead { color: #475569; margin: 0 0 8px; }
+    table { width: 100%; border-collapse: collapse; }
+    .meta-table th, .meta-table td, .technical-table th, .technical-table td, .sn-ex-assessments th, .sn-ex-assessments td, .sn-ex-checklist th, .sn-ex-checklist td { border: 1px solid #cbd5e1; padding: 6px 7px; vertical-align: top; }
+    .meta-table th, .technical-table th, .sn-ex-assessments th, .sn-ex-checklist th { width: 31%; background: #f1f5f9; text-align: left; font-weight: 700; }
+    .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .text-box { border: 1px solid #cbd5e1; padding: 9px 10px; min-height: 28px; }
+    .text-box p { margin: 0 0 7px; }
+    .text-box p:last-child { margin-bottom: 0; }
+    .text-box ul, .text-box ol { margin: 0 0 7px 18px; padding: 0; }
+    .text-box table { margin: 6px 0; }
+    .text-box th, .text-box td { border: 1px solid #cbd5e1; padding: 4px 5px; }
+    .muted { color: #64748b; }
+    .sn-ex-table-section { page-break-before: always; break-before: page; break-inside: auto; page-break-inside: auto; }
+    .sn-ex-table-section.landscape { page: sn-ex-landscape; }
+    .table-heading { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 7px; }
+    .table-heading span { color: #475569; font-weight: 700; }
+    .sn-ex-grid { table-layout: fixed; font-size: 7.5px; }
+    .sn-ex-grid.dense { font-size: 6.2px; }
+    .sn-ex-grid thead { display: table-header-group; }
+    .sn-ex-grid th, .sn-ex-grid td { border: 1px solid #334155; padding: 3px 4px; vertical-align: middle; word-break: break-word; overflow-wrap: anywhere; }
+    .sn-ex-grid th { background: #d9dde3; font-weight: 700; text-align: center; }
+    .sn-ex-grid .grid-subheader th, .sn-ex-grid .grid-subheader td { background: #eef2f7; font-weight: 700; }
+    .status { text-align: center; font-weight: 700; }
+    .status-pass { color: #166534; }
+    .status-fail { color: #991b1b; }
+    .conclusion-page { page-break-before: always; break-before: page; min-height: 250mm; position: relative; }
+    .conclusion-status { margin: 16px 0 14px; text-align: center; font-size: 18px; font-weight: 700; color: ${getNativeHtmlStatusClass(conclusionStatus).includes("fail") ? "#991b1b" : "#166534"}; }
+    .signature-row { display: flex; justify-content: space-between; gap: 18px; align-items: flex-end; margin-top: 34px; }
+    .stamp-box { flex: 0 0 150px; min-height: 80px; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+    .signature-box { flex: 0 0 245px; text-align: center; border-top: 1px solid #111827; padding-top: 8px; }
+    .signature-box p { margin: 0 0 5px; }
+    .signature-box strong, .signature-box span, .signature-box small { display: block; }
+    .signature-box small { margin-top: 8px; color: #64748b; font-size: 6px; }
+    .issued { margin-top: 18px; text-align: right; font-weight: 700; }
+    .footer-note { position: fixed; left: 12mm; right: 12mm; bottom: 5mm; display: flex; justify-content: space-between; color: #64748b; font-size: 7px; border-top: 1px solid #e2e8f0; padding-top: 3px; }
+  </style>
+</head>
+<body>
+  <article class="sn-ex-document">
+    <div class="footer-note"><span>${escapeNativeHtml(serviceCode)}</span><span>${escapeNativeHtml(clean(model.recordNumber || ""))}</span></div>
+    <section class="sn-ex-cover">
+      <header class="doc-header">
+        <div>
+          <div class="brand">SafeNexus</div>
+          <div class="muted">${escapeNativeHtml(clean(model.templateCode || `${serviceCode} zapisnik`))}</div>
+        </div>
+        <div class="code">
+          <strong>${escapeNativeHtml(serviceCode)}</strong><br>
+          RN ${escapeNativeHtml(clean(model.workOrderNumber || "-"))}
+        </div>
+      </header>
+      <div class="cover-title">
+        <div class="eyebrow">Zapisnik</div>
+        <h1>${escapeNativeHtml(title)}</h1>
+        <div class="subtitle">${escapeNativeHtml(getReportCoverSubtitle(model))}</div>
+      </div>
+      <section class="sn-ex-section">
+        <div class="section-label">1. Opci podaci</div>
+        <table class="meta-table"><tbody>${renderNativeHtmlKeyValueRows(metaRows)}</tbody></table>
+      </section>
+      ${hasTechnicalData ? `
+        <section class="sn-ex-section">
+          <div class="section-label">2. ${escapeNativeHtml(getPdfTechnicalSectionTitle(model))}</div>
+          ${technicalRows.some(([, value]) => value)
+            ? `<table class="technical-table"><tbody>${renderNativeHtmlKeyValueRows(technicalRows)}</tbody></table>`
+            : `<div class="text-box">${formatNativeRichTextHtml(model.technicalData)}</div>`}
+        </section>
+      ` : ""}
+      <div class="two-column">
+        <section class="sn-ex-section">
+          <div class="section-label">${hasTechnicalData ? "3" : "2"}. Mjerna i ispitna oprema</div>
+          <div class="text-box">${formatNativeRichTextHtml(model.equipment)}</div>
+        </section>
+        <section class="sn-ex-section">
+          <div class="section-label">${hasTechnicalData ? "4" : "3"}. Primijenjeni propisi</div>
+          <div class="text-box">${formatNativeRichTextHtml(model.regulations)}</div>
+        </section>
+      </div>
+    </section>
+
+    <section class="sn-ex-section">
+      <div class="section-label">${hasTechnicalData ? "5" : "4"}. Koristena tehnicko-projektna dokumentacija</div>
+      <div class="text-box">${formatNativeRichTextHtml(model.projectDocumentation)}</div>
+    </section>
+    ${cleanMultiline(model.systemDescription) ? `
+      <section class="sn-ex-section">
+        <div class="section-label">${hasTechnicalData ? "6" : "5"}. Opis sustava</div>
+        <div class="text-box">${formatNativeRichTextHtml(model.systemDescription)}</div>
+      </section>
+    ` : ""}
+    <section class="sn-ex-section">
+      <div class="section-label">${hasTechnicalData ? "7" : "6"}. Rezultati ispitivanja</div>
+      <div class="text-box">${formatNativeRichTextHtml(model.resultsText)}</div>
+    </section>
+
+    ${renderNativeHtmlChecklists(model)}
+    ${renderNativeHtmlMeasurementTables(model, rows)}
+
+    <section class="conclusion-page">
+      <header class="doc-header">
+        <div><div class="brand">SafeNexus</div><div class="muted">${escapeNativeHtml(serviceCode)}</div></div>
+        <div class="code">RN ${escapeNativeHtml(clean(model.workOrderNumber || "-"))}</div>
+      </header>
+      ${isFailingResult(model) ? `
+        <section class="sn-ex-section">
+          <div class="section-label">Nedostatci</div>
+          <div class="text-box">${formatNativeRichTextHtml(model.defects || "Nema utvrdjenih nedostataka.")}</div>
+        </section>
+      ` : ""}
+      <section class="sn-ex-section">
+        <div class="section-label">Preporuke</div>
+        <div class="text-box">${formatNativeRichTextHtml(model.recommendations || "Redovito odrzavati i provjeravati predmetni sustav.")}</div>
+      </section>
+      <section class="sn-ex-section">
+        <div class="section-label">Ocjena rezultata ispitivanja</div>
+        <p>Na temelju usporedbe rezultata mjerenja i ispitivanja s propisanim odnosno dopustenim parametrima utvrdjeno je slijedece:</p>
+        ${renderNativeHtmlAssessments(model)}
+      </section>
+      <section class="sn-ex-section">
+        <div class="section-label">Zakljucak</div>
+        <p>${escapeNativeHtml(getConclusionLead(model))}</p>
+        <div class="conclusion-status">${escapeNativeHtml(conclusionStatus)}</div>
+        <p>zahtjeve spomenutih propisa u pogledu navedenih ispitivanja, te se za navedeno izdaje ZAPISNIK broj:</p>
+        <h2 style="text-align:center">${escapeNativeHtml(clean(model.recordNumber || "-"))}</h2>
+        <p style="text-align:center">${escapeNativeHtml(getValiditySentence(model))} ${escapeNativeHtml(formatDocumentDate(model.validUntil))}</p>
+        <p class="issued">U ${escapeNativeHtml(issuedText || "Zagrebu")}</p>
+        ${renderNativeHtmlSignature(model)}
+      </section>
+    </section>
+  </article>
+</body>
+</html>`;
+}
+
 function getPdfMeasurementTableRows(table = {}) {
   const sheet = normalizePdfMeasurementSheet(table.sheet);
   return sheet.rows

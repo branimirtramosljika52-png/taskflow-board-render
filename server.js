@@ -98,6 +98,7 @@ import {
   formatMeasurementLiteralDisplayValue,
 } from "./src/measurementFormatting.js";
 import {
+  buildDocumentationNativeHtml,
   generateDocumentationSprPdfBlob,
 } from "./src/documentationSprPdf.js";
 import {
@@ -26464,6 +26465,43 @@ function isMobileDocumentationSprEntry(entry = {}, template = {}) {
     || lookup.includes("zastitu od djelovanja munje");
 }
 
+function normalizeMobileDocumentationNativeHtmlServiceKey(value = "") {
+  return normalizeInputValue(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "");
+}
+
+const MOBILE_DOCUMENTATION_NATIVE_HTML_SERVICE_KEYS = new Set(
+  getDocumentationNativeTemplateSeedPresets()
+    .flatMap((preset) => [
+      preset?.id,
+      preset?.name,
+      preset?.title,
+      preset?.serviceCode,
+      preset?.serviceName,
+      preset?.reportTitle,
+      preset?.documentType,
+    ])
+    .map(normalizeMobileDocumentationNativeHtmlServiceKey)
+    .filter(Boolean),
+);
+
+function shouldUseMobileDocumentationNativeHtmlPdf(model = {}) {
+  return [
+    model?.serviceCode,
+    model?.serviceName,
+    model?.reportTitle,
+    model?.documentType,
+    model?.templateCode,
+    model?.serviceBinding?.serviceCode,
+    model?.serviceBinding?.serviceName,
+  ].some((value) => MOBILE_DOCUMENTATION_NATIVE_HTML_SERVICE_KEYS.has(
+    normalizeMobileDocumentationNativeHtmlServiceKey(value),
+  ));
+}
+
 function getMobileSprFirstValue(source = {}, keys = []) {
   for (const key of keys) {
     if (Object.prototype.hasOwnProperty.call(source, key)) {
@@ -27793,6 +27831,34 @@ async function buildMobileDocumentationSprPdfFile({
     || entry.fileName
     || model.recordNumber
     || `${normalizeInputValue(model.serviceCode || entry.serviceCode || template.serviceCode || "zapisnik")}-zapisnik.pdf`;
+  if (shouldUseMobileDocumentationNativeHtmlPdf(model)) {
+    const html = buildDocumentationNativeHtml({
+      model,
+      rows,
+    });
+    const htmlFileName = sanitizeGeneratedDocumentFileName(
+      requestedFileName.replace(/\.(pdf|docx?|dotx|html?)$/i, "") || model.recordNumber || "zapisnik",
+      { fallback: "zapisnik", extension: "html" },
+    );
+    const pdfBuffer = await convertHtmlToPdfBuffer(html, {
+      fileName: htmlFileName,
+      title: model.recordNumber || model.reportTitle || model.serviceName || "Zapisnik",
+      preferWarmChromium: true,
+    });
+    const htmlEntry = {
+      ...preparedEntry,
+      templateReferenceKind: "html",
+    };
+    return {
+      kind: "pdf",
+      fileName: sanitizeGeneratedDocumentFileName(requestedFileName, {
+        fallback: "zapisnik",
+        extension: "pdf",
+      }),
+      buffer: await finalizeGeneratedTemplatePdfBuffer(pdfBuffer, htmlEntry, options),
+      entry: htmlEntry,
+    };
+  }
   const result = await generateDocumentationSprPdfBlob({
     model,
     rows,
