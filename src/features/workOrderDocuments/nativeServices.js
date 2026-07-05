@@ -273,7 +273,7 @@ export function getDocumentTemplateRuntimeTimelineLabel(entry = {}) {
   }
 
   const upperTitle = rawTitle.toUpperCase();
-  const knownLabels = ["EIZ", "TZIN", "SZOMV", "SZOM", "VES", "SPR", "ZNR", "TIPKALO", "PANIK"];
+  const knownLabels = ["EIZ", "TZIN", "SZOMV", "SZOM", "SVZ", "VES", "SPR", "ZNR", "TIPKALO", "PANIK"];
   const matchedLabel = knownLabels.find((label) => upperTitle.includes(label));
   const objectSequence = Number.parseInt(entry?.objectSequence, 10);
   const suffix = Number.isFinite(objectSequence) && objectSequence > 0 ? String(objectSequence) : "";

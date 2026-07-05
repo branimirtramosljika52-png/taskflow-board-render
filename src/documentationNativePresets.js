@@ -638,6 +638,54 @@ const FIRE_SYSTEM_TECHNICAL_FIELDS = [
   technicalField("elementCount", "Ukupan broj elemenata", ""),
 ];
 
+const SVZ_TECHNICAL_FIELDS = [
+  technicalField("protectedArea", "Predmet zastite / opis prostora", "Poslovni prostor - benzinska postaja sa pratecim sadrzajem."),
+  technicalField("centralManufacturer", "Centralni uredjaj - proizvodjac", "INIM"),
+  technicalField("centralType", "Centralni uredjaj - tip", "Smartline 020-4"),
+  technicalField("centralPowerSupply", "Napajanje centrale", "Glavno napajanje 230 V / 50 Hz; rezervno napajanje dvije akumulatorske baterije 12 V / 7 Ah."),
+  technicalField("automaticDetectorType", "Automatski detektori pozara", "Opticki automatski detektori pozara, proizvodjac INIM, tip S-ID100."),
+  technicalField("manualCallPointType", "Rucni javljaci pozara", "Rucni javljaci proizvodjac PIT-ALARM, tip PIT92 vd i IP67 PIT-98-65vd."),
+  technicalField("alarmSirens", "Alarmne sirene", "Unutarnje alarmne sirene, tip s-smarty/gfr i S-Ivy R."),
+  technicalField("linkedSystems", "Sustavi u sprezi", "Otvaranje kliznih vrata, otvaranje vrata pod kontrolom pristupa, gasenje ventilacije."),
+  technicalField("maintenanceBook", "Knjiga odrzavanja", "Korisnik posjeduje knjigu odrzavanja sustava."),
+];
+
+const SVZ_RESULTS_TEXT = [
+  "Vizualnim pregledom utvrdjuje se da je sustav izveden sukladno navedenoj projektnoj dokumentaciji.",
+  "Obavlja se simulacija aktiviranja sustava automatskim i rucnim javljacima pozara.",
+  "Aktiviranjem detektora provjerava se prikaz mjesta pozara, zvucna signalizacija na centralnom uredjaju i aktiviranje sirena.",
+  "Centrala za dojavu pozara mora biti smjestena u suhoj, pogonski pristupacnoj i osvijetljenoj prostoriji.",
+  "Rucni javljaci na evakuacijskim putevima i izlazima moraju biti dostupni i ispravno oznaceni.",
+  "Provjerava se rezervno napajanje, svjetlosna i zvucna signalizacija alarma, registracija greske i povrat sustava u normalno pogonsko stanje.",
+  "Provjeravaju se sustavi koji rade u sprezi sa sustavom dojave pozara.",
+].join("\n\n");
+
+const SVZ_REVIEW_ITEMS = [
+  "Sustav je izveden sukladno projektnoj dokumentaciji",
+  "Obavljena je simulacija automatskim javljacima pozara",
+  "Obavljena je simulacija rucnim javljacima pozara",
+  "Na centrali se prikazuje mjesto pozara",
+  "Zvucna signalizacija na centrali i sirenama je ispravna",
+  "Centrala je smjestena u suhoj, pristupacnoj i osvijetljenoj prostoriji",
+  "Rucni javljaci su postavljeni na evakuacijskim putevima i izlazima",
+  "Automatski javljaci imaju ispravnu svjetlosnu signalizaciju stanja",
+  "Alarmna sirena proradila je istovremeno s aktiviranjem detektora",
+  "Rezervno napajanje zadovoljava kapacitetom i ukljucuje se bez zastoja",
+  "Provjerena je registracija greske i pogonsko stanje centrale",
+  "Sustavi u sprezi ispravno funkcioniraju",
+  "Sustav je nakon ispitivanja vracen u normalno pogonsko stanje",
+  "Korisnik posjeduje knjigu odrzavanja sustava",
+];
+
+const SVZ_SYSTEM_ELEMENTS = [
+  "Centralni uredjaj",
+  "Automatski detektori pozara",
+  "Rucni javljaci pozara",
+  "Alarmne sirene",
+  "Rezervno napajanje",
+  "Sustavi u sprezi",
+];
+
 const GAS_TECHNICAL_FIELDS = [
   technicalField("meterManufacturer", "Proizvodjac plinomjera", ""),
   technicalField("meterType", "Tip i velicina plinomjera", ""),
@@ -1060,7 +1108,13 @@ const DOCUMENTATION_RESULT_AI_CONTEXT_BY_SERVICE = Object.freeze({
   EXEI: makeDocumentationResultAiContext("elektricne instalacije u Ex prostoru", ["EXEI", "ExEi", "Ex", "impedancija", "ZUDS", "otpor izolacije"]),
   EXSE: makeDocumentationResultAiContext("uzemljenje i staticki elektricitet u Ex prostoru", ["EXSE", "ExSe", "uzemljenje", "staticki elektricitet"]),
   EXOV: makeDocumentationResultAiContext("odzracne ventile", ["EXOV", "ExOv", "odzracni ventili", "funkcionalno ispitivanje"]),
-  SVZ: makeDocumentationResultAiContext("stabilni sustav za dojavu pozara", ["SVZ", "dojava pozara", "centrala", "detektori"]),
+  SVZ: Object.freeze({
+    subject: "stabilni sustav za dojavu pozara",
+    resultLookFor: ["SVZ", "dojava pozara", "centrala", "detektori", "rucni javljaci", "sirene", "rezervno napajanje", "sustavi u sprezi", "zadovoljava"],
+    defectsLookFor: ["nedostaci", "neispravno", "greska centrale", "neispravan javljac", "sirena ne radi", "rezervno napajanje", "ne zadovoljava"],
+    recommendationsLookFor: ["preporuke", "napomena", "servis sustava dojave", "zamjena javljaca", "provjera centrale", "odrzavanje"],
+    aiAvoid: "Ne koristi hidrantsku mrezu, sprinkler, plinodojavu, SPR rasvjetu ili EIZ mjerenja za SVZ. Za SVZ koristi samo tekstove i nalaze koji se odnose na sustav za dojavu pozara.",
+  }),
   SP: makeDocumentationResultAiContext("sustav detekcije zapaljivih plinova", ["SP", "detekcija plina", "plinodetekcija"]),
   HM: makeDocumentationResultAiContext("hidrantsku mrezu", ["HM", "hidrantska mreza", "hidrant", "tlak", "protok"]),
   HMU: makeDocumentationResultAiContext("unutarnju hidrantsku mrezu", ["HMU", "unutarnja hidrantska mreza", "hidrant"]),
@@ -1211,6 +1265,80 @@ const DOCUMENTATION_TECHNICAL_AI_BY_SERVICE = Object.freeze({
       aiDescription: "Pronadji opis uzemljenja iz starog zapisnika ili projekta.",
       aiLookFor: ["uzemljenje", "uzemljivac", "temeljni uzemljivac"],
       examples: ["Pocincana traka Fe/Zn"],
+    }),
+  }),
+  SVZ: Object.freeze({
+    protectedArea: makeTechnicalAi({
+      key: "technical-protectedArea",
+      label: "Predmet zastite / opis prostora",
+      defaultValue: "Poslovni prostor - benzinska postaja sa pratecim sadrzajem.",
+      aiDescription: "Pronadji opis prostora ili predmeta zastite sustava za dojavu pozara. Trazi tekstove poput poslovni prostor, benzinska postaja, prodajni prostor, ured, skladiste, sanitarni prostori i slicno.",
+      aiLookFor: ["predmet zastite", "opis prostora", "poslovni prostor", "benzinska postaja", "sustav za dojavu pozara"],
+      examples: ["Poslovni prostor - benzinska postaja sa pratecim sadrzajem."],
+    }),
+    centralManufacturer: makeTechnicalAi({
+      key: "technical-centralManufacturer",
+      label: "Centralni uredjaj - proizvodjac",
+      defaultValue: "INIM",
+      aiDescription: "Pronadji proizvodjaca centralnog uredjaja sustava za dojavu pozara.",
+      aiLookFor: ["centralni uredjaj", "vatrodojavna centrala", "centrala", "proizvodjac"],
+      examples: ["INIM", "Schrack Seconet", "Bosch", "Esser"],
+    }),
+    centralType: makeTechnicalAi({
+      key: "technical-centralType",
+      label: "Centralni uredjaj - tip",
+      defaultValue: "Smartline 020-4",
+      aiDescription: "Pronadji tip/model centrale i eventualni serijski broj ako je naveden uz centralni uredjaj.",
+      aiLookFor: ["tip centrale", "model centrale", "Smartline", "centralni uredjaj", "serijski broj"],
+      examples: ["Smartline 020-4", "Smartline 020-4; 1909020056"],
+    }),
+    centralPowerSupply: makeTechnicalAi({
+      key: "technical-centralPowerSupply",
+      label: "Napajanje centrale",
+      defaultValue: "Glavno napajanje 230 V / 50 Hz; rezervno napajanje dvije akumulatorske baterije 12 V / 7 Ah.",
+      aiDescription: "Pronadji podatke o glavnom i rezervnom napajanju vatrodojavne centrale, ukljucujuci napon, frekvenciju i akumulatorske baterije.",
+      aiLookFor: ["glavno napajanje", "rezervno napajanje", "akumulatorske baterije", "12 V", "7 Ah", "230 V", "50 Hz"],
+      examples: ["Glavno napajanje 230 V / 50 Hz; rezervno napajanje dvije akumulatorske baterije 12 V / 7 Ah."],
+    }),
+    automaticDetectorType: makeTechnicalAi({
+      key: "technical-automaticDetectorType",
+      label: "Automatski detektori pozara",
+      defaultValue: "Opticki automatski detektori pozara, proizvodjac INIM, tip S-ID100.",
+      aiDescription: "Pronadji vrstu, proizvodjaca i tip automatskih detektora pozara.",
+      aiLookFor: ["automatski detektor", "opticki detektor", "detektor pozara", "S-ID100", "proizvodjac"],
+      examples: ["Opticki automatski detektori pozara, proizvodjac INIM, tip S-ID100."],
+    }),
+    manualCallPointType: makeTechnicalAi({
+      key: "technical-manualCallPointType",
+      label: "Rucni javljaci pozara",
+      defaultValue: "Rucni javljaci proizvodjac PIT-ALARM, tip PIT92 vd i IP67 PIT-98-65vd.",
+      aiDescription: "Pronadji proizvodjaca, tip i smjestaj rucnih javljaca pozara.",
+      aiLookFor: ["rucni javljaci", "rucni dojavljivaci", "PIT-ALARM", "PIT92", "IP67", "izlazni putevi"],
+      examples: ["Rucni javljaci proizvodjac PIT-ALARM, tip PIT92 vd i IP67 PIT-98-65vd."],
+    }),
+    alarmSirens: makeTechnicalAi({
+      key: "technical-alarmSirens",
+      label: "Alarmne sirene",
+      defaultValue: "Unutarnje alarmne sirene, tip s-smarty/gfr i S-Ivy R.",
+      aiDescription: "Pronadji tip i opis alarmnih sirena te podatke o zvucnoj signalizaciji.",
+      aiLookFor: ["alarmne sirene", "unutarnja alarmna sirena", "zvucna signalizacija", "s-smarty", "S-Ivy"],
+      examples: ["Unutarnje alarmne sirene, tip s-smarty/gfr i S-Ivy R."],
+    }),
+    linkedSystems: makeTechnicalAi({
+      key: "technical-linkedSystems",
+      label: "Sustavi u sprezi",
+      defaultValue: "Otvaranje kliznih vrata, otvaranje vrata pod kontrolom pristupa, gasenje ventilacije.",
+      aiDescription: "Pronadji sustave koji rade u sprezi sa sustavom dojave pozara, npr. vrata, kontrola pristupa, ventilacija, lift, odimljavanje ili drugi povezani sustavi.",
+      aiLookFor: ["sustavi u sprezi", "klizna vrata", "kontrola pristupa", "gasenje ventilacije", "odimljavanje", "lift"],
+      examples: ["Otvaranje kliznih vrata, otvaranje vrata pod kontrolom pristupa, gasenje ventilacije."],
+    }),
+    maintenanceBook: makeTechnicalAi({
+      key: "technical-maintenanceBook",
+      label: "Knjiga odrzavanja",
+      defaultValue: "Korisnik posjeduje knjigu odrzavanja sustava.",
+      aiDescription: "Pronadji navod o knjizi odrzavanja sustava za dojavu pozara.",
+      aiLookFor: ["knjiga odrzavanja", "odrzavanje sustava", "korisnik posjeduje knjigu"],
+      examples: ["Korisnik posjeduje knjigu odrzavanja sustava."],
     }),
   }),
   EIZ: Object.freeze({
@@ -2621,22 +2749,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       ],
     },
   ],
-  SVZ: [
-    {
-      id: "svz-cista-assessment",
-      label: "Stabilni sustav za dojavu pozara",
-      summary: "Ocjena sustava za dojavu pozara",
-      sourceSheet: "SVZ1.1",
-      columns: ["Stavka", "ZADOVOLJAVA DA/NE", "Napomena"],
-      rows: [
-        ["Stabilni sustav za dojavu pozara", "DA", ""],
-        ["Centralni uredaj", "DA", ""],
-        ["Detektori pozara", "DA", ""],
-        ["Alarmne sirene", "DA", ""],
-        ["Sustavi u sprezi", "DA", ""],
-      ],
-    },
-  ],
+  SVZ: [],
   SP: [
     {
       id: "sp-cista-assessment",
@@ -3258,19 +3371,44 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
   SVZ: createNativeReportPreset({
     serviceCode: "SVZ",
     serviceName: "Stabilni sustav za dojavu pozara",
-    reportTitle: "ISPITIVANJE STABILNOG SUSTAVA ZA DOJAVU POZARA",
-    coverSubtitle: "O ISPITIVANJU STABILNOG SUSTAVA ZA DOJAVU POZARA",
+    reportTitle: "ISPITIVANJE SUSTAVA ZA DOJAVU POZARA",
+    coverSubtitle: "O ISPITIVANJU SUSTAVA ZA DOJAVU POZARA",
     measurementTableTitle: "Pregled sustava za dojavu pozara",
-    resultsText: makeSimpleResultText("stabilni sustav za dojavu pozara", "Pregled obuhvaca centralu, detektore, sirene, sustave u sprezi i funkcionalno ispitivanje."),
+    resultsText: SVZ_RESULTS_TEXT,
+    projectDocumentation: [
+      "Projekt izvedenog stanja sustava tehnicke zastite.",
+      "- Izjave o sukladnosti.",
+      "- Upute instalatera.",
+      "- Upute za rukovanje i odrzavanje.",
+      "- Zapisnik od prethodnog ispitivanja.",
+    ].join("\n"),
     assessmentLabel: "Stabilni sustav za dojavu pozara",
     conclusionLead: "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da stabilni sustav za dojavu pozara na dan predmetnog ispitivanja",
+    validitySentence: "Ponovno ispitivanje sukladno vazecem Pravilniku o provjeri ispravnosti stabilnih sustava zastite od pozara mora biti provedeno do",
     signatureAreas: ["pozar"],
-    technicalDataFields: FIRE_SYSTEM_TECHNICAL_FIELDS,
-    checklists: [makeChecklistFromItems({ id: "svz-review", label: "Pregled sustava za dojavu pozara", items: FIRE_REVIEW_ITEMS, assessmentLabel: "Stabilni sustav za dojavu pozara" })],
-    measurementAssessments: makeAssessmentEntries("SVZ", ["Stabilni sustav za dojavu pozara"]),
-    tables: [
-      tableSpec({ id: "svz-elements", label: "Elementi sustava dojave pozara", summary: "Pregled centrale, detektora, sirena i sprega", columns: TEXT_REVIEW_COLUMNS, rows: rowsFromItems(TEXT_REVIEW_COLUMNS, ["Centrala", "Detektori", "Sirene", "Sustavi u sprezi"], "DA") }),
+    technicalDataFields: SVZ_TECHNICAL_FIELDS,
+    checklists: [
+      makeChecklistFromItems({
+        id: "svz-review",
+        label: "Pregled i funkcionalno ispitivanje sustava za dojavu pozara",
+        summary: "Vizualni pregled, simulacija javljaca, centrala, sirene, rezervno napajanje i sustavi u sprezi.",
+        items: SVZ_REVIEW_ITEMS,
+        assessmentLabel: "Stabilni sustav za dojavu pozara",
+      }),
+      makeChecklistFromItems({
+        id: "svz-elements",
+        label: "Oprema sustava za dojavu pozara",
+        summary: "Centralni uredjaj, detektori, rucni javljaci, sirene, napajanje i sustavi u sprezi.",
+        items: SVZ_SYSTEM_ELEMENTS,
+        assessmentLabel: "Oprema sustava za dojavu pozara",
+      }),
     ],
+    measurementAssessments: makeAssessmentEntries("SVZ", [
+      "Pregled izvedenog stanja prema dokumentaciji",
+      "Funkcionalno ispitivanje sustava",
+      "Stabilni sustav za dojavu pozara",
+    ]),
+    tables: [],
   }),
   SP: createNativeReportPreset({
     serviceCode: "SP",

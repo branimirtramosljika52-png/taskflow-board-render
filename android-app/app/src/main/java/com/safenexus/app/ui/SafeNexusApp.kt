@@ -26867,6 +26867,7 @@ private fun isDocumentationPhysicalFactorsService(item: DocumentationServiceFlow
 private fun isDocumentationTrainingText(value: String): Boolean {
     val normalized = normalizeDocumentationWorkEquipmentText(value)
     if (normalized.isBlank() || isDocumentationWorkEquipmentText(value) || isDocumentationEquipmentInspectionText(value) || isDocumentationPhysicalFactorsText(value)) return false
+    if (documentationNativeServiceCodeForText(value).isNotBlank()) return false
     return normalized == "znr" ||
         normalized == "zos" ||
         normalized == "pgp" ||
@@ -26903,12 +26904,14 @@ private fun isDocumentationSprText(value: String): Boolean {
         normalized == "eiz" ||
         normalized == "szom" ||
         normalized == "szomv" ||
+        normalized == "svz" ||
         normalized == "ves" ||
         normalized.startsWith("spr ") ||
         normalized.startsWith("tzin ") ||
         normalized.startsWith("eiz ") ||
         normalized.startsWith("szom ") ||
         normalized.startsWith("szomv ") ||
+        normalized.startsWith("svz ") ||
         normalized.startsWith("ves ") ||
         normalized.contains("sigurnosna panik") ||
         normalized.contains("panik rasvjet") ||
@@ -26918,6 +26921,7 @@ private fun isDocumentationSprText(value: String): Boolean {
         normalized.contains("isklop elektric") ||
         normalized.contains("elektricn") ||
         normalized.contains("evakuacij") ||
+        (normalized.contains("dojav") && normalized.contains("pozar")) ||
         normalized.contains("zastitu od djelovanja munje")
 }
 
@@ -26962,6 +26966,10 @@ private fun documentationNativeServiceCodeForText(value: String): String {
             normalized.startsWith("szom ") ||
             normalized.contains("zastitu od djelovanja munje") ||
             normalized.contains("zastite od djelovanja munje") -> "SZOM"
+        normalized == "svz" ||
+            normalized.startsWith("svz ") ||
+            (normalized.contains("dojav") && normalized.contains("pozar")) ||
+            normalized.contains("stabilni sustav za dojavu") -> "SVZ"
         normalized == "eiz" ||
             normalized.startsWith("eiz ") ||
             normalized.contains("elektricn") -> "EIZ"
@@ -27055,7 +27063,7 @@ private fun buildDocumentationFlowTabs(
             else -> item.serviceCode.ifBlank { item.serviceName.ifBlank { "Usluga" } }
         }
         val normalizedServiceLabel = serviceLabel.trim().uppercase(Locale.getDefault())
-        val tabLabel = if (normalizedServiceLabel in setOf("SPR", "TZIN", "EIZ", "SZOM", "SZOMV", "VES", "RO", "NO", "STROJEVI", "FC")) {
+        val tabLabel = if (normalizedServiceLabel in setOf("SPR", "TZIN", "EIZ", "SZOM", "SZOMV", "SVZ", "VES", "RO", "NO", "STROJEVI", "FC")) {
             normalizedServiceLabel
         } else {
             "${serviceIndex + 1}. $serviceLabel"
@@ -27070,7 +27078,7 @@ private fun buildDocumentationFlowTabs(
                 val sequence = tabs.count { tab -> tab.serviceItem?.serviceKey == item.serviceKey } + 1
                 val recordLabel = record.serviceCode.ifBlank { item.serviceCode.ifBlank { "Usluga" } }.trim()
                 val normalizedRecordLabel = recordLabel.uppercase(Locale.getDefault())
-                val extraLabel = if (normalizedRecordLabel in setOf("SPR", "TZIN", "EIZ", "SZOM", "SZOMV", "VES", "RO", "NO", "STROJEVI", "FC")) {
+                val extraLabel = if (normalizedRecordLabel in setOf("SPR", "TZIN", "EIZ", "SZOM", "SZOMV", "SVZ", "VES", "RO", "NO", "STROJEVI", "FC")) {
                     "$normalizedRecordLabel $sequence"
                 } else {
                     "$sequence. $recordLabel"

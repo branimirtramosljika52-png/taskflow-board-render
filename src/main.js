@@ -60756,6 +60756,7 @@ function getDocumentationSprKnownServiceCodes() {
     "TZIN",
     "SZOM",
     "SZOMV",
+    "SVZ",
     "VES",
     "SPR",
     "ZUDS",
@@ -76134,7 +76135,7 @@ function normalizeDocumentTemplateSignatureServiceCode(value = "") {
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, " ")
     .trim();
-  const known = ["SPR", "ZNR", "TZIN", "EIZ", "SZOMV", "SZOM", "VES", "TIPKALO", "PANIK"];
+  const known = ["SPR", "ZNR", "TZIN", "EIZ", "SZOMV", "SZOM", "SVZ", "VES", "TIPKALO", "PANIK"];
   const knownMatch = known.find((code) => new RegExp(`\\b${code}\\b`, "i").test(direct));
   if (knownMatch) {
     return knownMatch === "PANIK" ? "SPR" : knownMatch;
@@ -76230,6 +76231,8 @@ function getWorkOrderRelevantSignatureAreas(workOrder = {}) {
     ].filter(Boolean).join(" "));
     if (serviceCode === "TZIN" || normalizeLooseName([service?.name, service?.serviceName, service?.title].filter(Boolean).join(" ")).includes("tipkalo")) {
       areas.add("tipkalo");
+    } else if (serviceCode === "SVZ") {
+      areas.add("pozar");
     } else if (["EIZ", "SZOM", "SZOMV", "VES", "SPR", "ZUDS"].includes(serviceCode)) {
       areas.add("elektro");
     }
