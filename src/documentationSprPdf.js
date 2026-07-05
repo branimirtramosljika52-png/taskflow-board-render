@@ -1320,6 +1320,9 @@ function mapLegacyRowsToSheet(legacyRows = [], table = {}) {
 }
 
 function normalizePdfMeasurementTables(model = {}, legacyRows = []) {
+  if (String(getServiceCode(model) || "").trim().toUpperCase() === "EXOV") {
+    return [];
+  }
   const sourceTables = Array.isArray(model.measurementTables) && model.measurementTables.length > 0
     ? model.measurementTables
     : createDocumentationMeasurementTablesForService(getServiceCode(model));

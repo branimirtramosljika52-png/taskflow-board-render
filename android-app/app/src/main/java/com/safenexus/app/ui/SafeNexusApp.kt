@@ -35364,7 +35364,9 @@ private fun DocumentationSprMobileWorkspace(
             if (attachmentFiles.isNotEmpty()) {
                 DocumentationSprStatusChip(Icons.Rounded.AttachFile, "Prilozi", attachmentFiles.size.toString())
             }
-            DocumentationSprStatusChip(Icons.Rounded.ListAlt, "Gridline", "$tableCount / $rowCount")
+            if (tableCount > 0) {
+                DocumentationSprStatusChip(Icons.Rounded.ListAlt, "Gridline", "$tableCount / $rowCount")
+            }
         }
 
         AnimatedVisibility(visible = sprVoiceAiLoading || sprVoiceAiMessage.isNotBlank()) {

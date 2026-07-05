@@ -59479,13 +59479,14 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
   }
   const nativeModel = buildDocumentationNativeTemplateModel(preset);
   const currentModel = normalizeDocumentationSprModel(entry.model);
-  const currentChecklists = Array.isArray(currentModel.checklists) && currentModel.checklists.length
+  const refreshNativeBlocks = ["EXEI", "EXSE", "EXOV"].includes(String(preset.serviceCode || "").trim().toUpperCase());
+  const currentChecklists = !refreshNativeBlocks && Array.isArray(currentModel.checklists) && currentModel.checklists.length
     ? currentModel.checklists
     : nativeModel.checklists;
-  const currentAssessments = Array.isArray(currentModel.measurementAssessments) && currentModel.measurementAssessments.length
+  const currentAssessments = !refreshNativeBlocks && Array.isArray(currentModel.measurementAssessments) && currentModel.measurementAssessments.length
     ? currentModel.measurementAssessments
     : nativeModel.measurementAssessments;
-  const currentTables = Array.isArray(currentModel.measurementTables) && currentModel.measurementTables.length
+  const currentTables = !refreshNativeBlocks && Array.isArray(currentModel.measurementTables) && currentModel.measurementTables.length
     ? currentModel.measurementTables
     : nativeModel.measurementTables;
   return {
@@ -63092,7 +63093,7 @@ function syncDocumentationSprFieldSettingsUi() {
 }
 
 function isDocumentationSprNativeMeasurementMode(model = documentationSprModel) {
-  return getDocumentationSprServiceCode(model) === "EIZ";
+  return ["EIZ", "EXEI", "EXSE"].includes(getDocumentationSprServiceCode(model));
 }
 
 function getDocumentationSprTechnicalFieldDefinitions(model = documentationSprModel) {
@@ -63859,8 +63860,13 @@ function renderDocumentationSprNativeEditors() {
   }
   renderDocumentationSprTechnicalSection();
   const nativeMode = isDocumentationSprNativeMeasurementMode(documentationSprModel);
+  const serviceCode = getDocumentationSprServiceCode(documentationSprModel);
+  const hasMeasurementTables = normalizeDocumentationSprMeasurementTables(
+    documentationSprModel.measurementTables,
+    documentationSprModel,
+  ).length > 0 && serviceCode !== "EXOV";
   if (documentationSprPrimaryGridlineSection instanceof HTMLElement) {
-    documentationSprPrimaryGridlineSection.hidden = nativeMode;
+    documentationSprPrimaryGridlineSection.hidden = nativeMode || !hasMeasurementTables;
   }
   renderDocumentationSprChecklistsEditor();
   renderDocumentationSprNativeMeasurementsEditor();
@@ -64300,6 +64306,9 @@ function buildDocumentationSprMeasurementSheetFromGridlineModel(model = {}, fall
 
 function getDocumentationSprMeasurementTablesForModel(model = documentationSprModel) {
   const normalized = normalizeDocumentationSprModel(model);
+  if (getDocumentationSprServiceCode(normalized) === "EXOV") {
+    return [];
+  }
   const tables = normalizeDocumentationSprMeasurementTables(normalized.measurementTables, normalized)
     .filter((table) => table.enabled !== false);
   if (!tables.length) {

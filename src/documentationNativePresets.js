@@ -664,6 +664,101 @@ const EXEI_MEASUREMENT_ASSESSMENTS = Object.freeze([
   { id: "exei-assessment-overload-d", key: "exei-assessment-overload-d", label: "Zastita od preopterecenja motora Ex d", enabledFieldId: "use-exei-cista-overload-d", defaultValue: "ZADOVOLJAVA" },
 ]);
 
+const EXSE_TECHNICAL_FIELDS = [
+  technicalField("weatherConditions", "Vremenski uvjeti", ""),
+  technicalField("soilCondition", "Stanje tla", ""),
+  technicalField("temperature", "Temperatura [C]", ""),
+  technicalField("relativeHumidity", "Relativna vlaznost [RH]", ""),
+  technicalField("protectionMeasure", "Zastitna mjera", "Uzemljenje"),
+  technicalField("earthing", "Uzemljenje", "FeZn traka"),
+];
+
+const EXSE_PROJECT_DOCUMENTATION = "Zapisnik od prethodnog ispitivanja";
+
+const EXSE_RESULTS_TEXT = [
+  "Ispitivanje uzemljenja i statickog elektriciteta u Ex prostoru obuhvaca mjerenje otpora uzemljenja, mjerenje otpora savitljivih cijevi na istakalistima i provjeru elektrostatskog polja.",
+  "Rezultati se vode u zasebnim ExSe ispitnim listovima prema CISTA predlosku i koriste se za zajednicku ocjenu rezultata ispitivanja.",
+].join("\n\n");
+
+const EXSE_MEASUREMENT_ASSESSMENTS = Object.freeze([
+  { id: "exse-assessment-earthing", key: "exse-assessment-earthing", label: "Otpor uzemljenja", enabledFieldId: "use-exse-cista-earthing", defaultValue: "ZADOVOLJAVA" },
+  { id: "exse-assessment-hoses", key: "exse-assessment-hoses", label: "Otpor savitljivih cijevi na istakalistima", enabledFieldId: "use-exse-cista-static", defaultValue: "ZADOVOLJAVA" },
+  { id: "exse-assessment-static", key: "exse-assessment-static", label: "Staticki elektricitet", enabledFieldId: "use-exse-cista-static", defaultValue: "ZADOVOLJAVA" },
+]);
+
+const EXSE_EARTHING_ROWS = [
+  ["1", "mjerni uredaj za istakanje 1/2", "", "-", "0", "10", "DA", "-"],
+  ["2", "mjerni uredaj za istakanje 3/4", "", "-", "0", "10", "DA", "-"],
+  ["3", "mjerni uredaj za istakanje 5/6", "", "-", "0", "10", "DA", "-"],
+  ["4", "mjerni uredaj za istakanje 7/8", "", "-", "0", "10", "DA", "-"],
+  ["5", "okno spremnika S1", "", "-", "0", "10", "DA", "-"],
+  ["6", "okno spremnika S2", "", "-", "0", "10", "DA", "-"],
+  ["7", "okno spremnika S3", "", "-", "0", "10", "DA", "-"],
+  ["8", "okno spremnika S4", "", "-", "0", "10", "DA", "-"],
+  ["9", "odzracnik", "", "-", "0", "10", "DA", "-"],
+  ["10", "sklopka za uzemljenje autocisterne", "", "-", "0", "10", "DA", "-"],
+  ["11", "sklopka za uzemljenje autocisterne UNP", "", "-", "0", "10", "DA", "-"],
+  ["12", "Sigurnosni ventili UNP", "", "-", "0", "10", "DA", "-"],
+  ["13", "crpka UNP-a", "", "-", "0", "10", "DA", "-"],
+  ["14", "spremnik UNP-a", "", "-", "0", "10", "DA", "-"],
+  ["15", "okno za utakanje", "", "-", "0", "10", "DA", "-"],
+  ["16", "kavezi za plinske boce", "", "-", "0", "10", "DA", "-"],
+  ["17", "spremnik pijeska", "", "-", "0", "10", "DA", "-"],
+];
+
+const EXSE_STATIC_ROWS = [
+  ["1", "Agregat 1/2 - istakacka cijev ES 95 BS MAXPOWER (1)", "-", "", "0", "1", "DA", "-"],
+  ["2", "Agregat 1/2 - istakacka cijev ED BS MAXPOWER (1)", "-", "", "0", "1", "DA", "-"],
+  ["3", "Agregat 1/2 - istakacka cijev ED BS (1)", "-", "", "0", "1", "DA", "-"],
+  ["4", "Agregat 1/2 - istakacka cijev ES 95 BS MAXPOWER (2)", "-", "", "0", "1", "DA", "-"],
+  ["5", "Agregat 1/2 - istakacka cijev ED BS MAXPOWER (2)", "-", "", "0", "1", "DA", "-"],
+  ["6", "Agregat 1/2 - istakacka cijev ED BS (2)", "-", "", "0", "1", "DA", "-"],
+  ["7", "Agregat 3/4 - istakacka cijev ES 95 BS MAXPOWER (3)", "-", "", "0", "1", "DA", "-"],
+  ["8", "Agregat 3/4 - istakacka cijev ED BS MAXPOWER (3)", "-", "", "0", "1", "DA", "-"],
+  ["9", "Agregat 3/4 - istakacka cijev LPG (3)", "-", "", "0", "1", "DA", "-"],
+  ["10", "Agregat 3/4 - istakacka cijev ES 95 BS MAXPOWER (4)", "-", "", "0", "1", "DA", "-"],
+  ["11", "Agregat 3/4 - istakacka cijev ED BS MAXPOWER (4)", "-", "", "0", "1", "DA", "-"],
+  ["12", "Agregat 3/4 - istakacka cijev LPG (4)", "-", "", "0", "1", "DA", "-"],
+  ["13", "Agregat 5/6 - istakacka cijev ES 95 BS (5)", "-", "", "0", "1", "DA", "-"],
+  ["14", "Agregat 5/6 - istakacka cijev ES 100 BS MAXPOWER (5)", "-", "", "0", "1", "DA", "-"],
+  ["15", "Agregat 5/6 - istakacka cijev ED BS MAXPOWER (5)", "-", "", "0", "1", "DA", "-"],
+  ["16", "Agregat 5/6 - istakacka cijev ED BS (5)", "-", "", "0", "1", "DA", "-"],
+  ["17", "Agregat 5/6 - istakacka cijev ES 95 BS (6)", "-", "", "0", "1", "DA", "-"],
+  ["18", "Agregat 5/6 - istakacka cijev ES 100 BS MAXPOWER (6)", "-", "", "0", "1", "DA", "-"],
+  ["19", "Agregat 5/6 - istakacka cijev ED BS MAXPOWER (6)", "-", "", "0", "1", "DA", "-"],
+  ["20", "Agregat 5/6 - istakacka cijev ED BS (6)", "-", "", "0", "1", "DA", "-"],
+  ["21", "Agregat 7/8 - istakacka cijev ES 95 BS (7)", "-", "", "0", "1", "DA", "-"],
+  ["22", "Agregat 7/8 - istakacka cijev ES 100 BS MAXPOWER (7)", "-", "", "0", "1", "DA", "-"],
+  ["23", "Agregat 7/8 - istakacka cijev ED BS MAXPOWER (7)", "-", "", "0", "1", "DA", "-"],
+  ["24", "Agregat 7/8 - istakacka cijev ED BS (7)", "-", "", "0", "1", "DA", "-"],
+  ["25", "Agregat 7/8 - istakacka cijev ES 95 BS (8)", "-", "", "0", "1", "DA", "-"],
+  ["26", "Agregat 7/8 - istakacka cijev ES 100 BS MAXPOWER (8)", "-", "", "0", "1", "DA", "-"],
+  ["27", "Agregat 7/8 - istakacka cijev ED BS MAXPOWER (8)", "-", "", "0", "1", "DA", "-"],
+  ["28", "Agregat 7/8 - istakacka cijev ED BS (8)", "-", "", "0", "1", "DA", "-"],
+];
+
+const EXOV_FUNCTION_DESCRIPTION = "Pri punjenju spremnika goriva iz autocisterni utvrduje se da ugradeni odzracni ventili pravilno djeluju - otvaraju se i zatvaraju pri povecanju ili smanjenju nadtlaka u spremnicima.";
+const EXOV_PROJECT_DOCUMENTATION = "Zapisnik od prethodnog ispitivanja";
+const EXOV_RESULTS_TEXT = [
+  "Funkcionalno ispitivanje odzracnih ventila provodi se vizualnim pregledom pri punjenju spremnika goriva iz autocisterni.",
+  EXOV_FUNCTION_DESCRIPTION,
+].join("\n\n");
+
+const EXOV_CHECKLIST = makeChecklistFromItems({
+  id: "exov-function",
+  label: "Funkcionalno ispitivanje odzracnih ventila",
+  summary: "Vizualni pregled i funkcionalnost odzracnih ventila prema CISTA ExOv predlosku",
+  items: [
+    "Mjerna metoda - vizualni pregled",
+    "Odzracni ventili se otvaraju pri povecanju nadtlaka u spremnicima",
+    "Odzracni ventili se zatvaraju pri smanjenju nadtlaka u spremnicima",
+    "Funkcionalnost odzracnih ventila",
+  ],
+  options: ["DA", "NE"],
+  defaultValue: "DA",
+  assessmentLabel: "Funkcionalnost odzracnih ventila",
+});
+
 const FIRE_SYSTEM_TECHNICAL_FIELDS = [
   technicalField("protectedArea", "Predmet zastite / opis prostora", ""),
   technicalField("centralUnit", "Centrala / upravljacki uredjaj", ""),
@@ -2416,32 +2511,23 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
     {
       id: "exse-cista-earthing",
       label: "Mjerenje otpora uzemljenja",
-      summary: "ZOI-10-06",
+      summary: "ZOI-10-06 - otpor uzemljenja",
       sourceSheet: "ExSe1.2",
-      columns: ["R.br.", "Mjerno mjesto", "Otpor uzemljenja [ohm]", "Otpor cijevi [kohm]", "Elektrostaticko polje [kV/m]", "Dozvoljeni otpor", "Ocjena ispravnosti DA/NE", "Napomena"],
-      rowCount: 12,
+      columns: ["R.br.", "Mjerno mjesto", "Otpor uzemljenja [ohm]", "Otpor cijevi [kohm]", "Elektrostaticko polje [kV/m]", "Dozvoljeni otpor [ohm]", "Ocjena ispravnosti DA/NE", "Napomena"],
+      rows: EXSE_EARTHING_ROWS,
       pageOrientation: "landscape",
     },
     {
       id: "exse-cista-static",
       label: "Mjerenje otpora savitljivih cijevi i statickog elektriciteta",
-      summary: "ZOI-10-06",
+      summary: "ZOI-10-06 - savitljive cijevi i staticki elektricitet",
       sourceSheet: "ExSe1.3",
       columns: ["R.br.", "Mjerno mjesto", "Otpor uzemljenja [ohm]", "Otpor cijevi [kohm]", "Elektrostaticko polje [kV/m]", "Dozvoljeni otpor [Mohm]", "Ocjena ispravnosti DA/NE", "Napomena"],
-      rowCount: 12,
+      rows: EXSE_STATIC_ROWS,
       pageOrientation: "landscape",
     },
   ],
-  EXOV: [
-    {
-      id: "exov-cista-function",
-      label: "Funkcionalnost odzracnih ventila",
-      summary: "Ocjena funkcionalnosti odzracnih ventila",
-      sourceSheet: "ExOv1.1",
-      columns: ["Stavka", "ZADOVOLJAVA DA/NE", "Napomena"],
-      rows: [["Funkcionalnost odzracnih ventila", "DA", ""]],
-    },
-  ],
+  EXOV: [],
   HM: [
     {
       id: "hm-cista-layout",
@@ -3372,13 +3458,15 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     serviceName: "Uzemljenje i staticki elektricitet u Ex prostoru",
     reportTitle: "ISPITIVANJE UZEMLJENJA I STATICKE ELEKTRICNOSTI U EX PROSTORU",
     coverSubtitle: "O ISPITIVANJU UZEMLJENJA I STATICKE ELEKTRICNOSTI",
-    measurementTableTitle: "Tablica 1. - rezultati ispitivanja Ex uzemljenja",
-    resultsText: makeSimpleResultText("uzemljenje i staticki elektricitet u Ex prostoru"),
+    measurementTableTitle: "ExSe ispitni listovi",
+    resultsText: EXSE_RESULTS_TEXT,
+    projectDocumentation: EXSE_PROJECT_DOCUMENTATION,
+    notes: ["Uvjet ispravnosti: otpor uzemljenja < 10 ohm; otpor savitljivih cijevi < 1 Mohm."],
     assessmentLabel: "Uzemljenje i staticki elektricitet",
     conclusionLead: "Temeljem rezultata mjerenja moze se zakljuciti da ispitivano uzemljenje i mjere zastite od statickog elektriciteta na dan predmetnog ispitivanja",
     signatureAreas: ["elektro", "ex"],
-    technicalDataFields: EX_TECHNICAL_FIELDS,
-    measurementAssessments: makeAssessmentEntries("EXSE", ["Uzemljenje", "Staticki elektricitet"]),
+    technicalDataFields: EXSE_TECHNICAL_FIELDS,
+    measurementAssessments: EXSE_MEASUREMENT_ASSESSMENTS,
     tables: [
       tableSpec({ id: "exse-results", label: "Uzemljenje i staticki elektricitet", summary: "Tablica 1. - ExSe rezultati", columns: EXSE_COLUMNS, blankRowCount: 12, blankSeed: { pass: "DA" }, pageOrientation: "landscape" }),
     ],
@@ -3389,19 +3477,21 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     reportTitle: "FUNKCIONALNO ISPITIVANJE ODZRACNIH VENTILA",
     coverSubtitle: "O FUNKCIONALNOM ISPITIVANJU ODZRACNIH VENTILA",
     measurementTableTitle: "Pregled funkcionalnog ispitivanja odzracnih ventila",
-    resultsText: makeSimpleResultText("odzracne ventile", "Opisuje se gorivo/spremnici, mjerna metoda, funkcionalnost ventila, nedostaci i preporuke."),
+    resultsText: EXOV_RESULTS_TEXT,
+    projectDocumentation: EXOV_PROJECT_DOCUMENTATION,
     assessmentLabel: "Odzracni ventili",
     conclusionLead: "Temeljem provedenog funkcionalnog ispitivanja moze se zakljuciti da odzracni ventili na dan predmetnog ispitivanja",
     signatureAreas: ["ex", "elektro"],
     technicalDataFields: [
       technicalField("fuelTanks", "Goriva / spremnici", ""),
-      technicalField("method", "Mjerna metoda", ""),
-      technicalField("functionalDescription", "Opis funkcionalnog ispitivanja", ""),
+      technicalField("method", "Mjerna metoda", "Vizualni pregled"),
+      technicalField("functionalDescription", "Opis funkcionalnog ispitivanja", EXOV_FUNCTION_DESCRIPTION),
     ],
-    measurementAssessments: makeAssessmentEntries("EXOV", ["Funkcionalnost odzracnih ventila"]),
-    tables: [
-      tableSpec({ id: "exov-review", label: "Funkcionalno ispitivanje odzracnih ventila", summary: "Pregled odzracnih ventila", columns: TEXT_REVIEW_COLUMNS, rows: rowsFromItems(TEXT_REVIEW_COLUMNS, ["Goriva / spremnici", "Mjerna metoda", "Funkcionalnost odzracnih ventila"], "DA") }),
+    checklists: [EXOV_CHECKLIST],
+    measurementAssessments: [
+      { id: "exov-assessment-function", key: "exov-assessment-function", label: "Funkcionalnost odzracnih ventila", enabledFieldId: "use-exov-function", defaultValue: "ZADOVOLJAVA" },
     ],
+    tables: [],
   }),
   SVZ: createNativeReportPreset({
     serviceCode: "SVZ",
