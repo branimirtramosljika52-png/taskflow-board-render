@@ -768,6 +768,7 @@ data class WorkOrderDocumentationTemplate(
     val fieldBlocks: List<WorkOrderDocumentationTemplateBlock> = emptyList(),
     val inspectionTypeOptions: List<OptionItem> = emptyList(),
     val measurementTables: List<WorkOrderMeasurementTable>,
+    val formulaSheets: List<WorkOrderMeasurementTable> = emptyList(),
     val aiFields: List<WorkOrderDocumentationAiField> = emptyList(),
     val aiMeasurementColumns: List<WorkOrderDocumentationAiMeasurementColumn> = emptyList(),
 )

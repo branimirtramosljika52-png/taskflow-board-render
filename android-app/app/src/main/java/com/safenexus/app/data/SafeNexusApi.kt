@@ -3319,6 +3319,7 @@ private fun JSONArray?.toWorkOrderDocumentationTemplates(): List<WorkOrderDocume
                     fieldBlocks = item.optJSONArray("fieldBlocks").toWorkOrderDocumentationTemplateBlocks(),
                     inspectionTypeOptions = item.optJSONArray("inspectionTypeOptions").toDocumentationFieldOptions(),
                     measurementTables = item.optJSONArray("measurementTables").toWorkOrderMeasurementTables(),
+                    formulaSheets = item.optJSONArray("formulaSheets").toWorkOrderMeasurementTables(),
                     aiFields = item.optJSONArray("aiFields").toWorkOrderDocumentationAiFields(),
                     aiMeasurementColumns = item.optJSONArray("aiMeasurementColumns").toWorkOrderDocumentationAiMeasurementColumns(),
                 ),

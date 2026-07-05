@@ -2773,16 +2773,6 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       }),
       pageOrientation: "landscape",
     },
-    {
-      id: "exei-cista-expodaci",
-      label: "ExPodaci - sifrarnici za ExEi formule",
-      summary: "Referentne liste iz VBA gumba: zastitni uredaji, Ex motori, Ex-e i Ex-d bimetali",
-      sourceSheet: "ExPodaci",
-      columns: EXEI_EXPODACI_COLUMNS,
-      rows: makeExeiExPodaciRows(),
-      includeInReport: false,
-      pageOrientation: "landscape",
-    },
   ],
   EXSE: [
     {
@@ -3229,11 +3219,34 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
   ],
 });
 
+const CISTA_NATIVE_FORMULA_SHEET_BLUEPRINTS = Object.freeze({
+  EXEI: [
+    {
+      id: "exei-cista-expodaci",
+      label: "ExPodaci - sifrarnici za ExEi formule",
+      summary: "Referentne liste iz VBA gumba: zastitni uredaji, Ex motori, Ex-e i Ex-d bimetali",
+      sourceSheet: "ExPodaci",
+      columns: EXEI_EXPODACI_COLUMNS,
+      rows: makeExeiExPodaciRows(),
+      formulaOnly: true,
+      includeInReport: false,
+      pageOrientation: "landscape",
+    },
+  ],
+});
+
 function getCistaNativeTableSpecsForService(serviceCode = "") {
   const blueprints = CISTA_NATIVE_TABLE_BLUEPRINTS[normalizeCode(serviceCode)];
   return Array.isArray(blueprints) && blueprints.length
     ? blueprints.map((blueprint) => cistaTableSpec(blueprint))
     : null;
+}
+
+function getCistaNativeFormulaSheetSpecsForService(serviceCode = "") {
+  const blueprints = CISTA_NATIVE_FORMULA_SHEET_BLUEPRINTS[normalizeCode(serviceCode)];
+  return Array.isArray(blueprints) && blueprints.length
+    ? blueprints.map((blueprint) => cistaTableSpec(blueprint))
+    : [];
 }
 
 function normalizeDocumentationOptions(options = []) {
@@ -3298,6 +3311,7 @@ function createNativeReportPreset({
   checklists = [],
   measurementAssessments = [],
   tables = [],
+  formulaSheets = [],
   projectDocumentation = "",
 } = {}) {
   const cleanCode = normalizeCode(serviceCode);
@@ -3321,6 +3335,7 @@ function createNativeReportPreset({
     checklists,
     measurementAssessments,
     tables,
+    formulaSheets,
   });
 }
 
@@ -4282,6 +4297,33 @@ export function createDocumentationMeasurementTablesForService(serviceCode = "")
   }));
 }
 
+export function createDocumentationFormulaSheetsForService(serviceCode = "") {
+  const preset = getDocumentationNativeReportPreset(serviceCode);
+  const nativeFormulaSheets = getCistaNativeFormulaSheetSpecsForService(preset.serviceCode);
+  const formulaSheets = nativeFormulaSheets.length ? nativeFormulaSheets : (preset.formulaSheets || []);
+  return formulaSheets.map((table) => ({
+    id: table.id,
+    key: table.key,
+    tokenKey: table.tokenKey,
+    label: table.label,
+    summary: table.summary,
+    sourceSheet: table.sourceSheet || table.sheetName || table.label || "",
+    formulaOnly: true,
+    includeInReport: false,
+    pageOrientation: table.pageOrientation === "landscape" ? "landscape" : "portrait",
+    sheet: {
+      columns: table.columns.map((column) => ({ ...column })),
+      rows: table.rows.map((row, index) => ({
+        id: row.id || `formula-row-${index + 1}`,
+        cells: { ...(row.cells || {}) },
+        formats: { ...(row.formats || {}) },
+      })),
+      merges: Array.isArray(table.merges) ? table.merges.map((merge) => ({ ...merge })) : [],
+      headerRows: Array.isArray(table.headerRows) ? [...table.headerRows] : [],
+    },
+  }));
+}
+
 export function createDocumentationChecklistsForService(serviceCode = "") {
   const preset = getDocumentationNativeReportPreset(serviceCode);
   return (preset.checklists || []).map((checklist) => ({
@@ -4488,6 +4530,7 @@ export function createDocumentationReportModelDefaults(serviceCode = "") {
     checklists: createDocumentationChecklistsForService(preset.serviceCode),
     measurementAssessments: createDocumentationMeasurementAssessmentsForService(preset.serviceCode),
     measurementTables: createDocumentationMeasurementTablesForService(preset.serviceCode),
+    formulaSheets: createDocumentationFormulaSheetsForService(preset.serviceCode),
   };
 }
 
@@ -4515,5 +4558,6 @@ export function getDocumentationNativeTemplateSeedPresets() {
     checklists: createDocumentationChecklistsForService(preset.serviceCode),
     measurementAssessments: createDocumentationMeasurementAssessmentsForService(preset.serviceCode),
     measurementTables: createDocumentationMeasurementTablesForService(preset.serviceCode),
+    formulaSheets: createDocumentationFormulaSheetsForService(preset.serviceCode),
   }));
 }

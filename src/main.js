@@ -139,6 +139,7 @@ import {
 } from "./measurementFormatting.js";
 import {
   createDocumentationGridlineRowsForService,
+  createDocumentationFormulaSheetsForService,
   createDocumentationMeasurementTablesForService,
   createDocumentationReportModelDefaults,
   getDocumentationNativeReportPreset,
@@ -45534,6 +45535,18 @@ function getDocumentTemplateMeasurementFieldAliases(field = {}, fieldIndex = 0, 
   ].filter(Boolean);
 }
 
+function getDocumentTemplateFormulaSheetAliases(formulaSheet = {}) {
+  return [
+    formulaSheet.id,
+    formulaSheet.key,
+    formulaSheet.tokenKey,
+    formulaSheet.label,
+    formulaSheet.summary,
+    formulaSheet.sourceSheet,
+    formulaSheet.sheetName,
+  ].filter(Boolean);
+}
+
 function buildCurrentMeasurementSheetFormulaSnapshot() {
   return {
     columns: state.measurementSheet.columns,
@@ -45545,6 +45558,7 @@ function buildCurrentMeasurementSheetFormulaSnapshot() {
 
 function buildDocumentTemplateMeasurementFormulaContext({
   fields = documentTemplateFieldDrafts,
+  formulaSheets = [],
   currentFieldId = "",
   currentSheet = null,
   workOrderId = "",
@@ -45591,6 +45605,26 @@ function buildDocumentTemplateMeasurementFormulaContext({
     excelIndex += 1;
   });
 
+  (Array.isArray(formulaSheets) ? formulaSheets : []).forEach((formulaSheet, formulaIndex) => {
+    const sheet = normalizeWorkOrderMeasurementSheet(formulaSheet?.sheet);
+    if (!sheet?.columns?.length) {
+      return;
+    }
+    const key = String(formulaSheet?.key || formulaSheet?.id || formulaSheet?.sourceSheet || `formula-sheet-${formulaIndex + 1}`).trim()
+      || `formula-sheet-${formulaIndex + 1}`;
+    const entry = {
+      key,
+      fieldId: "",
+      field: { ...formulaSheet, formulaOnly: true, includeInReport: false },
+      sheet,
+      index: excelIndex + formulaIndex,
+      formulaOnly: true,
+    };
+    entries.push(entry);
+    getDocumentTemplateFormulaSheetAliases(formulaSheet)
+      .forEach((alias) => addMeasurementFormulaSheetAlias(lookup, alias, entry));
+  });
+
   if (!currentEntry && currentSheet?.columns?.length) {
     currentEntry = {
       key: "current",
@@ -45627,8 +45661,13 @@ function buildActiveMeasurementSheetFormulaContext(currentSheet = buildCurrentMe
     });
   }
 
+  const activeTemplate = (state.documentTemplates ?? []).find((item) => (
+    String(item.id) === String(state.activeDocumentTemplateId || documentTemplateIdInput?.value || "")
+  )) ?? null;
+
   return buildDocumentTemplateMeasurementFormulaContext({
     fields: documentTemplateFieldDrafts,
+    formulaSheets: activeTemplate?.formulaSheets || [],
     currentFieldId: state.measurementSheet.ownerFieldId,
     currentSheet,
     workOrderId: ownerKind === "document_template_runtime_field"
@@ -58580,6 +58619,7 @@ function createDefaultDocumentationSprModel() {
     checklists: reportDefaults.checklists || [],
     measurementAssessments: reportDefaults.measurementAssessments || [],
     measurementTables: reportDefaults.measurementTables,
+    formulaSheets: reportDefaults.formulaSheets || [],
     gridlineModel: buildDocumentationSprGridlineModelFromRows(createDocumentationGridlineRowsForService("SPR")),
   };
 }
@@ -58798,6 +58838,60 @@ function cloneDocumentationSprMeasurementTable(table = {}, index = 0) {
   };
 }
 
+function isDocumentationSprFormulaSheetEntry(entry = {}) {
+  const sourceSheet = normalizeLooseName(entry?.sourceSheet || entry?.sheetName || "");
+  const identity = normalizeLooseName([
+    entry?.id,
+    entry?.key,
+    entry?.tokenKey,
+    entry?.label,
+    entry?.summary,
+    sourceSheet,
+  ].filter(Boolean).join(" "));
+  return entry?.formulaOnly === true
+    || sourceSheet === "expodaci"
+    || identity.includes("expodaci");
+}
+
+function cloneDocumentationSprFormulaSheet(entry = {}, index = 0) {
+  const cloned = cloneDocumentationSprMeasurementTable({
+    ...entry,
+    formulaOnly: true,
+    includeInReport: false,
+    enabled: true,
+  }, index);
+  return {
+    ...cloned,
+    formulaOnly: true,
+    includeInReport: false,
+    enabled: true,
+  };
+}
+
+function normalizeDocumentationSprFormulaSheets(value = [], model = {}) {
+  const serviceCode = getDocumentationSprServiceCode(model);
+  const defaults = createDocumentationFormulaSheetsForService(serviceCode);
+  const explicit = Array.isArray(value) ? value : [];
+  const legacyFromMeasurementTables = Array.isArray(model?.measurementTables)
+    ? model.measurementTables.filter(isDocumentationSprFormulaSheetEntry)
+    : [];
+  const source = explicit.length || legacyFromMeasurementTables.length
+    ? [...explicit, ...legacyFromMeasurementTables]
+    : defaults;
+  const seen = new Set();
+  return source
+    .map((entry, index) => cloneDocumentationSprFormulaSheet(entry, index))
+    .filter((entry) => entry.sheet?.columns?.length)
+    .filter((entry) => {
+      const key = normalizeMeasurementSheetFormulaLookupKey(entry.sourceSheet || entry.key || entry.id || entry.label);
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+}
+
 function getDocumentationSprNativeEntryKeys(entry = {}) {
   return [
     entry.id,
@@ -58862,7 +58956,9 @@ function normalizeDocumentationSprMeasurementTables(value = [], model = {}) {
       findDocumentationSprNativeEntryByDefault(rawSource, defaultTable),
     ))
     : (rawSource.length > 0 ? rawSource : defaults);
-  return source.map((table, index) => cloneDocumentationSprMeasurementTable(table, index));
+  return source
+    .filter((table) => !isDocumentationSprFormulaSheetEntry(table))
+    .map((table, index) => cloneDocumentationSprMeasurementTable(table, index));
 }
 
 function cloneDocumentationSprChecklist(checklist = {}, index = 0) {
@@ -59013,6 +59109,7 @@ function normalizeDocumentationSprModel(value) {
     checklists: normalizeDocumentationSprChecklists(source.checklists, { ...fallback, ...source }),
     measurementAssessments: normalizeDocumentationSprMeasurementAssessments(source.measurementAssessments, { ...fallback, ...source }),
     measurementTables: normalizeDocumentationSprMeasurementTables(source.measurementTables, { ...fallback, ...source }),
+    formulaSheets: normalizeDocumentationSprFormulaSheets(source.formulaSheets, { ...fallback, ...source }),
     previewHidden: Boolean(source.previewHidden),
     headerImageDataUrl: String(source.headerImageDataUrl || "").trim(),
     headerImageName: String(source.headerImageName || "").trim(),
@@ -59459,6 +59556,7 @@ function buildDocumentationNativeTemplateModel(preset = {}) {
     checklists: reportDefaults.checklists || [],
     measurementAssessments: reportDefaults.measurementAssessments || [],
     measurementTables: reportDefaults.measurementTables,
+    formulaSheets: reportDefaults.formulaSheets || [],
     gridlineModel: buildDocumentationSprGridlineModelFromRows(createDocumentationGridlineRowsForService(reportDefaults.serviceCode)),
     recordNumber: `25-1287-${preset.serviceCode || "SPR"}`,
   };
@@ -64505,7 +64603,7 @@ function getDocumentationSprMeasurementTableFormulaKey(table = {}) {
   ].filter(Boolean).join("|"));
 }
 
-function buildDocumentationSprMeasurementTableFormulaContext(tables = [], currentTable = null, currentSheet = null) {
+function buildDocumentationSprMeasurementTableFormulaContext(tables = [], currentTable = null, currentSheet = null, formulaSheets = []) {
   const lookup = new Map();
   const entries = [];
   const currentKey = getDocumentationSprMeasurementTableFormulaKey(currentTable);
@@ -64536,6 +64634,25 @@ function buildDocumentationSprMeasurementTableFormulaContext(tables = [], curren
       .forEach((alias) => addMeasurementFormulaSheetAlias(lookup, alias, entry));
   });
 
+  (Array.isArray(formulaSheets) ? formulaSheets : []).forEach((formulaSheet, formulaIndex) => {
+    const normalizedFormulaSheet = cloneDocumentationSprFormulaSheet(formulaSheet, formulaIndex);
+    const sheet = normalizedFormulaSheet.sheet;
+    if (!sheet?.columns?.length) {
+      return;
+    }
+    const entry = {
+      key: String(normalizedFormulaSheet.key || normalizedFormulaSheet.id || normalizedFormulaSheet.sourceSheet || `formula-sheet-${formulaIndex + 1}`).trim()
+        || `formula-sheet-${formulaIndex + 1}`,
+      table: normalizedFormulaSheet,
+      sheet,
+      index: (Array.isArray(tables) ? tables.length : 0) + formulaIndex,
+      formulaOnly: true,
+    };
+    entries.push(entry);
+    getDocumentationSprMeasurementTableFormulaAliases(normalizedFormulaSheet, entry.index)
+      .forEach((alias) => addMeasurementFormulaSheetAlias(lookup, alias, entry));
+  });
+
   if (!currentEntry && currentSheet?.columns?.length) {
     currentEntry = {
       key: "current",
@@ -64554,11 +64671,11 @@ function buildDocumentationSprMeasurementTableFormulaContext(tables = [], curren
   };
 }
 
-function attachDocumentationSprMeasurementTableFormulaContexts(tables = []) {
+function attachDocumentationSprMeasurementTableFormulaContexts(tables = [], formulaSheets = []) {
   const baseTables = (Array.isArray(tables) ? tables : []).map((table) => ({ ...table }));
   return baseTables.map((table) => ({
     ...table,
-    formulaContext: buildDocumentationSprMeasurementTableFormulaContext(baseTables, table, table.sheet),
+    formulaContext: buildDocumentationSprMeasurementTableFormulaContext(baseTables, table, table.sheet, formulaSheets),
   }));
 }
 
@@ -64573,7 +64690,7 @@ function getDocumentationSprMeasurementTablesForModel(model = documentationSprMo
     return [];
   }
   if (isDocumentationSprNativeMeasurementMode(normalized)) {
-    return attachDocumentationSprMeasurementTableFormulaContexts(tables);
+    return attachDocumentationSprMeasurementTableFormulaContexts(tables, normalized.formulaSheets);
   }
   const primarySheet = buildDocumentationSprMeasurementSheetFromGridlineModel(normalized, tables[0]);
   const primaryTitle = String(normalized.gridlineModel?.title || "").trim();
@@ -64586,7 +64703,7 @@ function getDocumentationSprMeasurementTablesForModel(model = documentationSprMo
       sheet: primarySheet,
     },
     ...tables.slice(1),
-  ]);
+  ], normalized.formulaSheets);
 }
 
 function getDocumentationSprMeasurementTableRowsForRender(table = {}) {
@@ -75468,6 +75585,9 @@ function buildDocumentTemplateDraft() {
     description: documentTemplateDescriptionInput?.value || "",
     selectedLegalFrameworkIds: getSelectedDocumentTemplateLegalFrameworkIds(),
     customFields,
+    formulaSheets: Array.isArray(activeTemplate?.formulaSheets)
+      ? activeTemplate.formulaSheets.map((entry) => ({ ...entry }))
+      : [],
     equipmentItems,
     sections,
     referenceDocument: documentTemplateReferenceDraft ? { ...documentTemplateReferenceDraft } : null,
@@ -80558,6 +80678,7 @@ function buildMeasurementSheetPreviewTable(field = {}, context = {}) {
 
   const formulaContext = buildDocumentTemplateMeasurementFormulaContext({
     fields: context.template?.customFields || documentTemplateFieldDrafts,
+    formulaSheets: context.template?.formulaSheets || [],
     currentFieldId: field.id,
     currentSheet: snapshot,
     workOrderId: runtimeWorkOrderId,

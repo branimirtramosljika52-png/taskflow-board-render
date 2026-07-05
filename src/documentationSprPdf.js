@@ -1,6 +1,7 @@
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, PDFName, PDFNumber, PDFString, rgb } from "pdf-lib";
 import {
+  createDocumentationFormulaSheetsForService,
   createDocumentationMeasurementTablesForService,
   getDocumentationNativeReportPreset,
 } from "./documentationNativePresets.js";
@@ -1334,7 +1335,51 @@ function getPdfMeasurementFormulaAliases(table = {}, index = 0) {
   ].filter(Boolean);
 }
 
-function buildPdfMeasurementFormulaContext(tables = [], currentTable = null) {
+function isPdfFormulaSheetEntry(entry = {}) {
+  const sourceSheet = clean(entry?.sourceSheet || entry?.sheetName).toLowerCase();
+  const identity = [
+    entry?.id,
+    entry?.key,
+    entry?.tokenKey,
+    entry?.label,
+    entry?.summary,
+    sourceSheet,
+  ].map((value) => clean(value).toLowerCase()).filter(Boolean).join(" ");
+  return entry?.formulaOnly === true || sourceSheet === "expodaci" || identity.includes("expodaci");
+}
+
+function normalizePdfFormulaSheets(model = {}) {
+  const explicit = Array.isArray(model?.formulaSheets) ? model.formulaSheets : [];
+  const legacy = Array.isArray(model?.measurementTables)
+    ? model.measurementTables.filter(isPdfFormulaSheetEntry)
+    : [];
+  const defaults = createDocumentationFormulaSheetsForService(getServiceCode(model));
+  const source = explicit.length || legacy.length ? [...explicit, ...legacy] : defaults;
+  const seen = new Set();
+  return source
+    .map((entry, index) => ({
+      id: clean(entry?.id || entry?.key || entry?.sourceSheet || `formula-sheet-${index + 1}`),
+      key: clean(entry?.key || entry?.id || entry?.sourceSheet || `formula-sheet-${index + 1}`),
+      label: clean(entry?.label || entry?.summary || entry?.sourceSheet || `Formula sheet ${index + 1}`),
+      summary: clean(entry?.summary || entry?.label || ""),
+      sourceSheet: clean(entry?.sourceSheet || entry?.sheetName || entry?.label || ""),
+      includeInReport: false,
+      formulaOnly: true,
+      pageOrientation: getPdfMeasurementOrientation(entry),
+      sheet: normalizePdfMeasurementSheet(entry?.sheet),
+    }))
+    .filter((entry) => entry.sheet.columns.length)
+    .filter((entry) => {
+      const key = normalizePdfFormulaLookupKey(entry.sourceSheet || entry.key || entry.id || entry.label);
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+}
+
+function buildPdfMeasurementFormulaContext(tables = [], currentTable = null, formulaSheets = []) {
   const lookup = new Map();
   const entries = [];
   let current = null;
@@ -1369,14 +1414,30 @@ function buildPdfMeasurementFormulaContext(tables = [], currentTable = null) {
     getPdfMeasurementFormulaAliases(table, index).forEach((alias) => addPdfFormulaSheetAlias(lookup, alias, entry));
   });
 
+  (Array.isArray(formulaSheets) ? formulaSheets : []).forEach((table, index) => {
+    const sheet = normalizePdfMeasurementSheet(table.sheet);
+    if (!sheet.columns.length) {
+      return;
+    }
+    const entry = {
+      key: clean(table.key || table.id || table.sourceSheet || `formula-sheet-${index + 1}`),
+      table: { ...table, formulaOnly: true, includeInReport: false },
+      sheet,
+      index: entries.length,
+      formulaOnly: true,
+    };
+    entries.push(entry);
+    getPdfMeasurementFormulaAliases(table, entry.index).forEach((alias) => addPdfFormulaSheetAlias(lookup, alias, entry));
+  });
+
   return { entries, lookup, current };
 }
 
-function attachPdfMeasurementFormulaContexts(tables = []) {
+function attachPdfMeasurementFormulaContexts(tables = [], formulaSheets = []) {
   const baseTables = (Array.isArray(tables) ? tables : []).map((table) => ({ ...table }));
   return baseTables.map((table) => ({
     ...table,
-    formulaContext: buildPdfMeasurementFormulaContext(baseTables, table),
+    formulaContext: buildPdfMeasurementFormulaContext(baseTables, table, formulaSheets),
   }));
 }
 
@@ -1525,7 +1586,10 @@ function normalizePdfMeasurementTables(model = {}, legacyRows = []) {
   const sourceTables = Array.isArray(model.measurementTables) && model.measurementTables.length > 0
     ? model.measurementTables
     : createDocumentationMeasurementTablesForService(getServiceCode(model));
-  const normalizedTables = sourceTables.filter((table) => table?.enabled !== false).map((table, index) => {
+  const normalizedTables = sourceTables
+    .filter((table) => table?.enabled !== false)
+    .filter((table) => !isPdfFormulaSheetEntry(table))
+    .map((table, index) => {
     const base = table && typeof table === "object" ? table : {};
     const withLegacyRows = index === 0 && Array.isArray(legacyRows) && legacyRows.length > 0
       ? { ...base, sheet: mapLegacyRowsToSheet(legacyRows, base) }
@@ -1544,7 +1608,7 @@ function normalizePdfMeasurementTables(model = {}, legacyRows = []) {
       sheet: normalizePdfMeasurementSheet(withLegacyRows.sheet),
     };
   });
-  return attachPdfMeasurementFormulaContexts(normalizedTables);
+  return attachPdfMeasurementFormulaContexts(normalizedTables, normalizePdfFormulaSheets(model));
 }
 
 function getPdfMeasurementTableRows(table = {}) {

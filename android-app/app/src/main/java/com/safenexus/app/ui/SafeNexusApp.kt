@@ -32788,7 +32788,7 @@ private fun buildMobileMeasurementFormulaContext(
     currentSheet: WorkOrderMeasurementSheet,
     measurementSheets: Map<String, WorkOrderMeasurementSheet>,
 ): MobileMeasurementFormulaContext {
-    val entries = template.measurementTables.mapIndexedNotNull { index, table ->
+    val measurementEntries = template.measurementTables.mapIndexedNotNull { index, table ->
         val stateKey = measurementSheetStateKey(template, table)
         val sheet = if (table.key == currentTable.key && table.id == currentTable.id) {
             currentSheet
@@ -32806,6 +32806,20 @@ private fun buildMobileMeasurementFormulaContext(
             )
         }
     }
+    val formulaEntries = template.formulaSheets.mapIndexedNotNull { formulaIndex, table ->
+        val sheet = table.sheet
+        if (sheet.columns.isEmpty()) {
+            null
+        } else {
+            MobileMeasurementFormulaEntry(
+                key = table.key.ifBlank { table.id.ifBlank { table.sourceSheet.ifBlank { "formula-sheet-${formulaIndex + 1}" } } },
+                table = table,
+                sheet = sheet,
+                index = template.measurementTables.size + formulaIndex,
+            )
+        }
+    }
+    val entries = measurementEntries + formulaEntries
     val lookup = mutableMapOf<String, MobileMeasurementFormulaEntry>()
     entries.forEach { entry ->
         entry.table?.let { table ->

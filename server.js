@@ -103,6 +103,7 @@ import {
 import {
   createDocumentationNativeAiFieldsForService,
   createDocumentationNativeAiMeasurementColumnsForService,
+  createDocumentationFormulaSheetsForService,
   createDocumentationMeasurementTablesForService,
   createDocumentationReportModelDefaults,
   getDocumentationNativeTemplateSeedPresets,
@@ -114,7 +115,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.334.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.335.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -21841,6 +21842,28 @@ function buildMobileMeasurementSheetFormulaEntries(template = {}, fieldSheets = 
       ].map(normalizeInputValue).filter(Boolean),
     });
   });
+  (Array.isArray(template?.formulaSheets) ? template.formulaSheets : []).forEach((formulaSheet, index) => {
+    const sheet = normalizeWorkOrderMeasurementSheet(formulaSheet?.sheet);
+    if (!sheet?.columns?.length) {
+      return;
+    }
+    const recordKey = normalizeInputValue(formulaSheet?.key || formulaSheet?.id || formulaSheet?.sourceSheet || `formula-sheet-${index + 1}`);
+    entries.push({
+      key: recordKey || `formula-sheet-${index + 1}`,
+      sheet,
+      aliases: [
+        recordKey,
+        formulaSheet?.id,
+        formulaSheet?.key,
+        formulaSheet?.tokenKey,
+        formulaSheet?.label,
+        formulaSheet?.summary,
+        formulaSheet?.sourceSheet,
+        formulaSheet?.sheetName,
+      ].map(normalizeInputValue).filter(Boolean),
+      formulaOnly: true,
+    });
+  });
   const lookup = new Map();
   entries.forEach((entry) => {
     entry.aliases.forEach((alias) => {
@@ -25258,6 +25281,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     return null;
   }
   const measurementTables = createDocumentationMeasurementTablesForService(preset.serviceCode);
+  const formulaSheets = createDocumentationFormulaSheetsForService(preset.serviceCode);
   const reportDefaults = createDocumentationReportModelDefaults(preset.serviceCode);
   const technicalDataFields = Array.isArray(reportDefaults.technicalDataFields)
     ? reportDefaults.technicalDataFields
@@ -25667,6 +25691,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     checklists,
     measurementAssessments,
     measurementTables,
+    formulaSheets,
     aiFields: createDocumentationNativeAiFieldsForService(preset.serviceCode),
     aiMeasurementColumns: createDocumentationNativeAiMeasurementColumnsForService(preset.serviceCode),
     technicalDataFields,
@@ -27600,6 +27625,9 @@ function buildMobileDocumentationSprModel({
     checklists: buildMobileDocumentationChecklists(template, reportDefaults, common),
     measurementAssessments: buildMobileDocumentationMeasurementAssessments(template, reportDefaults, common),
     measurementTables: buildMobileDocumentationMeasurementTables(entry, template, common, serviceCode),
+    formulaSheets: Array.isArray(template.formulaSheets) && template.formulaSheets.length
+      ? template.formulaSheets
+      : (Array.isArray(reportDefaults.formulaSheets) ? reportDefaults.formulaSheets : createDocumentationFormulaSheetsForService(serviceCode)),
   };
 }
 
