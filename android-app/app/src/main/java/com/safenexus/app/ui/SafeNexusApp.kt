@@ -12742,10 +12742,20 @@ private fun ManualWorkEquipmentInlineEditor(
                 )
             }
                 .onSuccess { files ->
-                    val distributedEquipment = distributeRoImagesAcrossEquipmentParts(equipment, files)
-                    onEquipmentChange(distributedEquipment)
+                    val nextEquipment = if (isStrojeviTemplate) {
+                        equipment.copy(
+                            attachments = equipment.attachments + withDefaultRoImageRoles(equipment.attachments, files),
+                            hasParts = false,
+                            parts = emptyList(),
+                        )
+                    } else {
+                        distributeRoImagesAcrossEquipmentParts(equipment, files)
+                    }
+                    onEquipmentChange(nextEquipment)
                     attachmentMessage = if (files.isEmpty()) {
                         "Nije dodana nijedna slika."
+                    } else if (isStrojeviTemplate) {
+                        "${files.size} slika dodano za STROJEVI zapisnik."
                     } else if ((equipment.hasParts || equipment.parts.isNotEmpty()) && files.count { it.isRoImageAttachment() } > 1) {
                         "${files.size} slika raspoređeno: prva kao glavna, ostale po dijelovima u parovima."
                     } else {
@@ -12786,6 +12796,12 @@ private fun ManualWorkEquipmentInlineEditor(
                     attachmentMessage = error.message ?: "Ne mogu učitati PDF priloge."
                 }
             documentsLoading = false
+        }
+    }
+
+    LaunchedEffect(isStrojeviTemplate, equipment.hasParts, equipment.parts.size) {
+        if (isStrojeviTemplate && (equipment.hasParts || equipment.parts.isNotEmpty())) {
+            onEquipmentChange(equipment.copy(hasParts = false, parts = emptyList()))
         }
     }
 
@@ -13205,30 +13221,52 @@ private fun ManualWorkEquipmentInlineEditor(
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.primary,
                 )
-                AssistChip(
-                    onClick = {
-                        val nextParts = equipment.parts.ifEmpty { listOf(defaultWorkEquipmentPart(1)) }
-                        onEquipmentChange(equipment.copy(hasParts = true, parts = nextParts))
-                    },
+                if (!isStrojeviTemplate) {
+                    AssistChip(
+                        onClick = {
+                            val nextParts = equipment.parts.ifEmpty { listOf(defaultWorkEquipmentPart(1)) }
+                            onEquipmentChange(equipment.copy(hasParts = true, parts = nextParts))
+                        },
+                        enabled = enabled,
+                        leadingIcon = {
+                            Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        },
+                        label = { Text(if (equipment.parts.isEmpty()) "Dio" else "${equipment.parts.size} dijelova") },
+                    )
+                }
+            }
+            if (!isStrojeviTemplate) {
+                WorkEquipmentPartsCompactEditor(
+                    equipment = equipment,
                     enabled = enabled,
-                    leadingIcon = {
-                        Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    },
-                    label = { Text(if (equipment.parts.isEmpty()) "Dio" else "${equipment.parts.size} dijelova") },
+                    onEquipmentChange = onEquipmentChange,
+                    onRecognizeImages = onRecognizeImages,
                 )
             }
-            WorkEquipmentPartsCompactEditor(
-                equipment = equipment,
-                enabled = enabled,
-                onEquipmentChange = onEquipmentChange,
-                onRecognizeImages = onRecognizeImages,
-            )
             OutlinedTextField(equipment.name, { onEquipmentChange(equipment.copy(name = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text(if (isStrojeviTemplate) "Naziv strojeva/uređaja" else "Naziv") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
             OutlinedTextField(equipment.manufacturer, { onEquipmentChange(equipment.copy(manufacturer = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Proizvođač") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
             OutlinedTextField(equipment.model, { onEquipmentChange(equipment.copy(model = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text(if (isStrojeviTemplate) "Tip" else "Model / tip") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
             OutlinedTextField(equipment.serialNumber, { onEquipmentChange(equipment.copy(serialNumber = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Serijski broj") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
             OutlinedTextField(equipment.inventoryNumber, { onEquipmentChange(equipment.copy(inventoryNumber = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text(if (isStrojeviTemplate) "Inv.br." else "Inventarski broj") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
-            OutlinedTextField(equipment.note, { onEquipmentChange(equipment.copy(note = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Napomena") }, minLines = 2, maxLines = 4, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(
+                equipment.note,
+                {
+                    onEquipmentChange(
+                        equipment.copy(
+                            note = it,
+                            hasParts = if (isStrojeviTemplate) false else equipment.hasParts,
+                            parts = if (isStrojeviTemplate) emptyList() else equipment.parts,
+                        ),
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(if (isStrojeviTemplate) "Dijelovi" else "Napomena") },
+                placeholder = { if (isStrojeviTemplate) Text("Po potrebi upiši dijelove stroja ili sklopa.") },
+                minLines = if (isStrojeviTemplate) 3 else 2,
+                maxLines = if (isStrojeviTemplate) 7 else 4,
+                enabled = enabled,
+                shape = RoundedCornerShape(14.dp),
+            )
 
             ManualWorkEquipmentSectionTitle("Opisna polja")
             OutlinedTextField(equipment.technicalData, { onEquipmentChange(equipment.copy(technicalData = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Tehnički podaci") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
@@ -14148,7 +14186,25 @@ private fun ManualStrojeviSequentialInspectionEditor(
                             Text(
                                 "Stavka ${index + 1}",
                                 modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
+                            )
+                            StrojeviStatusIconButton(
+                                selected = item.meetsConditions,
+                                icon = Icons.Rounded.CheckCircle,
+                                tint = Color(0xFF059669),
+                                contentDescription = "Zadovoljava",
+                                onClick = { updateItem(index, item.copy(meetsConditions = true)) },
+                                enabled = enabled,
+                            )
+                            StrojeviStatusIconButton(
+                                selected = !item.meetsConditions,
+                                icon = Icons.Rounded.Close,
+                                tint = Color(0xFFDC2626),
+                                contentDescription = "Ne zadovoljava",
+                                onClick = { updateItem(index, item.copy(meetsConditions = false)) },
+                                enabled = enabled,
                             )
                             IconButton(
                                 onClick = { onItemsChange(items.filterIndexed { itemIndex, _ -> itemIndex != index }) },
@@ -14164,7 +14220,7 @@ private fun ManualStrojeviSequentialInspectionEditor(
                                 updateItem(index, item.copy(label = value.take(RO_ASSESSMENT_NOTE_MAX_LENGTH)))
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Naziv stavke") },
+                            label = { Text("Naziv") },
                             placeholder = { Text("Npr. Zaštita od pokretnih dijelova") },
                             minLines = 1,
                             maxLines = 3,
@@ -14197,26 +14253,6 @@ private fun ManualStrojeviSequentialInspectionEditor(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f),
                         )
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(
-                                selected = item.meetsConditions,
-                                onClick = { updateItem(index, item.copy(meetsConditions = true)) },
-                                enabled = enabled,
-                                label = { Text("Zadovoljava") },
-                                leadingIcon = if (item.meetsConditions) {
-                                    { Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                                } else null,
-                            )
-                            FilterChip(
-                                selected = !item.meetsConditions,
-                                onClick = { updateItem(index, item.copy(meetsConditions = false)) },
-                                enabled = enabled,
-                                label = { Text("Ne zadovoljava") },
-                                leadingIcon = if (!item.meetsConditions) {
-                                    { Icon(Icons.Rounded.ErrorOutline, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                                } else null,
-                            )
-                        }
                     }
                 }
             }
@@ -14231,6 +14267,32 @@ private fun ManualStrojeviSequentialInspectionEditor(
                 Text("Dodaj stavku")
             }
         }
+    }
+}
+
+@Composable
+private fun StrojeviStatusIconButton(
+    selected: Boolean,
+    icon: ImageVector,
+    tint: Color,
+    contentDescription: String,
+    onClick: () -> Unit,
+    enabled: Boolean,
+) {
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier
+            .size(42.dp)
+            .clip(CircleShape)
+            .background(if (selected) tint.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+    ) {
+        Icon(
+            icon,
+            contentDescription = contentDescription,
+            tint = if (selected) tint else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+            modifier = Modifier.size(22.dp),
+        )
     }
 }
 

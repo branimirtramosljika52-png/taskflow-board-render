@@ -114,7 +114,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.321.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.322.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -26848,6 +26848,7 @@ function getMobileStrojeviManualRecords(common = {}) {
         equipment.model,
         equipment.serialNumber,
         equipment.inventoryNumber,
+        equipment.note,
         equipment.technicalData,
         equipment.purposeDescription,
         equipment.workspacePosition,
@@ -27152,6 +27153,7 @@ function buildMobileStrojeviTechnicalDataText(common = {}) {
       normalizeInputValue(equipment.model) ? `Tip: ${normalizeInputValue(equipment.model)}` : "",
       normalizeInputValue(equipment.serialNumber) ? `Serijski broj: ${normalizeInputValue(equipment.serialNumber)}` : "",
       normalizeInputValue(equipment.inventoryNumber) ? `Inv.br.: ${normalizeInputValue(equipment.inventoryNumber)}` : "",
+      normalizeInputValue(equipment.note) ? `Dijelovi: ${normalizeInputValue(equipment.note)}` : "",
       normalizeInputValue(equipment.useAndMaintenance) ? `Dokumentacija: ${normalizeInputValue(equipment.useAndMaintenance)}` : "",
       normalizeInputValue(equipment.technicalData) ? `Tehnicki podaci: ${normalizeInputValue(equipment.technicalData)}` : "",
       normalizeInputValue(equipment.workingSubstancesAndRawMaterials) ? `Sirovine/radne tvari: ${normalizeInputValue(equipment.workingSubstancesAndRawMaterials)}` : "",
