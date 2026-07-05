@@ -25794,7 +25794,8 @@ private fun WorkOrderServiceOption.workOrderServiceFilterKey(): String {
         text.contains("osposob") ||
             text.contains("znr") ||
             text.contains("zastita") ||
-            text.contains("pozar") ||
+            text.contains("pocetno gasenje") ||
+            text.contains("gasenje pozara") ||
             text.contains("adr") ||
             text.contains("procjena rizika") ||
             code in setOf("zos", "pgp", "spztp", "adr", "znr", "pr") ||
@@ -26886,7 +26887,6 @@ private fun isDocumentationTrainingText(value: String): Boolean {
         normalized.contains("fire initial") ||
         normalized.contains("pocetno gasenje") ||
         normalized.contains("gasenje pozara") ||
-        normalized.contains("pozar") ||
         normalized.contains("zapaljivih tekucina") ||
         normalized.contains("adr")
 }
