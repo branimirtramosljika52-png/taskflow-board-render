@@ -415,6 +415,7 @@ data class WorkOrderDocumentationDraft(
     val templateFieldSheets: Map<String, Map<String, WorkOrderMeasurementSheet>> = emptyMap(),
     val includedMeasurementTableKeys: List<String> = emptyList(),
     val attachments: List<WorkOrderDocumentationAiFile> = emptyList(),
+    val templateAttachments: Map<String, List<WorkOrderDocumentationAiFile>> = emptyMap(),
     val additionalRecords: List<WorkOrderDocumentationAdditionalRecord> = emptyList(),
     val includeHandoverProtocol: Boolean = true,
 )
@@ -729,6 +730,7 @@ data class WorkOrderDocumentationDefaults(
     val templateFieldSheets: Map<String, Map<String, WorkOrderMeasurementSheet>> = emptyMap(),
     val includedMeasurementTableKeys: List<String> = emptyList(),
     val attachments: List<WorkOrderDocumentationAiFile> = emptyList(),
+    val templateAttachments: Map<String, List<WorkOrderDocumentationAiFile>> = emptyMap(),
 )
 
 data class WorkOrderDocumentationOption(

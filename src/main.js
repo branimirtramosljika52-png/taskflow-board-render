@@ -58364,6 +58364,7 @@ const DOCUMENTATION_SPR_TEMPLATE_LIBRARY_STORAGE_KEY = "safenexus.documentation-
 const DOCUMENTATION_SPR_GLOBAL_HEADER_STORAGE_KEY = "safenexus.documentation-workbench.spr.global-header.v1";
 const DOCUMENTATION_SPR_TEMPLATE_DEFAULT_ID = "spr-v1-0-0";
 const DOCUMENTATION_SPR_RECORD_ATTACHMENTS_KEY = "__mobileDocumentationAttachments";
+const DOCUMENTATION_SPR_RECORD_TEMPLATE_ATTACHMENTS_KEY = "__mobileDocumentationTemplateAttachments";
 const DOCUMENTATION_SPR_GRID_ROW_COUNT = 24;
 const DOCUMENTATION_SPR_GRID_COLUMN_COUNT = 6;
 const DOCUMENTATION_SPR_DATE_FIELDS = new Set(["inspectionDate", "issueDate", "validUntil"]);
@@ -65836,6 +65837,7 @@ function buildDocumentationSprBatchExportEntries() {
       serviceId: summary.entry.service?.serviceId || summary.entry.service?.id || model.serviceId || "",
       serviceCode: summary.serviceCode,
       serviceName: summary.serviceName,
+      templateId: summary.entry.templateId || "",
       recordNumber: summary.recordNumber,
       companyName: summary.companyName,
       inspectionPlace: summary.inspectionPlace,
@@ -66124,6 +66126,7 @@ function getDocumentationSprSingleExportEntry() {
     serviceCode: model.serviceCode || model.serviceBinding?.serviceCode || "",
     serviceName: model.serviceName || model.serviceBinding?.serviceName || "Zapisnik",
     serviceId: model.serviceId || model.serviceBinding?.serviceId || "",
+    templateId: model.templateId || getDocumentationSprTemplateById()?.id || "",
     recordNumber: model.recordNumber,
     companyName: model.companyName,
     inspectionPlace: model.inspectionPlace,
@@ -66264,12 +66267,18 @@ function buildDocumentationSprDocumentRecordPayload(exportEntry = {}) {
   const fieldValues = buildDocumentationSprRecordFieldValues(model);
   const measurementSheets = buildDocumentationSprMeasurementSheetsForRecord(model);
   const attachments = normalizeDocumentationSprAttachments(model.attachments);
+  const templateId = String(exportEntry.templateId || model.templateId || getDocumentationSprTemplateById()?.id || "").trim();
+  const templateAttachments = templateId && attachments.length > 0 ? { [templateId]: attachments } : {};
+  if (templateId && attachments.length > 0) {
+    fieldValues[DOCUMENTATION_SPR_RECORD_TEMPLATE_ATTACHMENTS_KEY] = templateAttachments;
+  }
   return {
     recordKind: "documentation_spr",
     workOrderNumber: model.workOrderNumber || exportEntry.workOrderNumber || workOrder.workOrderNumber || "",
     serviceId: model.serviceId || model.serviceBinding?.serviceId || exportEntry.serviceId || "",
     serviceCode: model.serviceCode || model.serviceBinding?.serviceCode || exportEntry.serviceCode || "SPR",
     serviceName: model.serviceName || model.serviceBinding?.serviceName || exportEntry.serviceName || "",
+    templateId,
     templateTitle: model.templateCode || exportEntry.serviceCode || "Zapisnik",
     documentType: "Zapisnik",
     companyId: String(workOrder.companyId || "").trim(),
@@ -66282,6 +66291,7 @@ function buildDocumentationSprDocumentRecordPayload(exportEntry = {}) {
     fieldValues,
     fieldSheets: measurementSheets,
     attachments,
+    templateAttachments,
   };
 }
 

@@ -114,7 +114,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.325.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.326.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -13176,6 +13176,7 @@ function normalizeGeneratedDocumentRecordDate(value = "") {
 
 const GENERATED_DOCUMENT_PERIODICS_TRACKED_DATES_KEY = "__PERIODICS_TRACKED_DATES";
 const MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY = "__mobileDocumentationAttachments";
+const MOBILE_DOCUMENTATION_RECORD_TEMPLATE_ATTACHMENTS_KEY = "__mobileDocumentationTemplateAttachments";
 
 function normalizeGeneratedDocumentExpirationDate(value = "") {
   const raw = String(value ?? "").trim();
@@ -13423,10 +13424,11 @@ function buildGeneratedDocumentTemplateRecordPayload({
   });
   expirationDate = periodicsPayload.expirationDate || expirationDate;
   fieldValues = periodicsPayload.fieldValues;
+  const resolvedTemplateId = normalizeInputValue(suppliedRecord.templateId || entry.templateId || template.id);
   const recordAttachments = normalizeMobileDocumentationAttachments(
     suppliedRecord.attachments
       || entry.attachments
-      || entry.mobileCommon?.attachments
+      || resolveMobileDocumentationAttachmentsForTemplate(entry.mobileCommon, resolvedTemplateId)
       || [],
   );
   if (recordAttachments.length > 0) {
@@ -13456,7 +13458,7 @@ function buildGeneratedDocumentTemplateRecordPayload({
       || workOrder.organizationId
       || "",
     ).trim(),
-    templateId: String(suppliedRecord.templateId || entry.templateId || template.id || "").trim(),
+    templateId: resolvedTemplateId,
     templateTitle: String(suppliedRecord.templateTitle || template.title || renderModel.title || template.documentType || "Zapisnik").trim(),
     documentType: String(suppliedRecord.documentType || template.documentType || renderModel.documentType || "Zapisnik").trim(),
     companyId: String(suppliedRecord.companyId || workOrder.companyId || "").trim(),
@@ -13643,17 +13645,29 @@ function buildWorkOrderDocumentRecordPayloadFromRequest(input = {}, workOrder = 
   const fieldValues = input.fieldValues && typeof input.fieldValues === "object" && !Array.isArray(input.fieldValues)
     ? { ...input.fieldValues }
     : {};
+  const templateAttachments = normalizeMobileDocumentationTemplateAttachments(
+    input.templateAttachments
+      || input.attachmentsByTemplate
+      || fieldValues[MOBILE_DOCUMENTATION_RECORD_TEMPLATE_ATTACHMENTS_KEY]
+      || {},
+  );
+  const scopedAttachments = getMobileDocumentationTemplateAttachments(templateAttachments, template.id, []);
   const recordAttachments = normalizeMobileDocumentationAttachments(
-    input.attachments
-      || fieldValues[MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY]
-      || input.documentAttachments
-      || [],
+    scopedAttachments.length > 0
+      ? scopedAttachments
+      : (
+        input.attachments
+        || fieldValues[MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY]
+        || input.documentAttachments
+        || []
+      ),
   );
   if (recordAttachments.length > 0) {
     fieldValues[MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY] = recordAttachments;
   } else {
     delete fieldValues[MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY];
   }
+  delete fieldValues[MOBILE_DOCUMENTATION_RECORD_TEMPLATE_ATTACHMENTS_KEY];
 
   const fieldSheets = expandDocumentationSprRecordFieldSheetsForTemplate(input.fieldSheets, template);
   const workOrderNumber = normalizeInputValue(input.workOrderNumber || workOrder.workOrderNumber || workOrder.number);
@@ -20770,6 +20784,38 @@ function normalizeMobileDocumentationAttachments(value = []) {
     .filter(Boolean);
 }
 
+function normalizeMobileDocumentationTemplateAttachments(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.fromEntries(Object.entries(value)
+    .map(([templateId, attachments]) => [
+      normalizeInputValue(templateId),
+      normalizeMobileDocumentationAttachments(attachments),
+    ])
+    .filter(([templateId, attachments]) => templateId && attachments.length > 0));
+}
+
+function getMobileDocumentationTemplateAttachments(templateAttachments = {}, templateId = "", fallback = []) {
+  const normalizedTemplateId = normalizeInputValue(templateId);
+  const scopedAttachments = normalizeMobileDocumentationTemplateAttachments(templateAttachments);
+  if (normalizedTemplateId && Array.isArray(scopedAttachments[normalizedTemplateId])) {
+    return scopedAttachments[normalizedTemplateId];
+  }
+  return normalizeMobileDocumentationAttachments(fallback);
+}
+
+function resolveMobileDocumentationAttachmentsForTemplate(common = {}, templateId = "") {
+  const scopedAttachments = normalizeMobileDocumentationTemplateAttachments(common.templateAttachments);
+  const hasScopedAttachments = Object.keys(scopedAttachments).length > 0;
+  return getMobileDocumentationTemplateAttachments(
+    scopedAttachments,
+    templateId,
+    hasScopedAttachments ? [] : common.attachments,
+  );
+}
+
 function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
   const source = input?.common && typeof input.common === "object" && !Array.isArray(input.common)
     ? input.common
@@ -20897,6 +20943,13 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
       .filter(Boolean)
     : null;
   const attachments = normalizeMobileDocumentationAttachments(source.attachments || source.documentAttachments || []);
+  const templateAttachments = normalizeMobileDocumentationTemplateAttachments(
+    source.templateAttachments
+      || source.attachmentsByTemplate
+      || source.documentAttachmentsByTemplate
+      || source.serviceAttachments
+      || {},
+  );
   return {
     objectId: normalizeInputValue(source.objectId || source.locationObjectId || source.selectedObjectId),
     objectName: normalizeInputValue(source.objectName || source.locationObjectName),
@@ -20969,6 +21022,7 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     templateFieldSheets,
     includedMeasurementTableKeys,
     attachments,
+    templateAttachments,
   };
 }
 
@@ -23952,8 +24006,16 @@ function buildMobileDocumentRecordWizardDefaults(record = null, workOrder = {}) 
       || record?.documentAttachments
       || [],
   );
+  const savedTemplateAttachments = normalizeMobileDocumentationTemplateAttachments(
+    fieldValues[MOBILE_DOCUMENTATION_RECORD_TEMPLATE_ATTACHMENTS_KEY],
+  );
+  const normalizedRecordTemplateId = normalizeInputValue(record?.templateId);
+  if (normalizedRecordTemplateId && savedAttachments.length > 0 && !savedTemplateAttachments[normalizedRecordTemplateId]) {
+    savedTemplateAttachments[normalizedRecordTemplateId] = savedAttachments;
+  }
   const {
     [MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY]: _savedDocumentationAttachments,
+    [MOBILE_DOCUMENTATION_RECORD_TEMPLATE_ATTACHMENTS_KEY]: _savedDocumentationTemplateAttachments,
     ...fieldValuesForDefaults
   } = fieldValues;
   const fieldSheets = record?.fieldSheets && typeof record.fieldSheets === "object" && !Array.isArray(record.fieldSheets)
@@ -24002,6 +24064,7 @@ function buildMobileDocumentRecordWizardDefaults(record = null, workOrder = {}) 
     fieldValues: fieldValuesForDefaults,
     fieldSheets,
     attachments: savedAttachments,
+    templateAttachments: savedTemplateAttachments,
   };
 }
 
@@ -24098,6 +24161,7 @@ function hasMobileDocumentWizardDefaults(defaults = {}) {
     "fieldSheets",
     "templateFieldSheets",
     "serviceValidityMonths",
+    "templateAttachments",
   ].some((key) => mobileDocumentationObjectEntries(defaults[key]).length > 0);
 }
 
@@ -24162,9 +24226,28 @@ function mergeMobileDocumentWizardDefaultsForTemplate(currentDefaults = null, re
     }
   });
 
-  if ((!Array.isArray(next.attachments) || next.attachments.length === 0) && Array.isArray(recordDefaults.attachments) && recordDefaults.attachments.length > 0) {
-    next.attachments = [...recordDefaults.attachments];
+  if (Array.isArray(recordDefaults.attachments) && recordDefaults.attachments.length > 0) {
+    if (templateId) {
+      next.templateAttachments = mergeMobileDocumentationObject(next.templateAttachments);
+      if (!Array.isArray(next.templateAttachments[templateId]) || next.templateAttachments[templateId].length === 0) {
+        next.templateAttachments[templateId] = [...recordDefaults.attachments];
+      }
+    } else if (!Array.isArray(next.attachments) || next.attachments.length === 0) {
+      next.attachments = [...recordDefaults.attachments];
+    }
   }
+
+  mobileDocumentationObjectEntries(recordDefaults.templateAttachments).forEach(([sourceTemplateId, attachments]) => {
+    const normalizedTemplateId = normalizeInputValue(sourceTemplateId);
+    const normalizedAttachments = normalizeMobileDocumentationAttachments(attachments);
+    if (!normalizedTemplateId || normalizedAttachments.length === 0) {
+      return;
+    }
+    next.templateAttachments = mergeMobileDocumentationObject(next.templateAttachments);
+    if (!Array.isArray(next.templateAttachments[normalizedTemplateId]) || next.templateAttachments[normalizedTemplateId].length === 0) {
+      next.templateAttachments[normalizedTemplateId] = normalizedAttachments;
+    }
+  });
 
   next.serviceValidityMonths = mergeMobileDocumentationObject(next.serviceValidityMonths, recordDefaults.serviceValidityMonths);
 
@@ -27324,7 +27407,7 @@ function buildMobileDocumentationSprModel({
     inspectorUserIds: common.electricalInspectorUserIds?.length ? common.electricalInspectorUserIds : common.inspectorUserIds,
     responsiblePersonUserId: common.electricalAuthorizationHolderUserId || common.authorizationHolderUserId,
     fieldSettings: {},
-    attachments: Array.isArray(common.attachments) ? common.attachments : [],
+    attachments: resolveMobileDocumentationAttachmentsForTemplate(common, template.id),
     checklists: buildMobileDocumentationChecklists(template, reportDefaults, common),
     measurementAssessments: buildMobileDocumentationMeasurementAssessments(template, reportDefaults, common),
     measurementTables: buildMobileDocumentationMeasurementTables(entry, template, common, serviceCode),
@@ -28208,6 +28291,7 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
       });
       const validityMonths = resolveMobileServiceValidityMonths(service, scopedSnapshot, common);
       const validUntilIso = addMonthsToMobileDate(common.inspectionDate, validityMonths);
+      const entryAttachments = resolveMobileDocumentationAttachmentsForTemplate(common, template.id);
       const trackedDates = validUntilIso
         ? [{
           fieldId: "WORK_ORDER_VALID_UNTIL",
@@ -28261,8 +28345,9 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
           expirationDate: validUntilIso,
           fieldValues,
           fieldSheets,
-          attachments: common.attachments,
+          attachments: entryAttachments,
         },
+        attachments: entryAttachments,
       });
     });
   };

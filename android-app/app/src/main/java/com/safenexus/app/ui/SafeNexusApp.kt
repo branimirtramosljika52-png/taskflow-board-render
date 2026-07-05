@@ -26771,6 +26771,7 @@ private const val DOCUMENTATION_EQUIPMENT_INSPECTION_FLOW_KEY = "__equipment_ins
 private const val DOCUMENTATION_PHYSICAL_FACTORS_FLOW_KEY = "__physical_factors__"
 private const val DOCUMENTATION_SUMMARY_FLOW_KEY = "__summary__"
 private const val DOCUMENTATION_EXTRA_FLOW_PREFIX = "__extra__"
+private const val DOCUMENTATION_COMMON_ATTACHMENT_KEY = "__common_attachments__"
 
 private fun DocumentationServiceFlowItem.serviceValidityKey(): String =
     listOf(serviceCode, serviceName, serviceKey)
@@ -28628,12 +28629,31 @@ private fun WorkOrderDocumentationWizardDialog(
             aiCameraLauncher.launch(outputUri)
         }
     }
-    var documentationAttachmentFiles by remember(workOrder.id, selectedObjectId, defaults.attachments) {
-        mutableStateOf(defaults.attachments)
+    val activeDocumentationAttachmentTemplateIds = remember(activeTemplates) {
+        documentationAttachmentTemplateIds(activeTemplates)
     }
+    val documentationAttachmentTargetKey = remember(activeDocumentationAttachmentTemplateIds) {
+        activeDocumentationAttachmentTemplateIds.firstOrNull().orEmpty().ifBlank { DOCUMENTATION_COMMON_ATTACHMENT_KEY }
+    }
+    val defaultDocumentationAttachmentsByTemplate = remember(context.templates, defaults.templateAttachments, defaults.attachments) {
+        defaultDocumentationAttachmentFilesByTemplate(context.templates, defaults)
+    }
+    var documentationAttachmentFilesByTemplate by remember(workOrder.id, selectedObjectId, defaultDocumentationAttachmentsByTemplate) {
+        mutableStateOf(defaultDocumentationAttachmentsByTemplate)
+    }
+    var pendingDocumentationAttachmentTemplateKey by remember(workOrder.id, selectedObjectId) {
+        mutableStateOf(documentationAttachmentTargetKey)
+    }
+    LaunchedEffect(documentationAttachmentTargetKey) {
+        pendingDocumentationAttachmentTemplateKey = documentationAttachmentTargetKey
+    }
+    val documentationAttachmentFiles = documentationAttachmentFilesByTemplate[documentationAttachmentTargetKey].orEmpty()
     var documentationAttachmentLoading by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
-    var documentationAttachmentMessage by remember(workOrder.id, selectedObjectId, defaults.attachments.size) {
-        mutableStateOf(if (defaults.attachments.isEmpty()) "" else "${defaults.attachments.size} prilog(a) iz prethodnog zapisnika.")
+    var documentationAttachmentMessage by remember(workOrder.id, selectedObjectId, defaultDocumentationAttachmentsByTemplate) {
+        mutableStateOf("")
+    }
+    val documentationAttachmentDisplayMessage = documentationAttachmentMessage.ifBlank {
+        if (documentationAttachmentFiles.isEmpty()) "" else "${documentationAttachmentFiles.size} prilog(a) iz prethodnog zapisnika."
     }
     var documentationAttachmentUploadSourceDialogOpen by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
     fun addDocumentationAttachments(
@@ -28646,20 +28666,24 @@ private fun WorkOrderDocumentationWizardDialog(
             documentationAttachmentLoading = true
             documentationAttachmentMessage = ""
             runCatching {
+                val targetKey = pendingDocumentationAttachmentTemplateKey.ifBlank { documentationAttachmentTargetKey }
+                val currentFiles = documentationAttachmentFilesByTemplate[targetKey].orEmpty()
                 withContext(Dispatchers.IO) {
                     buildWorkOrderDocumentationAttachmentFiles(
                         context = androidContext.applicationContext,
                         uris = uris,
-                        existingCount = documentationAttachmentFiles.size,
+                        existingCount = currentFiles.size,
                         mode = mode,
                     )
                 }
             }
                 .onSuccess { files ->
-                    val nextFiles = (documentationAttachmentFiles + files)
+                    val targetKey = pendingDocumentationAttachmentTemplateKey.ifBlank { documentationAttachmentTargetKey }
+                    val currentFiles = documentationAttachmentFilesByTemplate[targetKey].orEmpty()
+                    val nextFiles = (currentFiles + files)
                         .distinctBy { it.id }
                         .take(WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES)
-                    documentationAttachmentFiles = nextFiles
+                    documentationAttachmentFilesByTemplate = documentationAttachmentFilesByTemplate + (targetKey to nextFiles)
                     documentationAttachmentMessage = if (files.isEmpty()) {
                         "Nije dodan nijedan prilog."
                     } else {
@@ -29717,8 +29741,14 @@ private fun WorkOrderDocumentationWizardDialog(
                         }
                 }
                 val removeDocumentationAttachment: (String) -> Unit = { fileId ->
-                    documentationAttachmentFiles = documentationAttachmentFiles.filterNot { it.id == fileId }
-                    documentationAttachmentMessage = if (documentationAttachmentFiles.isEmpty()) "" else "${documentationAttachmentFiles.size} prilog(a) u zapisniku."
+                    val targetKey = documentationAttachmentTargetKey
+                    val nextFiles = documentationAttachmentFilesByTemplate[targetKey].orEmpty().filterNot { it.id == fileId }
+                    documentationAttachmentFilesByTemplate = if (nextFiles.isEmpty()) {
+                        documentationAttachmentFilesByTemplate - targetKey
+                    } else {
+                        documentationAttachmentFilesByTemplate + (targetKey to nextFiles)
+                    }
+                    documentationAttachmentMessage = if (nextFiles.isEmpty()) "" else "${nextFiles.size} prilog(a) u zapisniku."
                 }
 
                 if (sprBrowserFlowSelected) {
@@ -29739,13 +29769,16 @@ private fun WorkOrderDocumentationWizardDialog(
                         standardControls = templateControls,
                         attachmentFiles = documentationAttachmentFiles,
                         attachmentLoading = documentationAttachmentLoading,
-                        attachmentMessage = documentationAttachmentMessage,
+                        attachmentMessage = documentationAttachmentDisplayMessage,
                         sprVoiceAiLoading = sprVoiceAiLoading,
                         sprVoiceAiMessage = sprVoiceAiMessage,
                         sprVoicePreviewRows = sprVoicePreviewRows,
                         enabled = !formLoading,
                         onOpenMeasurements = { measurementPreviewOpen = true },
-                        onPickAttachments = { documentationAttachmentUploadSourceDialogOpen = true },
+                        onPickAttachments = {
+                            pendingDocumentationAttachmentTemplateKey = documentationAttachmentTargetKey
+                            documentationAttachmentUploadSourceDialogOpen = true
+                        },
                         onOpenAttachment = openDocumentationAttachment,
                         onRemoveAttachment = removeDocumentationAttachment,
                         onFieldChange = { template, field, value, replaceExisting ->
@@ -29934,9 +29967,12 @@ private fun WorkOrderDocumentationWizardDialog(
                     DocumentationSprStandaloneAttachmentsSection(
                         files = documentationAttachmentFiles,
                         loading = documentationAttachmentLoading,
-                        message = documentationAttachmentMessage,
+                        message = documentationAttachmentDisplayMessage,
                         enabled = !formLoading,
-                        onPickFiles = { documentationAttachmentUploadSourceDialogOpen = true },
+                        onPickFiles = {
+                            pendingDocumentationAttachmentTemplateKey = documentationAttachmentTargetKey
+                            documentationAttachmentUploadSourceDialogOpen = true
+                        },
                         onOpen = openDocumentationAttachment,
                         onRemove = removeDocumentationAttachment,
                     )
@@ -30071,6 +30107,9 @@ private fun WorkOrderDocumentationWizardDialog(
                             templateFieldSheets = sheetPayload.second,
                             includedMeasurementTableKeys = includedMeasurementPayload,
                             attachments = documentationAttachmentFiles,
+                            templateAttachments = documentationAttachmentFilesByTemplate
+                                .filterKeys { it != DOCUMENTATION_COMMON_ATTACHMENT_KEY }
+                                .filterValues { it.isNotEmpty() },
                             additionalRecords = additionalRecords.map { record ->
                                 WorkOrderDocumentationAdditionalRecord(
                                     serviceKey = record.serviceKey,
@@ -30135,6 +30174,36 @@ private fun templateFieldStateKey(
     template: WorkOrderDocumentationTemplate,
     field: WorkOrderDocumentationField,
 ): String = "${template.id}::${templateFieldPayloadKey(field)}"
+
+private fun documentationAttachmentTemplateIds(
+    templates: List<WorkOrderDocumentationTemplate>,
+): List<String> {
+    val attachmentTemplates = templates.filter { template ->
+        buildTemplateBlockSections(template.fieldBlocks).any(::isDocumentationAttachmentTemplateSection)
+    }
+    return (attachmentTemplates.ifEmpty { templates })
+        .map { it.id.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
+}
+
+private fun defaultDocumentationAttachmentFilesByTemplate(
+    templates: List<WorkOrderDocumentationTemplate>,
+    defaults: WorkOrderDocumentationDefaults,
+): Map<String, List<WorkOrderDocumentationAiFile>> =
+    buildMap {
+        defaults.templateAttachments.forEach { (templateId, files) ->
+            val key = templateId.trim()
+            if (key.isNotBlank() && files.isNotEmpty()) {
+                put(key, files)
+            }
+        }
+        if (isEmpty() && defaults.attachments.isNotEmpty()) {
+            val key = documentationAttachmentTemplateIds(templates).firstOrNull().orEmpty()
+                .ifBlank { DOCUMENTATION_COMMON_ATTACHMENT_KEY }
+            put(key, defaults.attachments)
+        }
+    }
 
 private fun templateAiFieldStateKey(
     template: WorkOrderDocumentationTemplate,

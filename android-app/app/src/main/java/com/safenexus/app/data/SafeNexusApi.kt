@@ -1112,6 +1112,7 @@ class SafeNexusApi(
                 .put("templateFieldSheets", draft.templateFieldSheets.toNestedMeasurementSheetJsonObject())
                 .put("includedMeasurementTableKeys", JSONArray(draft.includedMeasurementTableKeys.map { it.trim() }.filter { it.isNotBlank() }))
                 .put("attachments", draft.attachments.toDocumentationAiFilesJsonArray())
+                .put("templateAttachments", draft.templateAttachments.toNestedDocumentationAiFilesJsonObject())
                 .put("additionalRecords", additionalRecords)
                 .put("includeHandoverProtocol", draft.includeHandoverProtocol)
                 .put("async", true)
@@ -2903,6 +2904,16 @@ private fun List<WorkOrderDocumentationAiFile>.toDocumentationAiFilesJsonArray()
         }
     }
 
+private fun Map<String, List<WorkOrderDocumentationAiFile>>.toNestedDocumentationAiFilesJsonObject(): JSONObject =
+    JSONObject().also { json ->
+        forEach { (key, files) ->
+            val normalizedKey = key.trim()
+            if (normalizedKey.isNotBlank() && files.isNotEmpty()) {
+                json.put(normalizedKey, files.toDocumentationAiFilesJsonArray())
+            }
+        }
+    }
+
 private fun JSONArray?.toWorkOrderDocumentationAiFiles(): List<WorkOrderDocumentationAiFile> {
     if (this == null) return emptyList()
     return buildList {
@@ -2922,6 +2933,21 @@ private fun JSONArray?.toWorkOrderDocumentationAiFiles(): List<WorkOrderDocument
             )
         }
     }.distinctBy { it.id }
+}
+
+private fun JSONObject?.toWorkOrderDocumentationAiFileMap(): Map<String, List<WorkOrderDocumentationAiFile>> {
+    if (this == null) return emptyMap()
+    return buildMap {
+        val keys = keys()
+        while (keys.hasNext()) {
+            val key = keys.next().trim()
+            if (key.isBlank()) continue
+            val files = optJSONArray(key).toWorkOrderDocumentationAiFiles()
+            if (files.isNotEmpty()) {
+                put(key, files)
+            }
+        }
+    }
 }
 
 private fun List<WorkOrderDocumentationAiField>.toDocumentationAiFieldsJsonArray(): JSONArray =
@@ -3528,6 +3554,7 @@ private fun JSONObject?.toWorkOrderDocumentationDefaults(): WorkOrderDocumentati
         templateFieldSheets = optJSONObject("templateFieldSheets").toNestedWorkOrderMeasurementSheetMap(),
         includedMeasurementTableKeys = optJSONArray("includedMeasurementTableKeys").toStringList(),
         attachments = optJSONArray("attachments").toWorkOrderDocumentationAiFiles(),
+        templateAttachments = optJSONObject("templateAttachments").toWorkOrderDocumentationAiFileMap(),
     )
 }
 
