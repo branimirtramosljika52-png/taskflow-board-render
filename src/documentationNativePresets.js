@@ -470,6 +470,11 @@ const WORK_EQUIPMENT_COLUMNS = [
   makeColumn("locked", "Zakljucano", 92, "DA/NE"),
 ];
 
+const STROJEVI_RESULT_COLUMNS = [
+  makeColumn("item", "STAVKA*", 420),
+  makeColumn("pass", "ZADOVOLJAVA DA/NE", 150, "DA/NE"),
+];
+
 const ROF_COLUMNS = [
   makeColumn("space", "Prostor/prostorija", 170),
   makeColumn("measurementPlace", "Mjerno mjesto", 150),
@@ -655,6 +660,22 @@ const WORK_EQUIPMENT_TECHNICAL_FIELDS = [
   technicalField("documentation", "Dokumentacija", ""),
 ];
 
+const STROJEVI_TECHNICAL_FIELDS = [
+  technicalField("equipmentSample", "Uzorak", ""),
+  technicalField("equipmentName", "Naziv strojeva/uredaja", ""),
+  technicalField("manufacturer", "Proizvodjac", ""),
+  technicalField("model", "Tip", ""),
+  technicalField("serialNumber", "Serijski broj", ""),
+  technicalField("inventoryNumber", "Inv.br.", ""),
+  technicalField("documentation", "Dokumentacija", "Tehnicka dokumentacija, Upute za rad na siguran nacin"),
+  technicalField("technicalData", "Tehnicki podaci", ""),
+  technicalField("workingSubstancesAndRawMaterials", "Sirovine/radne tvari", ""),
+  technicalField("workspacePosition", "Polozaj opreme", ""),
+  technicalField("purposeDescription", "Namjena opreme", ""),
+  technicalField("parts", "Dijelovi (ukoliko postoje)", ""),
+  technicalField("visualState", "Vizualno stanje radne opreme", ""),
+];
+
 const WORK_ENVIRONMENT_TECHNICAL_FIELDS = [
   technicalField("location", "Lokacija IS ZNR", ""),
   technicalField("outsideTemperature", "Vanjska temperatura", ""),
@@ -731,6 +752,24 @@ const WORK_EQUIPMENT_ITEMS = [
   "Zastita od pokretnih dijelova - prijenosnici snage i gibanja",
   "Zastita od pokretnih dijelova - radni elementi",
   "Otpor izolacije",
+];
+
+const STROJEVI_DEFAULT_ITEMS = [
+  "Zastita od pokretnih dijelova - pogonski mehanizam",
+  "Nacin postavljanja / osiguranje stabilnosti",
+  "Promjene nastale uporabom",
+  "Ostvarivanje gibanja i djelovanja stroja i uredaja prema oznakama vrsta i smjerova kretanja",
+  "Djelovanje signalnih uredaja",
+  "Djelovanje uredaja za upravljanje",
+  "Djelovanje uredaja za ukljucivanje i iskljucivanje",
+  "Zastita od povrata napona",
+  "Zastita od pokretnih dijelova - prijenosnici snage i gibanja",
+  "Zastita od pokretnih dijelova - radni elementi",
+  "Otpor izolacije [Ohm]",
+  "Zastita od izravnog dodira dijelova pod naponom",
+  "Nacin prikljucka na elektricnu mrezu, nazivni napon",
+  "Vrsta kabela, presjek vodica, stanje izolacije",
+  "Smjestaj i osiguranje slobodnog prostora za kretanje i rad",
 ];
 
 const YES_NO_VALUES = ["DA", "NE"];
@@ -2207,27 +2246,11 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
   STROJEVI: [
     {
       id: "strojevi-cista-checklist",
-      label: "Stavke pregleda radne opreme",
-      summary: "Strojarski i elektro dio prema CISTA sheetu",
+      label: "Rezultati ispitivanja strojeva/uredaja",
+      summary: "STROJEVI.1 proizvoljne ispitne stavke",
       sourceSheet: "STROJEVI.2",
-      columns: ["STAVKA", "ZADOVOLJAVA DA/NE", "Napomena"],
-      rows: [
-        ["Zastita od pokretnih dijelova - pogonski mehanizam", "DA", ""],
-        ["Nacin postavljanja / osiguranje stabilnosti", "DA", ""],
-        ["Promjene nastale uporabom", "DA", ""],
-        ["Ostvarivanje gibanja i djelovanja stroja i uredaja prema oznakama vrsta i smjerova kretanja", "DA", ""],
-        ["Djelovanje signalnih uredaja", "DA", ""],
-        ["Djelovanje uredaja za upravljanje", "DA", ""],
-        ["Djelovanje uredaja za ukljucivanje i iskljucivanje", "DA", ""],
-        ["Zastita od povrata napona", "DA", ""],
-        ["Zastita od pokretnih dijelova - prijenosnici snage i gibanja", "DA", ""],
-        ["Zastita od pokretnih dijelova - radni elementi", "DA", ""],
-        ["Otpor izolacije", "DA", ""],
-        ["Zastita od izravnog dodira dijelova pod naponom", "DA", ""],
-        ["Nacin prikljucka na elektricnu mrezu, nazivni napon", "DA", ""],
-        ["Vrsta kabela, presjek vodica, stanje izolacije", "DA", ""],
-        ["Smjestaj i osiguranje slobodnog prostora za kretanje i rad", "DA", ""],
-      ],
+      columns: ["STAVKA*", "ZADOVOLJAVA DA/NE"],
+      rows: STROJEVI_DEFAULT_ITEMS.map((item) => [item, "DA"]),
     },
   ],
   RADNAOPREMA: [
@@ -3342,27 +3365,24 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     serviceName: "Nadzor opreme",
     reportTitle: "ZAPISNIK O NADZORU OPREME",
     coverSubtitle: "O NADZORU OPREME",
-    measurementTableTitle: "Checklist nadzora opreme",
-    resultsText: makeSimpleResultText("opremu", "Model je pripremljen za lokalni zapisnik po opremi i checklist stavke prema vrsti stroja/opreme."),
+    measurementTableTitle: "Rezultati ispitivanja",
+    resultsText: makeSimpleResultText("strojeve i uredaje", "Model je pripremljen prema STROJEVI.1 unosu i STROJEVI.2 izlaznom predlosku. Ispitne stavke su proizvoljne po stroju/uredaju."),
     assessmentLabel: "Nadzor opreme",
     conclusionLead: "Temeljem rezultata pregleda moze se zakljuciti da oprema na dan predmetnog nadzora",
     signatureAreas: ["strojevi", "radna_oprema", "znr"],
-    technicalDataFields: WORK_EQUIPMENT_TECHNICAL_FIELDS,
+    technicalDataFields: STROJEVI_TECHNICAL_FIELDS,
     measurementAssessments: makeAssessmentEntries("STROJEVI", ["Nadzor opreme"]),
     tables: [
       tableSpec({
-        id: "strojevi-checklist",
-        label: "Checklist nadzora opreme",
-        summary: "Stavke pregleda opreme",
-        columns: WORK_EQUIPMENT_COLUMNS,
-        rows: WORK_EQUIPMENT_ITEMS.map((item, index) => makeRow(WORK_EQUIPMENT_COLUMNS, {
-          number: String(index + 1),
-          category: "Nadzor opreme",
+        id: "strojevi-results",
+        label: "Rezultati ispitivanja",
+        summary: "STROJEVI.1 - proizvoljne ispitne stavke",
+        columns: STROJEVI_RESULT_COLUMNS,
+        rows: STROJEVI_DEFAULT_ITEMS.map((item, index) => makeRow(STROJEVI_RESULT_COLUMNS, {
           item,
           pass: "DA",
-          locked: "NE",
         }, index)),
-        pageOrientation: "landscape",
+        pageOrientation: "portrait",
       }),
     ],
   }),

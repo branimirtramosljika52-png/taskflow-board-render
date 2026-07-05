@@ -114,7 +114,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.315.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.317.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -26836,10 +26836,118 @@ function getMobileMeasurementTableExplicitEnabled(common = {}, template = {}, ta
   return getMobileMeasurementTableCandidateKeys(template, table, index).some((key) => included.has(key));
 }
 
+function getMobileStrojeviManualRecords(common = {}) {
+  return (Array.isArray(common.manualWorkEquipments) ? common.manualWorkEquipments : [])
+    .filter((equipment) => {
+      if (!equipment || typeof equipment !== "object" || Array.isArray(equipment)) {
+        return false;
+      }
+      return [
+        equipment.name,
+        equipment.manufacturer,
+        equipment.model,
+        equipment.serialNumber,
+        equipment.inventoryNumber,
+        equipment.technicalData,
+        equipment.purposeDescription,
+        equipment.workspacePosition,
+        equipment.workingSubstancesAndRawMaterials,
+        equipment.useAndMaintenance,
+        equipment.methodsProceduresAndNorms,
+        equipment.deficiencies,
+        equipment.measuresToEliminateDeficiencies,
+      ].some((value) => normalizeInputValue(value))
+        || (Array.isArray(equipment.mechanicalItems) && equipment.mechanicalItems.length > 0);
+    });
+}
+
+function getMobileStrojeviEquipmentTitle(equipment = {}, index = 0) {
+  return normalizeInputValue(equipment.name)
+    || [equipment.manufacturer, equipment.model].map(normalizeInputValue).filter(Boolean).join(" ")
+    || normalizeInputValue(equipment.serialNumber)
+    || `Stroj / uredaj ${index + 1}`;
+}
+
+function getMobileStrojeviAssessmentItemText(item = {}) {
+  const label = normalizeInputValue(item.label || item.item || item.title);
+  const content = normalizeInputValue(item.measuredValue || item.customContent || item.value || item.note);
+  if (label && content && !label.toLowerCase().includes(content.toLowerCase())) {
+    return `${label}: ${content}`;
+  }
+  return label || content;
+}
+
+function buildMobileStrojeviManualMeasurementTable(baseTable = {}, common = {}) {
+  const records = getMobileStrojeviManualRecords(common);
+  if (!records.length) {
+    return null;
+  }
+  const columns = [
+    { id: "item", label: "STAVKA*", width: 420, placeholder: "" },
+    { id: "pass", label: "ZADOVOLJAVA DA/NE", width: 150, placeholder: "DA/NE" },
+  ];
+  const rows = [];
+  records.forEach((equipment, equipmentIndex) => {
+    const equipmentTitle = getMobileStrojeviEquipmentTitle(equipment, equipmentIndex);
+    if (records.length > 1 || equipmentTitle) {
+      rows.push({
+        id: `strojevi-equipment-${equipmentIndex + 1}`,
+        cells: {
+          item: records.length > 1 ? `Stroj / uredaj: ${equipmentTitle}` : equipmentTitle,
+          pass: "",
+        },
+        formats: {},
+      });
+    }
+    const items = Array.isArray(equipment.mechanicalItems) ? equipment.mechanicalItems : [];
+    items
+      .map((item) => ({
+        text: getMobileStrojeviAssessmentItemText(item),
+        pass: Number(item?.meetsConditions) === 0 ? "NE" : "DA",
+      }))
+      .filter((item) => item.text)
+      .forEach((item, itemIndex) => {
+        rows.push({
+          id: `strojevi-${equipmentIndex + 1}-item-${itemIndex + 1}`,
+          cells: {
+            item: item.text,
+            pass: item.pass,
+          },
+          formats: {},
+        });
+      });
+  });
+  if (!rows.some((row) => normalizeInputValue(row.cells?.item))) {
+    return null;
+  }
+  return {
+    ...baseTable,
+    id: normalizeInputValue(baseTable.id) || "strojevi-results",
+    key: normalizeInputValue(baseTable.key) || "strojevi-results",
+    label: "Rezultati ispitivanja",
+    summary: "STROJEVI.1 - proizvoljne ispitne stavke",
+    pageOrientation: "portrait",
+    sheet: {
+      columns,
+      rows,
+      merges: [],
+      headerRows: [],
+      pageOrientation: "portrait",
+    },
+    enabled: true,
+  };
+}
+
 function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, common = {}, serviceCode = "SPR") {
   const baseTables = Array.isArray(template.measurementTables) && template.measurementTables.length > 0
     ? template.measurementTables
     : createDocumentationMeasurementTablesForService(serviceCode);
+  if (normalizeInputValue(serviceCode).toUpperCase() === "STROJEVI") {
+    const manualStrojeviTable = buildMobileStrojeviManualMeasurementTable(baseTables[0] || {}, common);
+    if (manualStrojeviTable) {
+      return [manualStrojeviTable];
+    }
+  }
   const tables = baseTables.map((table, index) => {
     const sheet = getMobileDocumentationMeasurementSheetForTable(table, index, entry, template, common);
     const pageOrientation = normalizeInputValue(
@@ -27021,6 +27129,44 @@ function buildMobileDocumentationTechnicalDataText(template = {}, reportDefaults
   }).filter(Boolean).join("\n");
 }
 
+function buildMobileStrojeviTechnicalDataText(common = {}) {
+  const records = getMobileStrojeviManualRecords(common);
+  if (!records.length) {
+    return "";
+  }
+  return records.map((equipment, index) => {
+    const lines = [
+      records.length > 1 ? `Stroj / uredaj ${index + 1}: ${getMobileStrojeviEquipmentTitle(equipment, index)}` : "",
+      normalizeInputValue(equipment.name) ? `Naziv strojeva/uredaja: ${normalizeInputValue(equipment.name)}` : "",
+      normalizeInputValue(equipment.manufacturer) ? `Proizvodac: ${normalizeInputValue(equipment.manufacturer)}` : "",
+      normalizeInputValue(equipment.model) ? `Tip: ${normalizeInputValue(equipment.model)}` : "",
+      normalizeInputValue(equipment.serialNumber) ? `Serijski broj: ${normalizeInputValue(equipment.serialNumber)}` : "",
+      normalizeInputValue(equipment.inventoryNumber) ? `Inv.br.: ${normalizeInputValue(equipment.inventoryNumber)}` : "",
+      normalizeInputValue(equipment.useAndMaintenance) ? `Dokumentacija: ${normalizeInputValue(equipment.useAndMaintenance)}` : "",
+      normalizeInputValue(equipment.technicalData) ? `Tehnicki podaci: ${normalizeInputValue(equipment.technicalData)}` : "",
+      normalizeInputValue(equipment.workingSubstancesAndRawMaterials) ? `Sirovine/radne tvari: ${normalizeInputValue(equipment.workingSubstancesAndRawMaterials)}` : "",
+      normalizeInputValue(equipment.workspacePosition) ? `Polozaj opreme: ${normalizeInputValue(equipment.workspacePosition)}` : "",
+      normalizeInputValue(equipment.purposeDescription) ? `Namjena opreme: ${normalizeInputValue(equipment.purposeDescription)}` : "",
+      Array.isArray(equipment.parts) && equipment.parts.length > 0 ? `Dijelovi: ${equipment.parts.map((part) => getMobileStrojeviEquipmentTitle(part)).filter(Boolean).join("; ")}` : "",
+    ].filter(Boolean);
+    return lines.join("\n");
+  }).filter(Boolean).join("\n\n");
+}
+
+function buildMobileStrojeviManualFieldSummary(common = {}, field = "") {
+  return getMobileStrojeviManualRecords(common)
+    .map((equipment, index, records) => {
+      const value = normalizeInputValue(equipment?.[field]);
+      if (!value) {
+        return "";
+      }
+      const title = getMobileStrojeviEquipmentTitle(equipment, index);
+      return records.length > 1 && title ? `${title}: ${value}` : value;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
 function buildMobileDocumentationSprModel({
   entry = {},
   template = {},
@@ -27110,7 +27256,9 @@ function buildMobileDocumentationSprModel({
       || template.projectDocumentation
       || reportDefaults.projectDocumentation
     ),
-    technicalData: buildMobileDocumentationTechnicalDataText(template, reportDefaults, common, placeholders),
+    technicalData: normalizeInputValue(serviceCode).toUpperCase() === "STROJEVI"
+      ? (buildMobileStrojeviTechnicalDataText(common) || buildMobileDocumentationTechnicalDataText(template, reportDefaults, common, placeholders))
+      : buildMobileDocumentationTechnicalDataText(template, reportDefaults, common, placeholders),
     resultsText: getMobileDocumentationTemplateFieldValues(common, template, ["resultsText", "REZULTATI_TEKST", "RESULTS_TEXT"])
       || getMobileSprFirstValue(placeholders, ["OPIS_SUSTAVA", "REZULTATI_TEKST", "RESULTS_TEXT"])
       || normalizeInputValue(template.resultsText || reportDefaults.resultsText),
@@ -27129,8 +27277,16 @@ function buildMobileDocumentationSprModel({
     signatureMode: common.signatureMode || "digital",
     signatureFieldOib: signatureOib,
     signatureImageUrl: normalizeInputValue(common.signatureImageUrl || common.signatureDataUrl),
-    defects: normalizeInputValue(common.defects || placeholders.NEDOSTACI),
-    recommendations: normalizeInputValue(common.recommendations || placeholders.PREPORUKE),
+    defects: normalizeInputValue(
+      common.defects
+      || placeholders.NEDOSTACI
+      || (normalizeInputValue(serviceCode).toUpperCase() === "STROJEVI" ? buildMobileStrojeviManualFieldSummary(common, "deficiencies") : ""),
+    ),
+    recommendations: normalizeInputValue(
+      common.recommendations
+      || placeholders.PREPORUKE
+      || (normalizeInputValue(serviceCode).toUpperCase() === "STROJEVI" ? buildMobileStrojeviManualFieldSummary(common, "measuresToEliminateDeficiencies") : ""),
+    ),
     headerImageDataUrl: normalizeInputValue(common.headerImageDataUrl),
     headerImageName: normalizeInputValue(common.headerImageName),
     measurementEquipmentIds: common.selectedEquipmentIds || [],

@@ -10578,9 +10578,29 @@ private fun defaultEquipmentInspectionElectricalOptions(): List<WorkOrderDocumen
         "Opremljenost električnim oznakama upozorenja",
     ).mapIndexed { index, label -> localEquipmentInspectionOption("electrical", index + 1, label) }
 
+private fun defaultStrojeviInspectionItemOptions(): List<WorkOrderDocumentationOption> =
+    listOf(
+        "Zaštita od pokretnih dijelova - pogonski mehanizam",
+        "Način postavljanja / osiguranje stabilnosti",
+        "Promjene nastale uporabom",
+        "Ostvarivanje gibanja i djelovanja stroja i uređaja prema oznakama vrsta i smjerova kretanja",
+        "Djelovanje signalnih uređaja",
+        "Djelovanje uređaja za upravljanje",
+        "Djelovanje uređaja za uključivanje i isključivanje",
+        "Zaštita od povrata napona",
+        "Zaštita od pokretnih dijelova - prijenosnici snage i gibanja",
+        "Zaštita od pokretnih dijelova - radni elementi",
+        "Otpor izolacije [Ω]",
+        "Zaštita od izravnog dodira dijelova pod naponom",
+        "Način priključka na električnu mrežu, nazivni napon",
+        "Vrsta kabela, presjek vodiča, stanje izolacije",
+        "Smještaj i osiguranje slobodnog prostora za kretanje i rad",
+    ).mapIndexed { index, label -> localEquipmentInspectionOption("strojevi", index + 1, label) }
+
 @Composable
 private fun DocumentationEquipmentInspectionLocalList(
     manualEquipments: List<IsznrManualWorkEquipment>,
+    serviceCode: String = "STROJEVI",
     enabled: Boolean = true,
     mechanicalOptions: List<WorkOrderDocumentationOption> = emptyList(),
     electricalOptions: List<WorkOrderDocumentationOption> = emptyList(),
@@ -10596,11 +10616,20 @@ private fun DocumentationEquipmentInspectionLocalList(
     ) -> Unit,
 ) {
     var activeManualEquipmentIndex by rememberSaveable { mutableStateOf(0) }
-    val resolvedMechanicalOptions = remember(mechanicalOptions) {
-        mechanicalOptions.ifEmpty { defaultEquipmentInspectionMechanicalOptions() }
+    val isStrojeviTemplate = normalizeDocumentationServiceCodeToken(serviceCode) == "STROJEVI"
+    val resolvedMechanicalOptions = remember(mechanicalOptions, isStrojeviTemplate) {
+        if (isStrojeviTemplate) {
+            defaultStrojeviInspectionItemOptions()
+        } else {
+            mechanicalOptions.ifEmpty { defaultEquipmentInspectionMechanicalOptions() }
+        }
     }
-    val resolvedElectricalOptions = remember(electricalOptions) {
-        electricalOptions.ifEmpty { defaultEquipmentInspectionElectricalOptions() }
+    val resolvedElectricalOptions = remember(electricalOptions, isStrojeviTemplate) {
+        if (isStrojeviTemplate) {
+            emptyList()
+        } else {
+            electricalOptions.ifEmpty { defaultEquipmentInspectionElectricalOptions() }
+        }
     }
     LaunchedEffect(manualEquipments.size) {
         if (manualEquipments.isEmpty()) {
@@ -10634,9 +10663,13 @@ private fun DocumentationEquipmentInspectionLocalList(
                         }
                     }
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Nadzor opreme", fontWeight = FontWeight.Black)
+                        Text(if (isStrojeviTemplate) "STROJEVI - nadzor opreme" else "Nadzor opreme", fontWeight = FontWeight.Black)
                         Text(
-                            "Lokalni STROJEVI predložak. Unosiš opremu po stupcima, bez IS ZNR slanja i bez obaveznog NexAI troška.",
+                            if (isStrojeviTemplate) {
+                                "Lokalni predložak iz STROJEVI.1. Ispitne stavke su proizvoljne i idu u STROJEVI.2 izlaz."
+                            } else {
+                                "Lokalni predložak. Unosiš opremu po stupcima, bez IS ZNR slanja i bez obaveznog NexAI troška."
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
                         )
@@ -10644,8 +10677,10 @@ private fun DocumentationEquipmentInspectionLocalList(
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     AssistChip(onClick = {}, enabled = false, label = { Text("${manualEquipments.size.coerceAtLeast(1)} stupac(a)") })
-                    AssistChip(onClick = {}, enabled = false, label = { Text("${resolvedMechanicalOptions.size} strojarskih") })
-                    AssistChip(onClick = {}, enabled = false, label = { Text("${resolvedElectricalOptions.size} elektro") })
+                    AssistChip(onClick = {}, enabled = false, label = { Text("${resolvedMechanicalOptions.size} stavki") })
+                    if (!isStrojeviTemplate) {
+                        AssistChip(onClick = {}, enabled = false, label = { Text("${resolvedElectricalOptions.size} elektro") })
+                    }
                 }
             }
         }
@@ -10656,8 +10691,8 @@ private fun DocumentationEquipmentInspectionLocalList(
                 equipments = manualEquipments,
                 activeIndex = safeIndex,
                 enabled = enabled,
-                recordLabel = "NO",
-                defaultTitle = "Oprema",
+                recordLabel = if (isStrojeviTemplate) "STROJEVI" else "NO",
+                defaultTitle = if (isStrojeviTemplate) "Stroj / uređaj" else "Oprema",
                 onSelect = { index -> activeManualEquipmentIndex = index },
             )
             ManualWorkEquipmentInlineEditor(
@@ -10665,10 +10700,11 @@ private fun DocumentationEquipmentInspectionLocalList(
                 columnIndex = safeIndex,
                 columnCount = manualEquipments.size,
                 enabled = enabled,
-                recordTitle = "Oprema",
-                recordLabel = "NO",
+                recordTitle = if (isStrojeviTemplate) "Stroj / uređaj" else "Oprema",
+                recordLabel = if (isStrojeviTemplate) "STROJEVI" else "NO",
+                isStrojeviTemplate = isStrojeviTemplate,
                 showRecognition = false,
-                showRiskRegisters = true,
+                showRiskRegisters = !isStrojeviTemplate,
                 mechanicalOptions = resolvedMechanicalOptions,
                 electricalOptions = resolvedElectricalOptions,
                 hazardOptions = hazardOptions,
@@ -12664,6 +12700,7 @@ private fun ManualWorkEquipmentInlineEditor(
     enabled: Boolean,
     recordTitle: String = "Radna oprema",
     recordLabel: String = "RO",
+    isStrojeviTemplate: Boolean = false,
     showRecognition: Boolean = true,
     showRiskRegisters: Boolean = true,
     mechanicalOptions: List<WorkOrderDocumentationOption>,
@@ -12725,7 +12762,7 @@ private fun ManualWorkEquipmentInlineEditor(
                     } else if ((equipment.hasParts || equipment.parts.isNotEmpty()) && files.count { it.isRoImageAttachment() } > 1) {
                         "${files.size} slika raspoređeno: prva kao glavna, ostale po dijelovima u parovima."
                     } else {
-                        "${files.size} slika dodano za RO privitke."
+                        "${files.size} slika dodano za $recordLabel privitke."
                     }
                 }
                 .onFailure { error ->
@@ -12755,7 +12792,7 @@ private fun ManualWorkEquipmentInlineEditor(
                     attachmentMessage = if (files.isEmpty()) {
                         "Nije dodan nijedan PDF prilog."
                     } else {
-                        "${files.size} PDF prilog(a) dodano za RO zapisnik."
+                        "${files.size} PDF prilog(a) dodano za $recordLabel zapisnik."
                     }
                 }
                 .onFailure { error ->
@@ -13051,7 +13088,7 @@ private fun ManualWorkEquipmentInlineEditor(
                                             Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                                 Text(template.title, fontWeight = FontWeight.Bold)
                                                 Text(
-                            template.equipment.subtitle().ifBlank { "Sadržaj RO zapisnika" },
+                                                    template.equipment.subtitle().ifBlank { "Sadržaj $recordLabel zapisnika" },
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                                                     maxLines = 1,
@@ -13098,7 +13135,11 @@ private fun ManualWorkEquipmentInlineEditor(
 
             WorkEquipmentAttachmentGallery(
                 title = "Slike i PDF prilozi",
-                subtitle = "Prve slike označi kao cijeli stroj i pločicu. PDF prilozi idu odvojeno na kraj zapisnika.",
+                subtitle = if (isStrojeviTemplate) {
+                    "Slika stroja, pločica i PDF prilozi idu u lokalni STROJEVI zapisnik."
+                } else {
+                    "Prve slike označi kao cijeli stroj i pločicu. PDF prilozi idu odvojeno na kraj zapisnika."
+                },
                 attachments = equipment.attachments,
                 enabled = enabled,
                 loadingImages = attachmentsLoading,
@@ -13195,33 +13236,42 @@ private fun ManualWorkEquipmentInlineEditor(
                 onEquipmentChange = onEquipmentChange,
                 onRecognizeImages = onRecognizeImages,
             )
-            OutlinedTextField(equipment.name, { onEquipmentChange(equipment.copy(name = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Naziv") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.name, { onEquipmentChange(equipment.copy(name = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text(if (isStrojeviTemplate) "Naziv strojeva/uređaja" else "Naziv") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
             OutlinedTextField(equipment.manufacturer, { onEquipmentChange(equipment.copy(manufacturer = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Proizvođač") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
-            OutlinedTextField(equipment.model, { onEquipmentChange(equipment.copy(model = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Model / tip") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.model, { onEquipmentChange(equipment.copy(model = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text(if (isStrojeviTemplate) "Tip" else "Model / tip") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
             OutlinedTextField(equipment.serialNumber, { onEquipmentChange(equipment.copy(serialNumber = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Serijski broj") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
-            OutlinedTextField(equipment.inventoryNumber, { onEquipmentChange(equipment.copy(inventoryNumber = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Inventarski broj") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.inventoryNumber, { onEquipmentChange(equipment.copy(inventoryNumber = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text(if (isStrojeviTemplate) "Inv.br." else "Inventarski broj") }, singleLine = true, enabled = enabled, shape = RoundedCornerShape(14.dp))
             OutlinedTextField(equipment.note, { onEquipmentChange(equipment.copy(note = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Napomena") }, minLines = 2, maxLines = 4, enabled = enabled, shape = RoundedCornerShape(14.dp))
 
             ManualWorkEquipmentSectionTitle("Opisna polja")
             OutlinedTextField(equipment.technicalData, { onEquipmentChange(equipment.copy(technicalData = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Tehnički podaci") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
-            OutlinedTextField(equipment.purposeDescription, { onEquipmentChange(equipment.copy(purposeDescription = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Namjena radne opreme") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
-            OutlinedTextField(equipment.workspacePosition, { onEquipmentChange(equipment.copy(workspacePosition = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Položaj u radnom prostoru") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
-            OutlinedTextField(equipment.workingSubstancesAndRawMaterials, { onEquipmentChange(equipment.copy(workingSubstancesAndRawMaterials = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Radne tvari i sirovine") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
-            OutlinedTextField(equipment.useAndMaintenance, { onEquipmentChange(equipment.copy(useAndMaintenance = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Uporaba i održavanje") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
-            OutlinedTextField(equipment.methodsProceduresAndNorms, { onEquipmentChange(equipment.copy(methodsProceduresAndNorms = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text("Metode, postupci i norme") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.purposeDescription, { onEquipmentChange(equipment.copy(purposeDescription = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text(if (isStrojeviTemplate) "Namjena opreme" else "Namjena radne opreme") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.workspacePosition, { onEquipmentChange(equipment.copy(workspacePosition = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text(if (isStrojeviTemplate) "Položaj opreme" else "Položaj u radnom prostoru") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.workingSubstancesAndRawMaterials, { onEquipmentChange(equipment.copy(workingSubstancesAndRawMaterials = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text(if (isStrojeviTemplate) "Sirovine/radne tvari" else "Radne tvari i sirovine") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.useAndMaintenance, { onEquipmentChange(equipment.copy(useAndMaintenance = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text(if (isStrojeviTemplate) "Dokumentacija" else "Uporaba i održavanje") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
+            OutlinedTextField(equipment.methodsProceduresAndNorms, { onEquipmentChange(equipment.copy(methodsProceduresAndNorms = it)) }, modifier = Modifier.fillMaxWidth(), label = { Text(if (isStrojeviTemplate) "Metode korištene prilikom pregleda i ispitivanja" else "Metode, postupci i norme") }, minLines = 2, maxLines = 5, enabled = enabled, shape = RoundedCornerShape(14.dp))
 
-            ManualWorkEquipmentAssessmentEditor(
-                title = "Strojarski dio",
-                options = mechanicalOptions,
-                items = equipment.mechanicalItems,
-                onItemsChange = { onEquipmentChange(equipment.copy(mechanicalItems = it)) },
-            )
-            ManualWorkEquipmentAssessmentEditor(
-                title = "Elektro dio",
-                options = electricalOptions,
-                items = equipment.electricalItems,
-                onItemsChange = { onEquipmentChange(equipment.copy(electricalItems = it)) },
-            )
+            if (isStrojeviTemplate) {
+                ManualWorkEquipmentAssessmentEditor(
+                    title = "Ispitne stavke",
+                    options = mechanicalOptions,
+                    items = equipment.mechanicalItems,
+                    onItemsChange = { onEquipmentChange(equipment.copy(mechanicalItems = it)) },
+                )
+            } else {
+                ManualWorkEquipmentAssessmentEditor(
+                    title = "Strojarski dio",
+                    options = mechanicalOptions,
+                    items = equipment.mechanicalItems,
+                    onItemsChange = { onEquipmentChange(equipment.copy(mechanicalItems = it)) },
+                )
+                ManualWorkEquipmentAssessmentEditor(
+                    title = "Elektro dio",
+                    options = electricalOptions,
+                    items = equipment.electricalItems,
+                    onItemsChange = { onEquipmentChange(equipment.copy(electricalItems = it)) },
+                )
+            }
 
             if (showRiskRegisters) {
                 ManualWorkEquipmentSectionTitle("Opasnosti, štetnosti i napori")
@@ -26532,7 +26582,7 @@ private fun isDocumentationEquipmentInspectionService(item: DocumentationService
     if (isDocumentationEquipmentInspectionCode(item.serviceCode) || isDocumentationEquipmentInspectionCode(item.serviceKey)) {
         return true
     }
-    return isDocumentationEquipmentInspectionText(item.serviceName)
+    return false
 }
 
 private fun isDocumentationPhysicalFactorsText(value: String): Boolean {
@@ -29107,6 +29157,9 @@ private fun WorkOrderDocumentationWizardDialog(
                     WizardSection(title = "Nadzor opreme", icon = Icons.Rounded.Work) {
                         DocumentationEquipmentInspectionLocalList(
                             manualEquipments = manualEquipmentInspectionEquipments,
+                            serviceCode = selectedFlowTab?.serviceItem?.serviceCode
+                                ?: selectedFlowTab?.serviceItem?.serviceKey
+                                ?: "STROJEVI",
                             enabled = !formLoading,
                             mechanicalOptions = context.workEquipmentMechanicalOptions,
                             electricalOptions = context.workEquipmentElectricalOptions,
