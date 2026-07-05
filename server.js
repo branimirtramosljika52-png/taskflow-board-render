@@ -114,7 +114,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.324.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.325.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -25074,16 +25074,21 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     },
   ));
   const checklistItemFields = checklists.flatMap((checklist) => (
-    (Array.isArray(checklist.items) ? checklist.items : []).map((item) => buildMobileNativeDocumentationField(
-      item.key || item.id,
-      item.label || "Stavka pregleda",
-      "dropdown",
-      {
-        defaultValue: item.defaultValue || "DA",
-        options: Array.isArray(checklist.options) && checklist.options.length ? checklist.options : yesNoNpOptions,
-        helpText: "Vizualni pregled se upisuje kao DA, NE ili NP.",
-      },
-    ))
+    (Array.isArray(checklist.items) ? checklist.items : []).map((item) => {
+      const options = Array.isArray(item.options) && item.options.length
+        ? item.options
+        : (Array.isArray(checklist.options) && checklist.options.length ? checklist.options : yesNoNpOptions);
+      return buildMobileNativeDocumentationField(
+        item.key || item.id,
+        item.label || "Stavka pregleda",
+        "dropdown",
+        {
+          defaultValue: item.defaultValue || "DA",
+          options,
+          helpText: "Vizualni pregled se upisuje kroz izbornik stavke.",
+        },
+      );
+    })
   ));
   const assessmentFields = measurementAssessments.map((entry, index) => buildMobileNativeDocumentationField(
     `assessment-${entry.key || entry.id || index + 1}`,
@@ -25212,14 +25217,17 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       || `checklist-${index + 1}`;
     const enabledFieldId = checklist.enabledFieldId || `use-${checklistKey}`;
     const title = normalizeInputValue(checklist.label || `Checklist ${index + 1}`);
-    const itemBlocks = (Array.isArray(checklist.items) ? checklist.items : []).map((item) => (
-      buildMobileNativeDocumentationBlock(item.key || item.id, item.label || "Stavka pregleda", "select", {
+    const itemBlocks = (Array.isArray(checklist.items) ? checklist.items : []).map((item) => {
+      const options = Array.isArray(item.options) && item.options.length
+        ? item.options
+        : (Array.isArray(checklist.options) && checklist.options.length ? checklist.options : yesNoNpOptions);
+      return buildMobileNativeDocumentationBlock(item.key || item.id, item.label || "Stavka pregleda", "select", {
         group: title,
         editable: true,
         summary: item.defaultValue || "DA",
-        options: Array.isArray(checklist.options) && checklist.options.length ? checklist.options : yesNoNpOptions,
-      })
-    ));
+        options,
+      });
+    });
     return [
       buildMobileNativeDocumentationBlock(`chapter-${checklistKey}`, title, "chapter", {
         typeLabel: "Poglavlje",

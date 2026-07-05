@@ -720,6 +720,199 @@ const SZOMV_DETAILED_ITEMS = [
   "Izjednacenje potencijala - dostupnost",
 ];
 
+const SZOMV_STATUS_OPTIONS = [
+  { value: "Zadovoljava", label: "Zadovoljava" },
+  { value: "Ne zadovoljava", label: "Ne zadovoljava" },
+  { value: "Nije primjenjivo", label: "Nije primjenjivo" },
+];
+
+const SZOMV_YES_NO_OPTIONS = [
+  { value: "Ne", label: "Ne" },
+  { value: "Da", label: "Da" },
+];
+
+const SZOMV_CATCHER_OPTIONS = [
+  { value: "Mreza vodica", label: "Mreza vodica" },
+  { value: "Stapne hvataljke", label: "Stapne hvataljke" },
+  { value: "Odvojeni vanjski sustav", label: "Odvojeni vanjski sustav" },
+  { value: "Ostalo", label: "Ostalo" },
+];
+
+const SZOMV_CHECKLISTS = Object.freeze([
+  Object.freeze({
+    id: "szomv-vanjski-sustav",
+    key: "szomv-vanjski-sustav",
+    tokenKey: "SZOMV_VANJSKI_SUSTAV",
+    label: "Stanje vanjskog sustava zastite od munje",
+    summary: "Hvataljke, odvodi, mjerni spojevi i dogradnje vanjskog sustava.",
+    enabledFieldId: "use-szomv-vanjski-sustav",
+    enabledByDefault: true,
+    assessmentLabel: "Stanje vanjskog sustava zastite od munje",
+    options: SZOMV_STATUS_OPTIONS,
+    items: [
+      {
+        id: "szomv-vrsta-hvataljki",
+        key: "szomv-vrsta-hvataljki",
+        tokenKey: "SZOMV_VRSTA_HVATALJKI",
+        label: "Vrsta hvataljki",
+        defaultValue: "Mreza vodica",
+        options: SZOMV_CATCHER_OPTIONS,
+      },
+      {
+        id: "szomv-stanje-vodica-hvataljki",
+        key: "szomv-stanje-vodica-hvataljki",
+        tokenKey: "SZOMV_STANJE_VODICA_HVATALJKI",
+        label: "Stanje vodica hvataljki",
+        defaultValue: "Zadovoljava",
+      },
+      {
+        id: "szomv-stanje-spojeva-hvataljki",
+        key: "szomv-stanje-spojeva-hvataljki",
+        tokenKey: "SZOMV_STANJE_SPOJEVA_HVATALJKI",
+        label: "Stanje spojeva hvataljki",
+        defaultValue: "Zadovoljava",
+      },
+      {
+        id: "szomv-stanje-vodica-odvoda",
+        key: "szomv-stanje-vodica-odvoda",
+        tokenKey: "SZOMV_STANJE_VODICA_ODVODA",
+        label: "Stanje vodica odvoda",
+        defaultValue: "Zadovoljava",
+      },
+      {
+        id: "szomv-stanje-mjernih-spojeva",
+        key: "szomv-stanje-mjernih-spojeva",
+        tokenKey: "SZOMV_STANJE_MJERNIH_SPOJEVA",
+        label: "Stanje mjernih spojeva",
+        defaultValue: "Zadovoljava",
+      },
+      {
+        id: "szomv-vanjske-dogradnje",
+        key: "szomv-vanjske-dogradnje",
+        tokenKey: "SZOMV_VANJSKE_DOGRADNJE",
+        label: "Ima li dogradnji ili preinaka koje zahtijevaju prosirenje vanjskog sustava",
+        defaultValue: "Ne",
+        options: SZOMV_YES_NO_OPTIONS,
+      },
+    ],
+  }),
+  Object.freeze({
+    id: "szomv-unutarnji-sustav",
+    key: "szomv-unutarnji-sustav",
+    tokenKey: "SZOMV_UNUTARNJI_SUSTAV",
+    label: "Stanje unutarnjeg sustava zastite od munje",
+    summary: "Prenaponska zastita, opskrbni vodovi i izjednacavanje potencijala.",
+    enabledFieldId: "use-szomv-unutarnji-sustav",
+    enabledByDefault: true,
+    assessmentLabel: "Stanje unutarnjeg sustava zastite od munje",
+    options: SZOMV_STATUS_OPTIONS,
+    items: [
+      {
+        id: "szomv-odvodnici-elektroenergetski-vod",
+        key: "szomv-odvodnici-elektroenergetski-vod",
+        tokenKey: "SZOMV_ODVODNICI_ELEKTROENERGETSKI_VOD",
+        label: "Stanje odvodnika struje munje i prenapona na elektroenergetskom kabelu ili nadzemnom vodu",
+        defaultValue: "Zadovoljava",
+      },
+      {
+        id: "szomv-elektro-vod-ostecen-proradio",
+        key: "szomv-elektro-vod-ostecen-proradio",
+        tokenKey: "SZOMV_ELEKTRO_VOD_OSTECEN_PRORADIO",
+        label: "Elektroenergetski vod - ostecen ili proradio",
+        defaultValue: "Ne",
+        options: SZOMV_YES_NO_OPTIONS,
+      },
+      {
+        id: "szomv-elektro-vod-osigurac-proradio",
+        key: "szomv-elektro-vod-osigurac-proradio",
+        tokenKey: "SZOMV_ELEKTRO_VOD_OSIGURAC_PRORADIO",
+        label: "Elektroenergetski vod - osigurac proradio",
+        defaultValue: "Ne",
+        options: SZOMV_YES_NO_OPTIONS,
+      },
+      {
+        id: "szomv-odvodnici-telekomunikacijski-vod",
+        key: "szomv-odvodnici-telekomunikacijski-vod",
+        tokenKey: "SZOMV_ODVODNICI_TELEKOMUNIKACIJSKI_VOD",
+        label: "Stanje odvodnika na telekomunikacijskom kabelu ili nadzemnom vodu",
+        defaultValue: "Zadovoljava",
+      },
+      {
+        id: "szomv-telekom-vod-ostecen-proradio",
+        key: "szomv-telekom-vod-ostecen-proradio",
+        tokenKey: "SZOMV_TELEKOM_VOD_OSTECEN_PRORADIO",
+        label: "Telekomunikacijski vod - ostecen ili proradio",
+        defaultValue: "Ne",
+        options: SZOMV_YES_NO_OPTIONS,
+      },
+      {
+        id: "szomv-telekom-vod-osigurac-proradio",
+        key: "szomv-telekom-vod-osigurac-proradio",
+        tokenKey: "SZOMV_TELEKOM_VOD_OSIGURAC_PRORADIO",
+        label: "Telekomunikacijski vod - osigurac proradio",
+        defaultValue: "Ne",
+        options: SZOMV_YES_NO_OPTIONS,
+      },
+      {
+        id: "szomv-spojevi-opskrbnih-vodova",
+        key: "szomv-spojevi-opskrbnih-vodova",
+        tokenKey: "SZOMV_SPOJEVI_OPSKRBNIH_VODOVA",
+        label: "Stanje spojeva opskrbnih vodova sa sustavom uzemljenja i izjednacivanja potencijala",
+        defaultValue: "Zadovoljava",
+      },
+      {
+        id: "szomv-vodici-izjednacavanje-potencijala",
+        key: "szomv-vodici-izjednacavanje-potencijala",
+        tokenKey: "SZOMV_VODICI_IZJEDNACAVANJE_POTENCIJALA",
+        label: "Stanje vodica za izjednacavanje potencijala unutar gradjevine",
+        defaultValue: "Zadovoljava",
+      },
+      {
+        id: "szomv-sabirnice-izjednacenje-potencijala",
+        key: "szomv-sabirnice-izjednacenje-potencijala",
+        tokenKey: "SZOMV_SABIRNICE_IZJEDNACENJE_POTENCIJALA",
+        label: "Stanje spojeva na sabirnicama za izjednacenje potencijala",
+        defaultValue: "Zadovoljava",
+      },
+      {
+        id: "szomv-unutarnje-dogradnje",
+        key: "szomv-unutarnje-dogradnje",
+        tokenKey: "SZOMV_UNUTARNJE_DOGRADNJE",
+        label: "Ima li dogradnji ili preinaka koje zahtijevaju prosirenje unutarnjeg sustava",
+        defaultValue: "Ne",
+        options: SZOMV_YES_NO_OPTIONS,
+      },
+    ],
+  }),
+  Object.freeze({
+    id: "szomv-ocjena",
+    key: "szomv-ocjena",
+    tokenKey: "SZOMV_OCJENA",
+    label: "Ocjena rezultata vizualnog pregleda",
+    summary: "Stavke ocjene iz SZOMV zapisnika.",
+    enabledFieldId: "use-szomv-ocjena",
+    enabledByDefault: true,
+    assessmentLabel: "Ocjena rezultata vizualnog pregleda",
+    options: SZOMV_STATUS_OPTIONS,
+    items: [
+      "Stanje hvataljki i odvoda",
+      "Stanje uzemljivaca",
+      "Stanje prikljucka metalnih masa",
+      "Stanje mjernih spojeva",
+      "Stanje mehanicke zastite vodica",
+      "Stanje u skladu s projektnom dokumentacijom",
+      "Stanje opskrbnih vodova sa sustavom uzemljenja i izjednacivanja potencijala",
+      "Stanje spojeva na sabirnicama za izjednacenje potencijala",
+    ].map((label, index) => ({
+      id: `szomv-ocjena-${index + 1}`,
+      key: `szomv-ocjena-${index + 1}`,
+      tokenKey: `SZOMV_OCJENA_${index + 1}`,
+      label,
+      defaultValue: "Zadovoljava",
+    })),
+  }),
+]);
+
 const FIRE_REVIEW_ITEMS = [
   "Projektna dokumentacija i izvedeno stanje",
   "Vizualni pregled sustava",
@@ -1913,16 +2106,6 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       pageOrientation: "landscape",
     },
   ],
-  SZOMV: [
-    {
-      id: "szomv-cista-visual",
-      label: "Vizualni pregled sustava zastite od munje",
-      summary: "Vizualni pregled hvataljki, odvoda, mjernih spojeva, uzemljenja i prenaponske zastite",
-      sourceSheet: "SZOMV1.1",
-      columns: ["Stavka pregleda", "Odabir / stanje", "Napomena", "ZADOVOLJAVA DA/NE"],
-      rows: SZOMV_DETAILED_ITEMS.map((item) => [item, "zadovoljava", "", "DA"]),
-    },
-  ],
   EMM: [
     {
       id: "emm-cista-metal-bonding",
@@ -2541,6 +2724,20 @@ function getCistaNativeTableSpecsForService(serviceCode = "") {
     : null;
 }
 
+function normalizeDocumentationOptions(options = []) {
+  return (Array.isArray(options) ? options : [])
+    .map((option) => {
+      if (typeof option === "string") {
+        return { value: option, label: option };
+      }
+      return {
+        value: option?.value || option?.label || "",
+        label: option?.label || option?.value || "",
+      };
+    })
+    .filter((option) => option.value || option.label);
+}
+
 function makeChecklistFromItems({
   id,
   label,
@@ -2559,7 +2756,7 @@ function makeChecklistFromItems({
     enabledFieldId: `use-${id}`,
     enabledByDefault: true,
     assessmentLabel,
-    options: options.map((value) => ({ value, label: value })),
+    options: normalizeDocumentationOptions(options),
     items: items.map((item, index) => ({
       id: `${id}-${index + 1}`,
       key: `${id}-${index + 1}`,
@@ -2765,15 +2962,8 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     validitySentence: "Ponovno ispitivanje potrebno je obaviti do",
     signatureAreas: ["elektro"],
     technicalDataFields: SZOMV_TECHNICAL_FIELDS,
-    tables: [
-      tableSpec({
-        id: "szomv-visual",
-        label: "Vizualni pregled sustava zastite od munje",
-        summary: "Tablica 1. Vizualni pregled sustava zastite od djelovanja munje",
-        columns: SZOMV_COLUMNS,
-        rows: rowsFromItems(SZOMV_COLUMNS, SZOMV_DETAILED_ITEMS, "DA"),
-      }),
-    ],
+    checklists: SZOMV_CHECKLISTS,
+    tables: [],
   }),
   EIZ: Object.freeze({
     serviceCode: "EIZ",
@@ -3550,16 +3740,14 @@ export function createDocumentationChecklistsForService(serviceCode = "") {
     enabledByDefault: checklist.enabledByDefault !== false,
     enabledFieldId: checklist.enabledFieldId || `use-${checklist.id}`,
     assessmentLabel: checklist.assessmentLabel || "",
-    options: (checklist.options || ["DA", "NE", "NP"].map((value) => ({ value, label: value }))).map((option) => ({
-      value: option.value || option.label || "",
-      label: option.label || option.value || "",
-    })),
+    options: normalizeDocumentationOptions(checklist.options || YES_NO_NP_VALUES),
     items: (checklist.items || []).map((item, index) => ({
       id: item.id || `${checklist.id}-${index + 1}`,
       key: item.key || item.id || `${checklist.id}-${index + 1}`,
       tokenKey: item.tokenKey || normalizeCode(item.id || `${checklist.id}-${index + 1}`).replace(/[^A-Z0-9]+/g, "_"),
       label: item.label || `Stavka ${index + 1}`,
       defaultValue: item.defaultValue || "DA",
+      options: Array.isArray(item.options) && item.options.length ? normalizeDocumentationOptions(item.options) : null,
     })),
   }));
 }
