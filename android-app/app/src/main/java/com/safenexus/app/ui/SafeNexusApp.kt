@@ -28250,6 +28250,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     .filter { template ->
                         template.fieldBlocks.isNotEmpty() ||
                             template.measurementTables.isNotEmpty() ||
+                            template.formulaSheets.isNotEmpty() ||
                             template.fields.isNotEmpty()
                     }
                     .ifEmpty { templates }

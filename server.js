@@ -115,7 +115,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.335.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.336.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -19447,8 +19447,15 @@ function buildMobileWorkOrderItem(item = {}) {
         ? {
           id: normalizeInputValue(entry.id || entry.serviceId || entry.serviceCatalogId || entry.catalogServiceId),
           serviceId: normalizeInputValue(entry.serviceId || entry.id || entry.serviceCatalogId || entry.catalogServiceId),
-          name: normalizeInputValue(entry.name),
-          serviceCode: normalizeInputValue(entry.serviceCode),
+          serviceKey: normalizeInputValue(entry.serviceKey || entry.key),
+          name: normalizeInputValue(entry.name || entry.serviceName || entry.title || entry.label || entry.displayName),
+          serviceName: normalizeInputValue(entry.serviceName || entry.name || entry.title || entry.label || entry.displayName),
+          title: normalizeInputValue(entry.title),
+          label: normalizeInputValue(entry.label),
+          serviceCode: normalizeInputValue(entry.serviceCode || entry.code || entry.shortCode || entry.shortLabel),
+          code: normalizeInputValue(entry.code || entry.serviceCode || entry.shortCode || entry.shortLabel),
+          shortCode: normalizeInputValue(entry.shortCode || entry.shortLabel || entry.code || entry.serviceCode),
+          shortLabel: normalizeInputValue(entry.shortLabel || entry.shortCode || entry.code || entry.serviceCode),
           serviceStatus: normalizeInputValue(entry.serviceStatus),
           quantity: normalizeInputValue(entry.quantity || entry.measurementQuantity || entry.count || "1") || "1",
           linkedTemplateIds: normalizeMobileDocumentWizardArray(entry.linkedTemplateIds),
@@ -19569,9 +19576,17 @@ function findMobileServiceCatalogItemForWorkOrderService(service = {}, scopedSna
   const candidateKeys = [
     service.serviceCode,
     service.code,
+    service.shortCode,
     service.name,
     service.serviceName,
     service.title,
+    service.shortLabel,
+    service.serviceKey,
+    service.key,
+    service.label,
+    service.displayName,
+    service.displayService,
+    service.serviceLine,
   ].map(normalizeMobileTemplateLookupKey).filter(Boolean);
   if (candidateKeys.length === 0) {
     return null;
@@ -19581,8 +19596,13 @@ function findMobileServiceCatalogItemForWorkOrderService(service = {}, scopedSna
     const keys = [
       item?.serviceCode,
       item?.code,
+      item?.shortCode,
       item?.name,
+      item?.serviceName,
       item?.title,
+      item?.shortLabel,
+      item?.label,
+      item?.displayName,
     ].map(normalizeMobileTemplateLookupKey).filter(Boolean);
     return candidateKeys.some((candidate) => keys.includes(candidate));
   }) ?? null;
@@ -25165,33 +25185,93 @@ function getMobileNativeDocumentationPresetByCode(serviceCode = "") {
   return MOBILE_NATIVE_DOCUMENTATION_PRESETS.find((preset) => preset.serviceCode === normalizedCode) || null;
 }
 
-function getMobileNativeDocumentationPresetForService(service = {}, serviceIndex = 0, scopedSnapshot = {}) {
-  const catalogItem = findMobileServiceCatalogItemForWorkOrderService(service, scopedSnapshot);
-  const explicitCodePreset = [
+function getMobileNativeDocumentationPresetFromLookupValue(value = "") {
+  const directPreset = getMobileNativeDocumentationPresetByCode(value);
+  if (directPreset) {
+    return directPreset;
+  }
+
+  const lookup = normalizeMobileSprLookupText(value);
+  if (!lookup) {
+    return null;
+  }
+  const tokens = lookup.split(/\s+/u).filter(Boolean);
+  const sortedPresets = [...MOBILE_NATIVE_DOCUMENTATION_PRESETS]
+    .sort((left, right) => String(right.serviceCode || "").length - String(left.serviceCode || "").length);
+  return sortedPresets.find((preset) => {
+    const codeLookup = normalizeMobileSprLookupText(preset.serviceCode);
+    if (!codeLookup) {
+      return false;
+    }
+    return tokens.some((token) => (
+      token === codeLookup
+      || (token.startsWith(codeLookup) && /^\d+$/u.test(token.slice(codeLookup.length)))
+    ));
+  }) || null;
+}
+
+function collectMobileNativeDocumentationLookupValues(service = {}, catalogItem = {}, serviceIndex = 0) {
+  const values = [
     service?.serviceCode,
     service?.code,
+    service?.shortCode,
     service?.shortLabel,
-  ].map(getMobileNativeDocumentationPresetByCode).find(Boolean);
-  if (explicitCodePreset) {
-    return explicitCodePreset;
-  }
-  const catalogCodePreset = [
-    catalogItem?.serviceCode,
-    catalogItem?.code,
-    catalogItem?.shortLabel,
-  ].map(getMobileNativeDocumentationPresetByCode).find(Boolean);
-  if (catalogCodePreset) {
-    return catalogCodePreset;
-  }
-  const serviceText = normalizeMobileSprLookupText([
+    service?.serviceKey,
+    service?.key,
     service?.name,
     service?.serviceName,
     service?.title,
+    service?.label,
+    service?.displayName,
+    service?.displayService,
+    service?.serviceLine,
+    service?.documentType,
+    service?.description,
+    service?.note,
+    service?.type,
+    catalogItem?.serviceCode,
+    catalogItem?.code,
+    catalogItem?.shortCode,
+    catalogItem?.shortLabel,
     catalogItem?.name,
     catalogItem?.serviceName,
     catalogItem?.title,
+    catalogItem?.label,
+    catalogItem?.displayName,
+    catalogItem?.documentType,
+    catalogItem?.description,
+    catalogItem?.note,
+    catalogItem?.type,
     `USLUGA-${serviceIndex + 1}`,
-  ].filter(Boolean).join(" "));
+  ];
+  [
+    service?.linkedTemplateTitles,
+    service?.templateTitles,
+    service?.documentTemplateTitles,
+    catalogItem?.linkedTemplateTitles,
+    catalogItem?.templateTitles,
+    catalogItem?.documentTemplateTitles,
+  ].forEach((entries) => {
+    if (Array.isArray(entries)) {
+      entries.forEach((entry) => values.push(entry));
+    } else if (entries) {
+      values.push(entries);
+    }
+  });
+  return values.map(normalizeInputValue).filter(Boolean);
+}
+
+function getMobileNativeDocumentationPresetForService(service = {}, serviceIndex = 0, scopedSnapshot = {}) {
+  const catalogItem = findMobileServiceCatalogItemForWorkOrderService(service, scopedSnapshot);
+  const lookupValues = collectMobileNativeDocumentationLookupValues(service, catalogItem, serviceIndex);
+  const explicitPreset = lookupValues
+    .map(getMobileNativeDocumentationPresetFromLookupValue)
+    .find(Boolean);
+  if (explicitPreset) {
+    return explicitPreset;
+  }
+
+  const serviceText = normalizeMobileSprLookupText(lookupValues.join(" "));
   if (!serviceText) {
     return null;
   }

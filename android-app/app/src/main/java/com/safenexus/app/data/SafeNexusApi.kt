@@ -3305,8 +3305,8 @@ private fun JSONArray?.toWorkOrderDocumentationTemplates(): List<WorkOrderDocume
                     id = item.firstClean("id"),
                     title = item.firstClean("title").ifBlank { "Zapisnik" },
                     documentType = item.firstClean("documentType"),
-                    serviceName = item.firstClean("serviceName"),
-                    serviceCode = item.firstClean("serviceCode", "code", "shortCode"),
+                    serviceName = item.firstClean("serviceName", "name", "title", "label", "displayName"),
+                    serviceCode = item.firstClean("serviceCode", "code", "shortCode", "shortLabel", "nativeServiceCode", "serviceShortCode"),
                     serviceIndex = item.optInt("serviceIndex", -1),
                     signatureAreas = item.optJSONArray("signatureAreas").toStringList(),
                     documentNumber = item.firstClean("documentNumber"),
@@ -4104,9 +4104,9 @@ private fun JSONArray?.toWorkOrderServiceDetails(): List<WorkOrderServiceItem> {
             if (item is JSONObject) {
                 add(
                     WorkOrderServiceItem(
-                        serviceId = item.firstClean("serviceId", "id", "serviceCatalogId", "catalogServiceId"),
-                        name = item.firstClean("name", "serviceName", "title"),
-                        serviceCode = item.firstClean("serviceCode", "code", "shortLabel"),
+                        serviceId = item.firstClean("serviceId", "id", "serviceCatalogId", "catalogServiceId", "serviceKey", "key"),
+                        name = item.firstClean("name", "serviceName", "title", "label", "displayName"),
+                        serviceCode = item.firstClean("serviceCode", "code", "shortCode", "shortLabel", "nativeServiceCode", "serviceShortCode"),
                         serviceStatus = item.firstClean("serviceStatus", "progressStatus", "workStatus"),
                         quantity = item.firstClean("quantity", "measurementQuantity", "count").ifBlank { "1" },
                     ),
