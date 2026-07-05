@@ -60752,13 +60752,9 @@ function getDocumentationSprRecordSourceSearchText(record = {}) {
 
 function getDocumentationSprKnownServiceCodes() {
   return new Set([
-    "EIZ",
-    "TZIN",
-    "SZOM",
-    "SZOMV",
-    "SVZ",
-    "VES",
-    "SPR",
+    ...DOCUMENTATION_NATIVE_TEMPLATE_PRESETS
+      .map((preset) => String(preset.serviceCode || "").trim().toUpperCase())
+      .filter(Boolean),
     "ZUDS",
     "IPK",
     "OI",
@@ -76135,7 +76131,14 @@ function normalizeDocumentTemplateSignatureServiceCode(value = "") {
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, " ")
     .trim();
-  const known = ["SPR", "ZNR", "TZIN", "EIZ", "SZOMV", "SZOM", "SVZ", "VES", "TIPKALO", "PANIK"];
+  const known = [
+    ...DOCUMENTATION_NATIVE_TEMPLATE_PRESETS
+      .map((preset) => String(preset.serviceCode || "").trim().toUpperCase())
+      .filter(Boolean),
+    "ZNR",
+    "TIPKALO",
+    "PANIK",
+  ].sort((left, right) => right.length - left.length);
   const knownMatch = known.find((code) => new RegExp(`\\b${code}\\b`, "i").test(direct));
   if (knownMatch) {
     return knownMatch === "PANIK" ? "SPR" : knownMatch;

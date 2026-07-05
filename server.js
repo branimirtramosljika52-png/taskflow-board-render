@@ -114,7 +114,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.328.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.329.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -1101,18 +1101,36 @@ const DOCUMENTATION_NATIVE_SERVICE_VALIDITY_MONTHS = Object.freeze({
   VES: "24",
   EIZ: "12",
   SZOM: "12",
-  SVZ: "12",
-  NO: "36",
-  STROJEVI: "36",
-  RADNAOPREMA: "36",
+  EMM: "12",
   VS: "36",
+  PPCAFFE: "36",
+  PZP: "36",
   EXEI: "36",
   EXSE: "6",
   EXOV: "24",
+  SVZ: "12",
+  SP: "12",
   HM: "12",
   HMU: "12",
   HMV: "12",
   HMUV: "12",
+  SGP: "12",
+  SS: "12",
+  PJENA: "12",
+  SO: "12",
+  PZ: "12",
+  PPV: "12",
+  PPZ: "12",
+  DS: "12",
+  PLINSKAKOTLOVNICA: "12",
+  NPI: "12",
+  UNP: "12",
+  ROF: "36",
+  ROK: "36",
+  NO: "36",
+  STROJEVI: "36",
+  RADNAOPREMA: "36",
+  PE: "36",
 });
 const DOCUMENTATION_NATIVE_SERVICE_GENERIC_NOTE = "Native zapisnik iz modula Izrada dokumentacije.";
 
@@ -23807,6 +23825,24 @@ function inferMobileNativeDocumentationServiceCode(value = "") {
   if (!lookup) {
     return "";
   }
+  const compactLookup = lookup.replace(/\s+/gu, "");
+  const directCode = [...MOBILE_NATIVE_MEASUREMENT_SERVICE_CODES]
+    .sort((left, right) => right.length - left.length)
+    .find((code) => {
+      const normalizedCode = normalizeMobileSprLookupText(code);
+      return compactLookup === normalizedCode
+        || lookup === normalizedCode
+        || lookup.startsWith(`${normalizedCode} `)
+        || lookup.includes(` ${normalizedCode} `)
+        || lookup.endsWith(` ${normalizedCode}`);
+    });
+  if (directCode) {
+    return directCode;
+  }
+  const semanticMatch = MOBILE_NATIVE_DOCUMENTATION_SEMANTIC_MATCHERS.find((matcher) => matcher.matches(lookup));
+  if (semanticMatch?.code) {
+    return semanticMatch.code;
+  }
   if (/\bstrojevi\b/u.test(lookup) || lookup.includes("nadzor opreme") || lookup.includes("nadzor strojeva")) {
     return "STROJEVI";
   }
@@ -24947,12 +24983,52 @@ const MOBILE_NATIVE_DOCUMENTATION_SEMANTIC_MATCHERS = Object.freeze([
     matches: (text) => text.includes("unp"),
   },
   {
+    code: "EMM",
+    matches: (text) => text.includes("metaln") && text.includes("mas"),
+  },
+  {
+    code: "PPCAFFE",
+    matches: (text) => text.includes("ventilacij") && (text.includes("caffe") || text.includes("kafe") || text.includes("cafe")),
+  },
+  {
+    code: "PZP",
+    matches: (text) => text.includes("ventilacij") && text.includes("pusac"),
+  },
+  {
+    code: "SGP",
+    matches: (text) => text.includes("gasen") && text.includes("pozar") && text.includes("plin"),
+  },
+  {
+    code: "SS",
+    matches: (text) => text.includes("sprinkler"),
+  },
+  {
+    code: "PJENA",
+    matches: (text) => text.includes("gasen") && text.includes("pjen"),
+  },
+  {
+    code: "SO",
+    matches: (text) => text.includes("odvod") && text.includes("dim"),
+  },
+  {
+    code: "PZ",
+    matches: (text) => text.includes("zavjes") && (text.includes("vatrootp") || text.includes("protupoz")),
+  },
+  {
     code: "PPV",
     matches: (text) => text.includes("protupozarn") && text.includes("vrat"),
   },
   {
     code: "PPZ",
     matches: (text) => text.includes("protupozarn") && text.includes("zaklop"),
+  },
+  {
+    code: "DS",
+    matches: (text) => text.includes("drencher") || (text.includes("hladenj") && text.includes("vod")),
+  },
+  {
+    code: "PLINSKAKOTLOVNICA",
+    matches: (text) => text.includes("plinsk") && text.includes("kotlovnic"),
   },
   {
     code: "SVZ",
@@ -24979,6 +25055,26 @@ const MOBILE_NATIVE_DOCUMENTATION_SEMANTIC_MATCHERS = Object.freeze([
       || text.includes("kemijski cimben")
       || (text.includes("radni okolis") && text.includes("kemij"))
     ),
+  },
+  {
+    code: "RADNAOPREMA",
+    matches: (text) => text.includes("ispitivanje radne opreme") || text.includes("pregled radne opreme"),
+  },
+  {
+    code: "PE",
+    matches: (text) => text.includes("plan evakuacij"),
+  },
+  {
+    code: "NNZDPETROL",
+    matches: (text) => text.includes("negativni nalaz") && text.includes("petrol"),
+  },
+  {
+    code: "NNZD",
+    matches: (text) => text.includes("negativni nalaz"),
+  },
+  {
+    code: "EOTP",
+    matches: (text) => text.includes("evidencij") && text.includes("tehnick") && text.includes("podat"),
   },
   {
     code: "NO",

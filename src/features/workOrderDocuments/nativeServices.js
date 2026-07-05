@@ -9,6 +9,52 @@ export function normalizeWorkOrderDocumentWorkEquipmentText(value = "") {
     .trim();
 }
 
+const DOCUMENTATION_NATIVE_TIMELINE_LABELS = Object.freeze([
+  "PLINSKAKOTLOVNICA",
+  "NNZDPETROL",
+  "RADNAOPREMA",
+  "STROJEVI",
+  "PPCAFFE",
+  "SZOMV",
+  "SZOM",
+  "TZIN",
+  "EIZ",
+  "VES",
+  "EMM",
+  "SPR",
+  "SVZ",
+  "EXEI",
+  "EXSE",
+  "EXOV",
+  "HMUV",
+  "HMU",
+  "HMV",
+  "HM",
+  "SGP",
+  "SS",
+  "PJENA",
+  "SO",
+  "PZP",
+  "PZ",
+  "PPV",
+  "PPZ",
+  "DS",
+  "NPI",
+  "UNP",
+  "ROF",
+  "ROK",
+  "NO",
+  "PE",
+  "NNZD",
+  "EOTP",
+  "FC",
+  "KC",
+  "RO",
+  "ZNR",
+  "TIPKALO",
+  "PANIK",
+]);
+
 export function isWorkOrderDocumentWorkEquipmentText(value = "") {
   const normalized = normalizeWorkOrderDocumentWorkEquipmentText(value);
   const compact = normalized.replace(/\s+/g, "");
@@ -273,8 +319,7 @@ export function getDocumentTemplateRuntimeTimelineLabel(entry = {}) {
   }
 
   const upperTitle = rawTitle.toUpperCase();
-  const knownLabels = ["EIZ", "TZIN", "SZOMV", "SZOM", "SVZ", "VES", "SPR", "ZNR", "TIPKALO", "PANIK"];
-  const matchedLabel = knownLabels.find((label) => upperTitle.includes(label));
+  const matchedLabel = DOCUMENTATION_NATIVE_TIMELINE_LABELS.find((label) => upperTitle.includes(label));
   const objectSequence = Number.parseInt(entry?.objectSequence, 10);
   const suffix = Number.isFinite(objectSequence) && objectSequence > 0 ? String(objectSequence) : "";
   if (matchedLabel) {
