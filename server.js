@@ -23927,6 +23927,30 @@ function inferMobileNativeDocumentationServiceCode(value = "") {
   return "";
 }
 
+function inferMobileNativeDocumentationServiceCodeFromExplicitToken(value = "") {
+  const directCode = normalizeMobileNativeMeasurementServiceCode(value);
+  if (directCode) {
+    return directCode;
+  }
+  const lookup = normalizeMobileSprLookupText(value);
+  if (!lookup) {
+    return "";
+  }
+  const tokens = lookup.split(/\s+/u).filter(Boolean);
+  return [...MOBILE_NATIVE_MEASUREMENT_SERVICE_CODES]
+    .sort((left, right) => right.length - left.length)
+    .find((code) => {
+      const normalizedCode = normalizeMobileSprLookupText(code);
+      if (!normalizedCode) {
+        return false;
+      }
+      return tokens.some((token) => (
+        token === normalizedCode
+        || (token.startsWith(normalizedCode) && /^\d+(?:\d*)$/u.test(token.slice(normalizedCode.length)))
+      ));
+    }) || "";
+}
+
 function getMobileDocumentRecordNativeDocumentationServiceCode(record = {}) {
   const fieldValues = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
     ? record.fieldValues
@@ -23941,7 +23965,7 @@ function getMobileDocumentRecordNativeDocumentationServiceCode(record = {}) {
   if (directCode) {
     return directCode;
   }
-  return inferMobileNativeDocumentationServiceCode([
+  return inferMobileNativeDocumentationServiceCodeFromExplicitToken([
     record?.serviceName,
     record?.templateTitle,
     record?.documentType,
@@ -23961,7 +23985,7 @@ function getMobileDocumentRecordTitleNativeDocumentationServiceCode(record = {})
   const fieldValues = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
     ? record.fieldValues
     : {};
-  return inferMobileNativeDocumentationServiceCode([
+  return inferMobileNativeDocumentationServiceCodeFromExplicitToken([
     record?.templateTitle,
     record?.documentType,
     record?.documentTitle,
@@ -23978,7 +24002,7 @@ function getMobileTemplateNativeDocumentationServiceCode(template = {}) {
   if (directCode) {
     return directCode;
   }
-  return inferMobileNativeDocumentationServiceCode([
+  return inferMobileNativeDocumentationServiceCodeFromExplicitToken([
     template?.serviceName,
     template?.documentType,
     template?.title,
@@ -24012,7 +24036,7 @@ function getMobileTemplateNativeDocumentationServiceCodes(template = {}) {
     template?.model?.reportTitle,
     template?.model?.coverSubtitle,
   ].forEach((value) => {
-    const code = inferMobileNativeDocumentationServiceCode(value);
+    const code = inferMobileNativeDocumentationServiceCodeFromExplicitToken(value);
     if (code) {
       codes.add(code);
     }
@@ -27656,11 +27680,6 @@ function resolveMobileDocumentationHeaderImage({
     common.documentHeader,
     common.globalHeader,
     common.documentationHeader,
-    entry,
-    entry.mobileCommon,
-    entry.documentRecord,
-    entry.documentRecord?.fieldValues,
-    entry.placeholders,
     template,
     template.model,
     template.header,
@@ -27673,6 +27692,11 @@ function resolveMobileDocumentationHeaderImage({
     scopedSnapshot.documentationSprGlobalHeader,
     scopedSnapshot.currentOrganization?.documentationHeader,
     scopedSnapshot.currentOrganization?.documentationSprHeader,
+    entry,
+    entry.mobileCommon,
+    entry.documentRecord,
+    entry.documentRecord?.fieldValues,
+    entry.placeholders,
   ];
   for (const candidate of candidates) {
     const header = normalizeMobileDocumentationHeaderCandidate(candidate);
