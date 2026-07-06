@@ -1611,7 +1611,22 @@ class SafeNexusApi(
         modelTier: String = "fast",
     ): Result<SprVoiceAiResult> = withContext(Dispatchers.IO) {
         runCatching {
-            val table = template.measurementTables.firstOrNull()
+            val table = if (template.serviceCode.equals("EIZ", ignoreCase = true)) {
+                template.measurementTables.firstOrNull { table ->
+                    listOf(table.id, table.key, table.tokenKey, table.label, table.summary, table.sourceSheet)
+                        .joinToString(" ")
+                        .lowercase()
+                        .let { text ->
+                            text.contains("eiz-ipk") ||
+                                text.contains("eiz.ipk") ||
+                                text.contains("eiz1.4") ||
+                                text.contains("impedanc") ||
+                                text.contains("petlje kvara")
+                        }
+                }
+            } else {
+                null
+            } ?: template.measurementTables.firstOrNull()
             val payload = JSONObject()
                 .put("purpose", "mobile-spr-voice-measurement-rows")
                 .put("workOrderId", workOrderId)

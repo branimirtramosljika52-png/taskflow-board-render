@@ -25471,14 +25471,24 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       helpText: "Ocjena se prikazuje samo ako je pripadajući dio zapisnika uključen.",
     },
   ));
-  const sprVoiceFields = preset.serviceCode === "SPR"
-    ? [
-      buildMobileNativeDocumentationField("sprVoiceTranscript", "Diktat mjernih mjesta", "spr_voice", {
+  const measurementVoiceFields = [
+    ...(preset.serviceCode === "SPR"
+      ? [
+        buildMobileNativeDocumentationField("sprVoiceTranscript", "Diktat mjernih mjesta", "spr_voice", {
         defaultValue: "",
         helpText: "Primjer: Prodajni prostor 7 panika, skladiste 6. Puni samo mjesto ispitivanja i broj lampi.",
-      }),
-    ]
-    : [];
+        }),
+      ]
+      : []),
+    ...(preset.serviceCode === "EIZ"
+      ? [
+        buildMobileNativeDocumentationField("eizIpkVoiceTranscript", "Diktat impedancije petlje kvara", "spr_voice", {
+          defaultValue: "",
+          helpText: "Primjer: Prodajni prostor 7 uticnica 230 V. Puni IPK tablicu grupnim redom i mjernim mjestima.",
+        }),
+      ]
+      : []),
+  ];
   const fields = [
     buildMobileNativeDocumentationField("inspectionDate", "Datum ispitivanja", "date", {
       required: true,
@@ -25531,7 +25541,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     ...checklistUseFields,
     ...checklistItemFields,
     ...measurementTableUseFields,
-    ...sprVoiceFields,
+    ...measurementVoiceFields,
     ...assessmentFields,
     buildMobileNativeDocumentationField("recommendations", "Preporuke", "textarea", {
       defaultValue: "Preporuke",
@@ -25590,6 +25600,15 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         typeLabel: "Glasovni unos",
         summary: "Unesi samo mjesto i broj lampi, npr. Prodajni prostor 7 panika.",
         helpText: "Ako mjesto vec postoji u tablici, mijenja se samo broj lampi. Ako ne postoji, dodaje se novi red.",
+      }));
+    }
+    if (preset.serviceCode === "EIZ" && isMobileEizIpkMeasurementTable(table, index)) {
+      sectionBlocks.push(buildMobileNativeDocumentationBlock("eizIpkVoiceTranscript", "Diktat impedancije petlje kvara", "spr_voice", {
+        group: title,
+        editable: true,
+        typeLabel: "Glasovni unos",
+        summary: "Primjer: Prodajni prostor 7 uticnica 230 V. Dodaje grupni red i mjerna mjesta u IPK tablicu.",
+        helpText: "Zamijeni tablicu krece od prvog reda. Dodaj upisuje ispod zadnjeg unesenog IPK bloka.",
       }));
     }
     return sectionBlocks;
@@ -26715,6 +26734,16 @@ const MOBILE_SPR_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
   "Glasovni unos SPR",
 ]);
 
+const MOBILE_EIZ_IPK_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
+  "eizIpkVoiceTranscript",
+  "EIZ_IPK_VOICE_TRANSCRIPT",
+  "Diktat impedancije petlje kvara",
+  "Diktat IPK mjernih mjesta",
+  "Diktat uticnica",
+  "Diktat utičnica",
+  "Glasovni unos EIZ IPK",
+]);
+
 const MOBILE_SPR_VOICE_NUMBER_WORDS = Object.freeze({
   jedan: 1,
   jedna: 1,
@@ -26793,6 +26822,31 @@ function isMobileSprVoiceUnitToken(value = "") {
     || lookup.startsWith("lamp")
     || lookup.startsWith("svjetilj")
     || lookup.startsWith("kom");
+}
+
+function isMobileEizIpkVoiceUnitToken(value = "") {
+  const lookup = normalizeMobileSprLookupText(value);
+  return lookup.startsWith("utic")
+    || lookup.startsWith("uticnic")
+    || lookup.startsWith("uti")
+    || lookup.startsWith("suko")
+    || lookup === "v"
+    || lookup === "230v"
+    || lookup === "230 v"
+    || lookup === "400v"
+    || lookup === "400 v"
+    || lookup.startsWith("kom");
+}
+
+function cleanMobileEizIpkVoicePoint(value = "") {
+  const lookup = normalizeMobileSprLookupText(value);
+  if (lookup.includes("400")) {
+    return "Utičnica 400 V";
+  }
+  if (lookup.includes("rasvjet")) {
+    return "Rasvjetno mjesto";
+  }
+  return "Utičnica 230 V";
 }
 
 function parseMobileSprVoiceLooseRows(transcript = "") {
@@ -26897,6 +26951,81 @@ function parseMobileSprVoiceRows(transcript = "") {
   return rows.length ? rows : parseMobileSprVoiceLooseRows(source);
 }
 
+function parseMobileEizIpkVoiceRows(transcript = "") {
+  const source = normalizeInputValue(transcript);
+  if (!source) {
+    return [];
+  }
+  const floorPattern = /\beta\S*\s+((?:-?\d+\.?\s*)?(?:kat|katu)|prizemlje|podrum|suteren|galerija|(?:prvi|drugi|tre[cć]i|[cč]etvrti|peti|[sš]esti|sedmi|osmi|deveti|deseti)\s+kat)/giu;
+  const normalizedSource = source
+    .replace(floorPattern, (_match, floor) => `\n§FLOOR§${cleanMobileSprVoiceFloor(floor)}\n`)
+    .replace(/\b(?:i onda|pa onda|zatim|onda)\b/giu, "\n")
+    .replace(/[;,]+/g, "\n");
+  const rows = [];
+  const seenSections = new Set();
+  const addSection = (place = "") => {
+    const cleanedPlace = cleanMobileSprVoicePlace(place);
+    const key = normalizeMobileSprLookupText(cleanedPlace);
+    if (!cleanedPlace || !key || seenSections.has(key)) {
+      return;
+    }
+    seenSections.add(key);
+    rows.push({ key: `section-${key}`, place: cleanedPlace, lampCount: "", kind: "section" });
+  };
+  const addMeasurementRows = (section = "", countValue = "", pointValue = "") => {
+    const count = Number.parseInt(parseMobileSprVoiceCount(countValue), 10);
+    if (!Number.isFinite(count) || count <= 0) {
+      return;
+    }
+    addSection(section);
+    const point = cleanMobileEizIpkVoicePoint(pointValue);
+    for (let index = 0; index < Math.min(count, 200); index += 1) {
+      rows.push({
+        key: `ipk-${normalizeMobileSprLookupText(section)}-${rows.length + 1}`,
+        place: point,
+        lampCount: "1",
+        kind: "measurement",
+      });
+    }
+  };
+  normalizedSource
+    .split(/\r?\n/g)
+    .map((segment) => normalizeInputValue(segment))
+    .filter(Boolean)
+    .forEach((segment) => {
+      if (segment.startsWith("§FLOOR§")) {
+        const place = segment.replace(/^§FLOOR§/, "").trim();
+        addSection(place);
+        return;
+      }
+      const tokens = segment
+        .replace(/[,:]+/g, " ")
+        .split(/\s+/g)
+        .map((token) => normalizeInputValue(token).replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, ""))
+        .filter(Boolean);
+      const placeTokens = [];
+      for (let index = 0; index < tokens.length; index += 1) {
+        const token = tokens[index];
+        const count = parseMobileSprVoiceCount(token);
+        if (!count) {
+          placeTokens.push(token);
+          continue;
+        }
+        const section = placeTokens.join(" ");
+        const pointTokens = [];
+        let nextIndex = index + 1;
+        while (nextIndex < tokens.length && isMobileEizIpkVoiceUnitToken(tokens[nextIndex])) {
+          pointTokens.push(tokens[nextIndex]);
+          nextIndex += 1;
+        }
+        addMeasurementRows(section, count, pointTokens.join(" "));
+        placeTokens.length = 0;
+        index = nextIndex - 1;
+      }
+    });
+  return rows;
+}
+
 function normalizeMobileSprVoiceRows(rows = []) {
   const normalizedRows = [];
   const seen = new Set();
@@ -26954,6 +27083,52 @@ function normalizeMobileSprVoiceRows(rows = []) {
   return normalizedRows;
 }
 
+function normalizeMobileEizIpkVoiceRows(rows = []) {
+  const normalizedRows = [];
+  const seenSections = new Set();
+  (Array.isArray(rows) ? rows : []).forEach((row, index) => {
+    const rawKind = normalizeInputValue(row?.kind || row?.type || row?.rowType || "").toLowerCase();
+    const isSection = rawKind === "section"
+      || rawKind === "floor"
+      || rawKind === "etaza"
+      || rawKind.startsWith("eta")
+      || row?.isSection === true;
+    const place = isSection
+      ? cleanMobileSprVoiceFloor(row?.place || row?.mjesto || row?.location || row?.room || row?.name || "")
+      : cleanMobileEizIpkVoicePoint(row?.place || row?.mjesto || row?.location || row?.room || row?.name || "");
+    const quantity = parseMobileSprVoiceCount(
+      row?.lampCount
+      || row?.brojLampi
+      || row?.count
+      || row?.quantity
+      || row?.value
+      || "",
+    ) || "1";
+    const key = normalizeMobileSprLookupText(place);
+    if (!place || !key) {
+      return;
+    }
+    if (isSection) {
+      if (seenSections.has(key)) {
+        return;
+      }
+      seenSections.add(key);
+      normalizedRows.push({ key, place, lampCount: "", kind: "section" });
+      return;
+    }
+    const count = Math.max(1, Number.parseInt(quantity, 10) || 1);
+    for (let repeatedIndex = 0; repeatedIndex < count; repeatedIndex += 1) {
+      normalizedRows.push({
+        key: `${key}-${index + 1}-${repeatedIndex + 1}`,
+        place,
+        lampCount: "1",
+        kind: rawKind || "measurement",
+      });
+    }
+  });
+  return normalizedRows;
+}
+
 function getMobileSprVoiceResultRows(result = {}) {
   const directRows = Array.isArray(result?.rows) ? result.rows : [];
   const measurementRows = Array.isArray(result?.measurementRows) ? result.measurementRows : [];
@@ -26971,6 +27146,43 @@ function buildMobileSprVoiceLocalPayload(body = {}, message = "") {
     rows,
     message: message || `Korišten je lokalni parser za ${rows.length} redaka.`,
   };
+}
+
+function buildMobileEizIpkVoiceLocalPayload(body = {}, message = "") {
+  const rows = normalizeMobileEizIpkVoiceRows(parseMobileEizIpkVoiceRows(body?.transcript || body?.text || ""));
+  return {
+    ok: true,
+    provider: "local",
+    rows,
+    message: message || `Lokalni parser je pripremio ${rows.length} IPK redaka.`,
+  };
+}
+
+function isMobileEizIpkVoiceRequest(body = {}) {
+  const serviceCode = normalizeInputValue(body?.serviceCode).toUpperCase();
+  const table = body?.measurementTable && typeof body.measurementTable === "object" ? body.measurementTable : {};
+  const tableText = normalizeMobileSprLookupText([
+    table.id,
+    table.key,
+    table.tokenKey,
+    table.label,
+    table.summary,
+    table.sourceSheet,
+    body?.templateTitle,
+  ].join(" "));
+  return serviceCode === "EIZ" && (
+    tableText.includes("eiz ipk")
+    || tableText.includes("eiz1 4")
+    || tableText.includes("impedanc")
+    || tableText.includes("petlje kvara")
+  );
+}
+
+async function buildMobileMeasurementVoiceStructuredRows(body = {}, user = null) {
+  if (isMobileEizIpkVoiceRequest(body)) {
+    return buildMobileEizIpkVoiceLocalPayload(body);
+  }
+  return buildMobileSprVoiceStructuredRows(body, user);
 }
 
 async function buildMobileSprVoiceStructuredRows(body = {}, user = null) {
@@ -27169,6 +27381,188 @@ function applyMobileSprVoiceTranscriptToMeasurementTables(tables = [], common = 
     return {
       ...table,
       sheet: applyMobileSprVoiceRowsToSheet(table.sheet, voiceRows),
+    };
+  });
+}
+
+function isMobileEizIpkMeasurementTable(table = {}, index = -1) {
+  const lookup = normalizeMobileSprLookupText([
+    table?.id,
+    table?.key,
+    table?.tokenKey,
+    table?.fieldKey,
+    table?.label,
+    table?.summary,
+    table?.chapterTitle,
+    table?.sourceSheet,
+    index === 1 ? "fallback-ipk" : "",
+  ].join(" "));
+  return lookup.includes("eiz ipk")
+    || lookup.includes("eiz1 4")
+    || lookup.includes("impedanc")
+    || lookup.includes("petlje kvara");
+}
+
+function isMobileEizIpkSheetTemplateLike(sheet = {}, placeColumn = null) {
+  if (!placeColumn?.id || !Array.isArray(sheet?.rows) || sheet.rows.length === 0) {
+    return true;
+  }
+  const defaultPlace = normalizeMobileSprLookupText("Utičnica 230 V");
+  const hasSectionMerge = (Array.isArray(sheet.merges) ? sheet.merges : []).some((merge) => (
+    merge?.rowSpan === 1 && Number(merge?.colSpan || 1) > 1
+  ));
+  if (hasSectionMerge) {
+    return false;
+  }
+  return !sheet.rows.some((row) => {
+    const place = normalizeMobileSprLookupText(row?.cells?.[placeColumn.id]);
+    return place && place !== defaultPlace;
+  });
+}
+
+function applyMobileEizIpkVoiceRowsToSheet(sheet = null, voiceRows = [], replaceExisting = false) {
+  const normalized = normalizeWorkOrderMeasurementSheet(sheet);
+  if (!normalized?.columns?.length || !Array.isArray(voiceRows) || voiceRows.length === 0) {
+    return normalized || sheet;
+  }
+  const numberColumn = findMobileSprSheetColumn(normalized, ["r br", "redni broj", "broj", "rb"], 0);
+  const placeColumn = findMobileSprSheetColumn(normalized, ["mjerno mjesto", "mjesto ispitivanja", "uticnica", "utičnica"], 1);
+  const circuitColumn = findMobileSprSheetColumn(normalized, ["oznaka strujnog kruga", "strujni krug", "circuit"], 2);
+  const protectionColumn = findMobileSprSheetColumn(normalized, ["tip i karakteristika", "zastitnog uredaja", "zaštitnog uređaja"], 3);
+  const idnColumn = findMobileSprSheetColumn(normalized, ["idn ia", "iΔn", "ia"], 4);
+  const tdColumn = findMobileSprSheetColumn(normalized, ["td"], 5);
+  const passColumn = findMobileSprSheetColumn(normalized, ["zadovoljava", "ocjena", "pass"], normalized.columns.length - 1);
+  if (!placeColumn?.id) {
+    return normalized;
+  }
+  const originalRows = (Array.isArray(normalized.rows) ? normalized.rows : []).map((row, index) => ({
+    id: normalizeInputValue(row?.id) || `measurement-row-${index + 1}`,
+    cells: { ...(row?.cells || {}) },
+    formats: { ...(row?.formats || {}) },
+  }));
+  const rows = originalRows.map((row) => ({
+    id: row.id,
+    cells: { ...row.cells },
+    formats: { ...row.formats },
+  }));
+  const clearRow = (row) => {
+    normalized.columns.forEach((column) => {
+      row.cells[column.id] = "";
+      delete row.formats[column.id];
+    });
+  };
+  const shouldReset = replaceExisting || isMobileEizIpkSheetTemplateLike(normalized, placeColumn);
+  if (shouldReset) {
+    rows.forEach(clearRow);
+  }
+  const createRow = (targetIndex = rows.length) => {
+    const base = originalRows[targetIndex] || {};
+    const targetRow = {
+      id: normalizeInputValue(base.id) || `measurement-row-${rows.length + 1}`,
+      cells: Object.fromEntries(normalized.columns.map((column) => [column.id, ""])),
+      formats: {},
+    };
+    rows.push(targetRow);
+    return targetRow;
+  };
+  const formulaColumnIds = new Set(["zLpe", "izem", "zLn", "zLl", "u0"]);
+  const seedMeasurementDefaults = (row, targetIndex, measurementNumber) => {
+    const originalCells = originalRows[targetIndex]?.cells || {};
+    normalized.columns.forEach((column) => {
+      const originalValue = normalizeInputValue(originalCells[column.id]);
+      if (originalValue.startsWith("=") || formulaColumnIds.has(column.id)) {
+        row.cells[column.id] = originalValue;
+      }
+    });
+    if (numberColumn?.id) row.cells[numberColumn.id] = String(measurementNumber);
+    row.cells[placeColumn.id] = "Utičnica 230 V";
+    if (circuitColumn?.id) row.cells[circuitColumn.id] = originalCells[circuitColumn.id] || "-";
+    if (protectionColumn?.id) row.cells[protectionColumn.id] = originalCells[protectionColumn.id] || "RCD 40/0,03";
+    if (idnColumn?.id) row.cells[idnColumn.id] = originalCells[idnColumn.id] || "0.03";
+    if (tdColumn?.id) row.cells[tdColumn.id] = originalCells[tdColumn.id] || "0.4";
+    if (passColumn?.id) row.cells[passColumn.id] = "DA";
+  };
+  const sectionMerges = [];
+  const firstColumn = normalized.columns[0] || placeColumn;
+  const makeSectionRow = (row, title = "") => {
+    clearRow(row);
+    row.cells[firstColumn.id] = title;
+    row.formats[firstColumn.id] = {
+      bold: true,
+      fillColor: "#eef7ff",
+      align: "left",
+      verticalAlign: "middle",
+    };
+    sectionMerges.push({
+      rowId: row.id,
+      columnId: firstColumn.id,
+      rowSpan: 1,
+      colSpan: normalized.columns.length,
+    });
+  };
+  const existingSectionRows = new Set(
+    (Array.isArray(normalized.merges) ? normalized.merges : [])
+      .filter((merge) => merge?.rowSpan === 1 && Number(merge?.colSpan || 1) > 1)
+      .map((merge) => merge.rowId),
+  );
+  const rowHasUserContent = (row) => (
+    existingSectionRows.has(row.id)
+    || normalizeMobileSprLookupText(row.cells?.[placeColumn.id]).replace(/uticnica 230 v/g, "").trim()
+  );
+  let insertIndex = shouldReset ? 0 : Math.max(0, rows.findLastIndex(rowHasUserContent) + 1);
+  let measurementNumber = 1;
+  rows.forEach((row) => {
+    if (!existingSectionRows.has(row.id) && normalizeInputValue(row.cells?.[numberColumn?.id || ""])) {
+      const parsed = Number.parseInt(row.cells[numberColumn.id], 10);
+      if (Number.isFinite(parsed)) {
+        measurementNumber = Math.max(measurementNumber, parsed + 1);
+      }
+    }
+  });
+  voiceRows.forEach((entry) => {
+    const targetRow = rows[insertIndex] || createRow(insertIndex);
+    insertIndex += 1;
+    const isSection = normalizeInputValue(entry?.kind).toLowerCase() === "section" || !normalizeInputValue(entry?.lampCount);
+    if (isSection) {
+      makeSectionRow(targetRow, entry.place);
+      return;
+    }
+    clearRow(targetRow);
+    seedMeasurementDefaults(targetRow, Math.max(0, insertIndex - 1), measurementNumber);
+    targetRow.cells[placeColumn.id] = cleanMobileEizIpkVoicePoint(entry.place);
+    measurementNumber += 1;
+  });
+  const sectionRowIds = new Set(sectionMerges.map((merge) => merge.rowId));
+  return {
+    ...normalized,
+    rows,
+    merges: [
+      ...(Array.isArray(normalized.merges) ? normalized.merges.filter((merge) => (
+        !sectionRowIds.has(merge?.rowId)
+        && !(shouldReset && existingSectionRows.has(merge?.rowId))
+      )) : []),
+      ...sectionMerges,
+    ],
+  };
+}
+
+function applyMobileEizIpkVoiceTranscriptToMeasurementTables(tables = [], common = {}, template = {}) {
+  const transcript = getMobileDocumentationTemplateFieldValues(
+    common,
+    template,
+    MOBILE_EIZ_IPK_VOICE_TRANSCRIPT_FIELD_KEYS,
+  );
+  const voiceRows = normalizeMobileEizIpkVoiceRows(parseMobileEizIpkVoiceRows(transcript));
+  if (!voiceRows.length) {
+    return tables;
+  }
+  return tables.map((table, index) => {
+    if (!isMobileEizIpkMeasurementTable(table, index)) {
+      return table;
+    }
+    return {
+      ...table,
+      sheet: applyMobileEizIpkVoiceRowsToSheet(table.sheet, voiceRows, false),
     };
   });
 }
@@ -27435,9 +27829,14 @@ function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, co
       },
     };
   });
-  return normalizeInputValue(serviceCode).toUpperCase() === "SPR"
-    ? applyMobileSprVoiceTranscriptToMeasurementTables(tables, common, template)
-    : tables;
+  const normalizedServiceCode = normalizeInputValue(serviceCode).toUpperCase();
+  if (normalizedServiceCode === "SPR") {
+    return applyMobileSprVoiceTranscriptToMeasurementTables(tables, common, template);
+  }
+  if (normalizedServiceCode === "EIZ") {
+    return applyMobileEizIpkVoiceTranscriptToMeasurementTables(tables, common, template);
+  }
+  return tables;
 }
 
 function normalizeMobileTechnicalFieldToken(value = "") {
@@ -33795,14 +34194,17 @@ async function handleApiRequest(request, response, url) {
       return true;
     }
 
-    if (request.method === "POST" && url.pathname === "/api/mobile/documentation/spr-voice/structure") {
+    if (request.method === "POST" && (
+      url.pathname === "/api/mobile/documentation/spr-voice/structure"
+      || url.pathname === "/api/mobile/documentation/measurement-voice/structure"
+    )) {
       if (!canManageWorkOrders(user)) {
         sendError(response, 403, "Nemate pravo upravljati RN dokumentacijom.");
         return true;
       }
 
       const body = await readJsonBody(request).catch(() => ({}));
-      sendJson(response, 200, await buildMobileSprVoiceStructuredRows(body, user));
+      sendJson(response, 200, await buildMobileMeasurementVoiceStructuredRows(body, user));
       return true;
     }
 
