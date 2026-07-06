@@ -429,19 +429,28 @@ function drawDefaultHeader(page, model, fonts, y = TOP_Y) {
 
 async function embedHeaderImage(pdfDoc, dataUrl = "") {
   const text = String(dataUrl || "").trim();
-  const match = text.match(/^data:(image\/(?:png|jpe?g));base64,/i);
+  const match = text.match(/^data:(image\/(?:png|jpe?g|webp));base64,/i);
   if (!match) {
     return null;
   }
   try {
     const bytes = dataUrlToBytes(text);
-    const mime = match[1].toLowerCase();
+    let mime = match[1].toLowerCase();
     if (!bytes) {
       return null;
     }
+    let imageBytes = bytes;
+    if (mime.includes("webp")) {
+      const converted = await convertPdfImageBytesToPng(bytes);
+      if (!converted) {
+        return null;
+      }
+      imageBytes = converted;
+      mime = "image/png";
+    }
     return mime.includes("png")
-      ? await pdfDoc.embedPng(bytes)
-      : await pdfDoc.embedJpg(bytes);
+      ? await pdfDoc.embedPng(imageBytes)
+      : await pdfDoc.embedJpg(imageBytes);
   } catch {
     return null;
   }
@@ -455,7 +464,7 @@ async function embedPdfImage(pdfDoc, source = "") {
   try {
     let bytes = null;
     let mime = "";
-    const dataMatch = text.match(/^data:(image\/(?:png|jpe?g));base64,/i);
+    const dataMatch = text.match(/^data:(image\/(?:png|jpe?g|webp));base64,/i);
     if (dataMatch) {
       bytes = dataUrlToBytes(text);
       mime = dataMatch[1].toLowerCase();
@@ -470,8 +479,31 @@ async function embedPdfImage(pdfDoc, source = "") {
     if (!bytes) {
       return null;
     }
+    if (mime.includes("webp") || /\.webp(?:\?|$)/i.test(text)) {
+      const converted = await convertPdfImageBytesToPng(bytes);
+      if (!converted) {
+        return null;
+      }
+      return pdfDoc.embedPng(converted);
+    }
     const isPng = mime.includes("png") || /\.png(?:\?|$)/i.test(text);
     return isPng ? await pdfDoc.embedPng(bytes) : await pdfDoc.embedJpg(bytes);
+  } catch {
+    return null;
+  }
+}
+
+async function convertPdfImageBytesToPng(bytes) {
+  if (typeof window !== "undefined" || !bytes) {
+    return null;
+  }
+  try {
+    const dynamicImport = new Function("specifier", "return import(specifier)");
+    const sharpModule = await dynamicImport("sharp");
+    const sharp = sharpModule.default || sharpModule;
+    const buffer = Buffer.from(bytes);
+    const png = await sharp(buffer).png().toBuffer();
+    return new Uint8Array(png);
   } catch {
     return null;
   }

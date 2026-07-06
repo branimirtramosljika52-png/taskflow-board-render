@@ -18736,6 +18736,36 @@ function readBlobAsDataUrl(blob, errorMessage = "Ne mogu učitati dokument.") {
   });
 }
 
+function loadImageElementFromDataUrl(dataUrl = "", errorMessage = "Ne mogu učitati sliku.") {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener("load", () => resolve(image), { once: true });
+    image.addEventListener("error", () => reject(new Error(errorMessage)), { once: true });
+    image.src = dataUrl;
+  });
+}
+
+async function readHeaderFileAsPdfSafeDataUrl(file) {
+  const dataUrl = await readFileAsDataUrl(file, "Ne mogu učitati header.");
+  if (/^data:image\/(?:png|jpe?g);base64,/i.test(dataUrl)) {
+    return dataUrl;
+  }
+  const image = await loadImageElementFromDataUrl(dataUrl, "Ne mogu učitati header.");
+  const canvas = document.createElement("canvas");
+  const maxWidth = 1800;
+  const scale = Math.min(1, maxWidth / Math.max(1, image.naturalWidth || image.width || 1));
+  canvas.width = Math.max(1, Math.round((image.naturalWidth || image.width || 1) * scale));
+  canvas.height = Math.max(1, Math.round((image.naturalHeight || image.height || 1) * scale));
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return dataUrl;
+  }
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/png");
+}
+
 function readAvatarFileAsDataUrl(file) {
   return readFileAsDataUrl(file, "Ne mogu učitati sliku.");
 }
@@ -62676,7 +62706,7 @@ async function handleDocumentationSprHeaderUpload(file) {
     return;
   }
   try {
-    const dataUrl = await readFileAsDataUrl(file, "Ne mogu učitati header.");
+    const dataUrl = await readHeaderFileAsPdfSafeDataUrl(file);
     documentationSprGlobalHeader = normalizeDocumentationSprGlobalHeader({
       dataUrl,
       name: file.name || "header",
