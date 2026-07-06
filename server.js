@@ -25296,8 +25296,7 @@ function getMobileNativeDocumentationPresetForService(service = {}, serviceIndex
     return namePreset;
   }
 
-  const semanticMatch = MOBILE_NATIVE_DOCUMENTATION_SEMANTIC_MATCHERS.find((matcher) => matcher.matches(serviceText));
-  return getMobileNativeDocumentationPresetByCode(semanticMatch?.code) || null;
+  return null;
 }
 
 function buildMobileNativeDocumentationField(id, label, type = "text", {
@@ -26471,18 +26470,8 @@ function isMobileDocumentationSprEntry(entry = {}, template = {}) {
     template?.serviceCode,
     template?.serviceName,
   ].filter(Boolean).join(" "));
-  const nativeCodes = /\b(spr|tzin|eiz|szomv|szom|ves)\b/;
-  return /\bspr\b/.test(lookup)
-    || nativeCodes.test(lookup)
-    || lookup.includes("sigurnosna panik")
-    || lookup.includes("sigurnosna rasvjeta")
-    || lookup.includes("panik rasvjet")
-    || lookup.includes("panic lighting")
-    || lookup.includes("tipkalo")
-    || lookup.includes("isklop elektric")
-    || lookup.includes("elektricn")
-    || lookup.includes("evakuacij")
-    || lookup.includes("zastitu od djelovanja munje");
+  const lookupTokens = lookup.split(/\s+/u).filter(Boolean);
+  return lookupTokens.some((token) => Boolean(getMobileNativeDocumentationPresetByCode(token)));
 }
 
 function normalizeMobileDocumentationNativeHtmlServiceKey(value = "") {
@@ -27630,6 +27619,70 @@ function buildMobileStrojeviManualFieldSummary(common = {}, field = "") {
     .join("\n");
 }
 
+function normalizeMobileDocumentationHeaderCandidate(source = {}) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    return { dataUrl: "", name: "" };
+  }
+  const dataUrl = normalizeInputValue(
+    source.headerImageDataUrl
+    || source.headerDataUrl
+    || source.documentHeaderDataUrl
+    || source.dataUrl,
+  );
+  if (!/^data:image\/(?:png|jpe?g|webp);base64,/i.test(dataUrl)) {
+    return { dataUrl: "", name: "" };
+  }
+  return {
+    dataUrl,
+    name: normalizeInputValue(
+      source.headerImageName
+      || source.headerName
+      || source.documentHeaderName
+      || source.fileName
+      || source.name,
+    ),
+  };
+}
+
+function resolveMobileDocumentationHeaderImage({
+  entry = {},
+  template = {},
+  common = {},
+  scopedSnapshot = {},
+} = {}) {
+  const candidates = [
+    common,
+    common.header,
+    common.documentHeader,
+    common.globalHeader,
+    common.documentationHeader,
+    entry,
+    entry.mobileCommon,
+    entry.documentRecord,
+    entry.documentRecord?.fieldValues,
+    entry.placeholders,
+    template,
+    template.model,
+    template.header,
+    template.documentHeader,
+    template.model?.header,
+    template.model?.documentHeader,
+    template.fieldValues,
+    scopedSnapshot.documentationHeader,
+    scopedSnapshot.documentationSprHeader,
+    scopedSnapshot.documentationSprGlobalHeader,
+    scopedSnapshot.currentOrganization?.documentationHeader,
+    scopedSnapshot.currentOrganization?.documentationSprHeader,
+  ];
+  for (const candidate of candidates) {
+    const header = normalizeMobileDocumentationHeaderCandidate(candidate);
+    if (header.dataUrl) {
+      return header;
+    }
+  }
+  return { dataUrl: "", name: "" };
+}
+
 function buildMobileDocumentationSprModel({
   entry = {},
   template = {},
@@ -27672,6 +27725,12 @@ function buildMobileDocumentationSprModel({
   const signatureOib = getMobileSprSignatureOib(common, scopedSnapshot, signatureArea);
   const serviceCode = normalizeInputValue(entry.serviceCode || template.serviceCode || placeholders.SIFRA_USLUGE || "SPR");
   const reportDefaults = createDocumentationReportModelDefaults(serviceCode);
+  const headerImage = resolveMobileDocumentationHeaderImage({
+    entry,
+    template,
+    common,
+    scopedSnapshot,
+  });
   const inspectionDate = normalizeDateOnlyValue(entry.inspectionDate || common.inspectionDate);
   const issuedDate = normalizeDateOnlyValue(entry.issuedDate || common.issuedDate || inspectionDate);
   const validUntil = normalizeDateOnlyValue(entry.expirationDate)
@@ -27774,8 +27833,8 @@ function buildMobileDocumentationSprModel({
       || placeholders.PREPORUKE
       || (normalizeInputValue(serviceCode).toUpperCase() === "STROJEVI" ? buildMobileStrojeviManualFieldSummary(common, "measuresToEliminateDeficiencies") : ""),
     ),
-    headerImageDataUrl: normalizeInputValue(common.headerImageDataUrl),
-    headerImageName: normalizeInputValue(common.headerImageName),
+    headerImageDataUrl: headerImage.dataUrl,
+    headerImageName: headerImage.name,
     measurementEquipmentIds: common.selectedEquipmentIds || [],
     legalFrameworkIds: common.selectedLegalFrameworkIds || [],
     customRegulations: [],

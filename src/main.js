@@ -59549,9 +59549,9 @@ function createDocumentationSprTemplateId() {
 }
 
 function cloneDocumentationSprModelForTemplate(model = documentationSprModel) {
-  const normalized = normalizeDocumentationSprModel(model);
+  const normalized = applyDocumentationSprGlobalHeaderToModel(model);
   return JSON.parse(JSON.stringify({
-    ...stripDocumentationSprHeaderFromModel(normalized),
+    ...normalized,
     attachments: [],
     aiSources: [],
     gridlineModel: normalizeDocumentationSprGridlineModel(normalized.gridlineModel),
@@ -59559,9 +59559,9 @@ function cloneDocumentationSprModelForTemplate(model = documentationSprModel) {
 }
 
 function cloneDocumentationSprModelForLocalDraft(model = documentationSprModel) {
-  const normalized = normalizeDocumentationSprModel(model);
+  const normalized = applyDocumentationSprGlobalHeaderToModel(model);
   return JSON.parse(JSON.stringify({
-    ...stripDocumentationSprHeaderFromModel(normalized),
+    ...normalized,
     attachments: [],
     aiSources: normalizeDocumentationSprAiSources(normalized.aiSources).map(({ contentDataUrl, inlineReady, ...source }) => ({
       ...source,
@@ -62682,6 +62682,11 @@ async function handleDocumentationSprHeaderUpload(file) {
       name: file.name || "header",
       updatedAt: new Date().toISOString(),
     });
+    if (documentationSprModel) {
+      documentationSprModel.headerImageDataUrl = documentationSprGlobalHeader.dataUrl;
+      documentationSprModel.headerImageName = documentationSprGlobalHeader.name;
+      scheduleDocumentationSprSave();
+    }
     persistDocumentationSprGlobalHeader();
     syncDocumentationSprPreviewControls();
     renderDocumentationSprPreview();
