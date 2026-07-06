@@ -66153,7 +66153,7 @@ let documentationSprPdfGeneratorPromise = null;
 
 function loadDocumentationSprPdfGenerator() {
   if (!documentationSprPdfGeneratorPromise) {
-    documentationSprPdfGeneratorPromise = import("/assets/documentation-spr-pdf.js?v=20260630-documentation-layout-rich-v1");
+    documentationSprPdfGeneratorPromise = import("/assets/documentation-spr-pdf.js?v=20260706-ex-native-pdf-v2");
   }
   return documentationSprPdfGeneratorPromise;
 }
@@ -66247,8 +66247,25 @@ async function exportDocumentationSprPdf() {
     documentationSprPdfButton.disabled = true;
     documentationSprPdfButton.textContent = "Generiram PDF";
   }
-  setDocumentationSprStatus("Generiram PDF u browseru", "saving");
+  setDocumentationSprStatus(
+    shouldUseDocumentationSprServerNativePdf(exportModel)
+      ? "Generiram Ex PDF na serveru"
+      : "Generiram PDF u browseru",
+    "saving",
+  );
   try {
+    if (shouldUseDocumentationSprServerNativePdf(exportModel)) {
+      const exportEntry = getDocumentationSprSingleExportEntry();
+      if (!exportEntry) {
+        throw new Error("Nema zapisnika za PDF export.");
+      }
+      await downloadDocumentationSprServerNativePdf({
+        ...exportEntry,
+        model: exportModel,
+      });
+      setDocumentationSprStatus("Ex PDF preuzet iz server predloška", "saved");
+      return;
+    }
     const generator = await loadDocumentationSprPdfGenerator();
     const result = await generator.generateDocumentationSprPdfBlob({
       model: exportModel,
@@ -66265,7 +66282,11 @@ async function exportDocumentationSprPdf() {
       "saved",
     );
   } catch (error) {
-    console.error("Browser PDF download nije uspio, otvaram print fallback.", error);
+    console.error("PDF download nije uspio.", error);
+    if (shouldUseDocumentationSprServerNativePdf(exportModel)) {
+      setDocumentationSprStatus(error?.message || "Ex PDF nije generiran na serveru", "saving");
+      return;
+    }
     const html = buildDocumentationSprPdfHtml(exportModel, rows);
     openDocumentationSprPrintPdfFallback(html, fileName);
   } finally {
@@ -66596,6 +66617,140 @@ function getDocumentationSprSingleExportEntry() {
   };
 }
 
+const DOCUMENTATION_SPR_SERVER_NATIVE_PDF_SERVICE_CODES = new Set(["EXEI", "EXSE", "EXOV"]);
+
+function shouldUseDocumentationSprServerNativePdf(model = documentationSprModel) {
+  return DOCUMENTATION_SPR_SERVER_NATIVE_PDF_SERVICE_CODES.has(getDocumentationSprServiceCode(model));
+}
+
+function getDocumentationSprNativeTemplateIdForServer(model = {}) {
+  const serviceCode = getDocumentationSprServiceCode(model);
+  return serviceCode ? `native-${serviceCode.toLowerCase()}-0` : "";
+}
+
+function buildDocumentationSprServerNativePdfEntry(exportEntry = {}) {
+  const model = applyDocumentationSprGlobalHeaderToModel(exportEntry.model || documentationSprModel || {});
+  const serviceCode = getDocumentationSprServiceCode(model);
+  const nativeTemplateId = getDocumentationSprNativeTemplateIdForServer(model);
+  const fieldSheets = buildDocumentationSprMeasurementSheetsForRecord(model);
+  const fieldValues = buildDocumentationSprRecordFieldValues(model);
+  const documentRecord = buildDocumentationSprDocumentRecordPayload({
+    ...exportEntry,
+    model,
+    templateId: nativeTemplateId,
+  });
+  return {
+    exportKind: "documentation_spr",
+    templateId: nativeTemplateId,
+    workOrderId: getDocumentationSprWorkOrderIdForExport(exportEntry, model),
+    workOrderNumber: model.workOrderNumber || exportEntry.workOrderNumber || "",
+    serviceCode,
+    serviceName: model.serviceName || exportEntry.serviceName || serviceCode,
+    serviceId: model.serviceId || model.serviceBinding?.serviceId || exportEntry.serviceId || "",
+    documentNumber: model.recordNumber || exportEntry.recordNumber || "",
+    fileName: getDocumentationSprPdfFileName(model),
+    companyName: model.companyName || "",
+    locationName: model.inspectionPlace || "",
+    objectName: model.inspectionObject || "",
+    objectId: model.inspectionObjectId || "",
+    inspectionDate: model.inspectionDate || "",
+    issuedDate: model.issueDate || "",
+    expirationDate: model.validUntil || "",
+    reportTitle: model.reportTitle || "",
+    coverSubtitle: model.coverSubtitle || "",
+    measurementTableTitle: model.measurementTableTitle || "",
+    placeholders: {
+      ...fieldValues,
+      BROJ_ZAPISNIKA: model.recordNumber || "",
+      DOCUMENT_NUMBER: model.recordNumber || "",
+      TEHNICKI_PODACI: model.technicalData || "",
+      TECHNICAL_DATA: model.technicalData || "",
+      PRIMIJENJENI_PROPISI: model.regulations || "",
+      REGULATIONS: model.regulations || "",
+      MJERNA_OPREMA: model.equipment || "",
+      MEASUREMENT_EQUIPMENT: model.equipment || "",
+    },
+    mobileCommon: {
+      signatureMode: model.signatureMode || "digital",
+      signatureImageUrl: model.signatureImageUrl || model.signatureDataUrl || "",
+      signatureDataUrl: model.signatureDataUrl || model.signatureImageUrl || "",
+      selectedEquipmentIds: normalizeDocumentationSprIdList(model.measurementEquipmentIds),
+      selectedLegalFrameworkIds: normalizeDocumentationSprIdList(model.legalFrameworkIds),
+      inspectorUserIds: normalizeDocumentationSprIdList(model.inspectorUserIds),
+      electricalInspectorUserIds: normalizeDocumentationSprIdList(model.inspectorUserIds),
+      authorizationHolderUserId: model.responsiblePersonUserId || "",
+      electricalAuthorizationHolderUserId: model.responsiblePersonUserId || "",
+      inspectionDate: model.inspectionDate || "",
+      issuedDate: model.issueDate || "",
+      resultStatus: model.resultStatus || "ZADOVOLJAVA",
+      defects: model.defects || "",
+      recommendations: model.recommendations || "",
+      projectDocumentation: model.projectDocumentation || "",
+      technicalData: model.technicalData || "",
+      equipment: model.equipment || "",
+      regulations: model.regulations || "",
+      systemDescription: model.systemDescription || "",
+      resultsText: model.resultsText || "",
+      headerImageDataUrl: model.headerImageDataUrl || "",
+      headerImageName: model.headerImageName || "",
+      fieldValues,
+      fieldSheets,
+      templateFieldSheets: nativeTemplateId ? { [nativeTemplateId]: fieldSheets } : {},
+      templateFieldValues: nativeTemplateId ? { [nativeTemplateId]: fieldValues } : {},
+      selectedTemplateAttachments: model.selectedTemplateAttachments || {},
+    },
+    documentRecord: {
+      ...documentRecord,
+      templateId: nativeTemplateId,
+      fieldSheets,
+      fieldValues,
+    },
+  };
+}
+
+async function downloadDocumentationSprServerNativePdf(exportEntry = {}) {
+  const serverEntry = buildDocumentationSprServerNativePdfEntry(exportEntry);
+  if (!serverEntry.workOrderId) {
+    throw new Error(`RN ${serverEntry.workOrderNumber || serverEntry.documentNumber || ""} nema vezu na radni nalog.`);
+  }
+  const response = await apiBinaryRequest("/document-templates/export-pdf-files", {
+    method: "POST",
+    body: {
+      entries: [serverEntry],
+      fileName: serverEntry.fileName || "zapisnik.pdf",
+      singleFileAsPdf: true,
+      signatureSettings: getPdfSignatureExportSettings(),
+      documentStampSettings: getDocumentStampExportSettings(),
+    },
+  });
+  triggerBlobDownload(response.blob, response.fileName || serverEntry.fileName || "zapisnik.pdf");
+  return response;
+}
+
+async function saveDocumentationSprServerNativePdfEntryForSignature(exportEntry = {}, { signatureMode = "digital" } = {}) {
+  const model = applyDocumentationSprSignatureModeToModel(exportEntry.model || documentationSprModel || {}, signatureMode);
+  const serverEntry = buildDocumentationSprServerNativePdfEntry({
+    ...exportEntry,
+    model,
+  });
+  if (!serverEntry.workOrderId) {
+    throw new Error(`RN ${serverEntry.workOrderNumber || serverEntry.documentNumber || ""} nema vezu na radni nalog.`);
+  }
+  const response = await apiRequest("/document-templates/export-pdf-documents", {
+    method: "POST",
+    body: {
+      entries: [serverEntry],
+      signatureSettings: getPdfSignatureExportSettings(),
+      documentStampSettings: getDocumentStampExportSettings(),
+    },
+  });
+  const savedItem = response?.items?.[0] || null;
+  if (savedItem) {
+    upsertDocumentsExplorerWorkOrderDocuments([savedItem]);
+  }
+  return savedItem;
+}
+
 function buildDocumentationSprMeasurementSheetForRecord(model = {}) {
   return getDocumentationSprMeasurementTablesForModel(model)[0]?.sheet || {
     columns: [],
@@ -66774,6 +66929,12 @@ async function saveDocumentationSprPdfEntryForSignature(exportEntry = {}, genera
   }
   const mode = normalizeDocumentTemplateSignatureMethod(signatureMode || exportEntry.model?.signatureMode || "digital");
   const model = applyDocumentationSprGlobalHeaderToModel(applyDocumentationSprSignatureModeToModel(exportEntry.model, mode));
+  if (shouldUseDocumentationSprServerNativePdf(model)) {
+    return await saveDocumentationSprServerNativePdfEntryForSignature({
+      ...exportEntry,
+      model,
+    }, { signatureMode: mode });
+  }
   const signatureMetadata = buildDocumentationSprSignatureMetadata(model);
   if (mode === "digital" && !signatureMetadata.primary) {
     throw new Error(`RN ${exportEntry.workOrderNumber || model.workOrderNumber || ""}: odaberi odgovornu osobu s OIB-om za digitalni potpis.`);
@@ -66853,7 +67014,10 @@ async function queueDocumentationSprForDigitalSignature() {
     setDocumentationSprStatus("Nema zapisnika za potpis", "saving");
     return;
   }
-  const generator = await loadDocumentationSprPdfGenerator();
+  const usesOnlyServerNativePdf = exportEntries.every((entry) =>
+    shouldUseDocumentationSprServerNativePdf(entry.model || documentationSprModel),
+  );
+  const generator = usesOnlyServerNativePdf ? null : await loadDocumentationSprPdfGenerator();
   const actionButtons = [
     documentationSprSignatureButton,
     documentationSprBatchDockSignatureButton,

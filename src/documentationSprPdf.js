@@ -1911,6 +1911,118 @@ const EX_EXCEL_TABLE_ORIENTATIONS = Object.freeze({
   },
 });
 
+const EX_EXCEL_TABLE_DETAILS = Object.freeze({
+  "exei-cista-ipk": {
+    legend: [
+      "Z(L-PE) - zemljospojna impedancija petlje [ohm]",
+      "Z(L-L) - medufazna impedancija petlje [ohm]",
+      "Z(L-N) - impedancija petlje prema nultom vodicu [ohm]",
+      "Izem - minimalna struja zemljospoja (L-PE) [A]",
+      "Ik1min - minimalna struja jednopolnog kratkog spoja (L-N) [A]",
+      "Ik2min - minimalna struja dvopolnog kratkog spoja (L-L) [A]",
+      "U0 - napon dodira [V]",
+      "td - najvece dozvoljeno vrijeme iskljucenja [s]",
+      "Ia - struja djelovanja zastitnog uredaja kod td [A]",
+      "Tablica vremena iskljucenja vrijedi za krugove nazivne struje do 32 A u zoni opasnosti 2.",
+    ],
+    conclusion: "Rezultat ispitivanja: izmjerena vrijednost struje prorade i vrijeme prorade zadovoljava uvjete navedenih normi.",
+  },
+  "exei-cista-oi": {
+    legend: [
+      "L1, L2, L3 - fazni vodici",
+      "N - neutralni vodic",
+      "PE - zastitni vodic",
+      "Riso - izmjereni otpor izolacije [Mohm]",
+      "Rd - dozvoljeni otpor izolacije [Mohm]",
+      "Kriterij: SELV/PELV 250 V DC i Rd >= 0,5 Mohm; do 500 V 500 V DC i Rd >= 1,0 Mohm; iznad 500 V 1000 V DC i Rd >= 1,0 Mohm.",
+    ],
+    conclusion: "Ispitni rezultat: ZADOVOLJAVA. Dobiveni rezultati su u skladu s normom HRN EN 60364-6, tocka 61.3.3.",
+  },
+  "exei-cista-zuds": {
+    legend: [
+      "In - nazivna struja ZUDS-a [A]",
+      "Idn - nazivna diferencijalna struja ZUDS-a [mA]",
+      "Iisk - izmjerena struja prorade/iskljucenja [mA]",
+      "tisk - izmjereno vrijeme prorade/iskljucenja [ms]",
+      "U0 - napon dodira [V]",
+      "tdoz - najvece dozvoljeno vrijeme iskljucenja [ms]",
+      "Standardna RCD: 1xIdn 0,3 s; 2xIdn 0,15 s; 5xIdn 0,04 s.",
+      "Selektivna RCD: 1xIdn 0,5 s; 2xIdn 0,2 s; 5xIdn 0,2 s.",
+      "Podrucje djelovanja: AC (0,5 do 1)xIdn; A (0,35 do 1,4)xIdn; B (0,5 do 2)xIdn.",
+    ],
+    conclusion: "Rezultat ispitivanja: izmjera struja prorade i vrijeme prorade zadovoljava uvjete navedenih normi.",
+  },
+  "exei-cista-pe-ipk": {
+    legend: [
+      "SPE - presjek zastitnog PE vodica [mm2]",
+      "SPEd - presjek dodatnog vanjskog PE vodica [mm2]",
+      "Z(L-PE) - zemljospojna impedancija petlje",
+      "Z(L-PE1) - impedancija petlje uz odspojen zastitni vodic",
+      "Z(L-PE2) - impedancija petlje uz odspojen dodatni PE vodic",
+    ],
+    conclusion: "Rezultat ispitivanja: izmjereni otpor izmedu elektricnog uredaja preko zastitnog vodica i glavnog uzemljenja zadovoljava uvjete navedenih normi.",
+  },
+  "exei-cista-pe-direct": {
+    legend: [
+      "Iisp - ispitna struja 0,2 A",
+      "S - presjek ispitivanog PE vodica",
+      "Rizm - izmjereni otpor ispitivanog PE vodica",
+      "Rocek - ocekivani otpor ispitivanog PE vodica",
+    ],
+    conclusion: "Rezultat ispitivanja: izmjereni otpor izmedu zastitnog vodica i metalnih masa iznosi najvise Rp <= 2 ohm, sto zadovoljava uvjete navedenih normi.",
+  },
+  "exei-cista-motors": {
+    legend: [
+      "I L1, L2, L3 - izmjerena struja po linijama L1, L2 i L3",
+      "In - nazivna struja elektromotora [A]",
+      "R1, R2, R3 - izmjereni otpor po namotaju elektromotora [ohm]",
+      "Riso PE-1-2-3 - mjereni otpor izolacije izmedu namota i uzemljenja elektromotora",
+      "Riso I-I - mjereni otpor izolacije izmedu namota elektromotora",
+    ],
+    note: "Napomena:",
+    conclusion: "Rezultat ispitivanja: izmjerene vrijednosti zadovoljavaju uvjete navedene u normi.",
+  },
+  "exei-cista-overload-e": {
+    legend: [
+      "In - nazivna struja elektromotora [A]",
+      "Ip - podesena struja na zastitnom uredaju [A]",
+      "Ia/In - omjer potezne i nazivne struje motora",
+      "Iis - ispitna struja [A]",
+      "tE - najvece dopusteno vrijeme u zakocenom stanju motora [s]",
+      "tisk - izmjereno vrijeme prorade [s]",
+      "tdoz - vrijeme prorade zastite prema I/t karakteristici [s]",
+    ],
+    conclusion: "Rezultat ispitivanja: izmjerena vrijednost vremena prorade zadovoljava uvjete navedenih normi.",
+  },
+  "exei-cista-overload-d": {
+    legend: [
+      "In - nazivna struja elektromotora [A]",
+      "Ip - podesena struja na zastitnom uredaju [A]",
+      "Iis - ispitna struja [A]",
+      "tisk - vrijeme prorade zastite prema I/t karakteristici [s]",
+      "tdoz - vrijeme prorade zastite prema I/t karakteristici [s]",
+    ],
+    conclusion: "Rezultat ispitivanja: izmjerena vrijednost vremena prorade zadovoljava uvjete navedenih normi.",
+  },
+});
+
+const EX_EXCEL_TABLE_DETAIL_ALIASES = Object.freeze({
+  "exei-ipk": "exei-cista-ipk",
+  "exei-oi": "exei-cista-oi",
+  "exei-zuds": "exei-cista-zuds",
+  "exei-pe": "exei-cista-pe-ipk",
+  "exei-equipment": "exei-cista-motors",
+  "exei-bimetal": "exei-cista-overload-e",
+  "exei1.2": "exei-cista-ipk",
+  "exei1.3": "exei-cista-oi",
+  "exei1.4": "exei-cista-zuds",
+  "exei1.5": "exei-cista-pe-ipk",
+  "exei1.6": "exei-cista-pe-direct",
+  "exei1.7": "exei-cista-motors",
+  "exei1.8": "exei-cista-overload-e",
+  "exei1.9": "exei-cista-overload-d",
+});
+
 function isExExcelDocumentation(model = {}) {
   return Object.prototype.hasOwnProperty.call(EX_EXCEL_SERVICE_TITLES, clean(getServiceCode(model)).toUpperCase());
 }
@@ -2174,9 +2286,49 @@ function renderExExcelMeasurementGrid(table = {}, rows = [], serviceCode = "") {
   `;
 }
 
-function renderExExcelMeasurementPageContent(model = {}, serviceCode = "", table = {}, rows = [], tablePageIndex = 0) {
+function getExExcelTableDetails(table = {}) {
+  const candidates = [
+    table.key,
+    table.id,
+    table.tokenKey,
+    table.sourceSheet,
+    table.templateSheetName,
+    table.label,
+  ].map((value) => clean(value).toLowerCase()).filter(Boolean);
+  for (const candidate of candidates) {
+    const direct = EX_EXCEL_TABLE_DETAILS[candidate];
+    if (direct) {
+      return direct;
+    }
+    const alias = EX_EXCEL_TABLE_DETAIL_ALIASES[candidate];
+    if (alias && EX_EXCEL_TABLE_DETAILS[alias]) {
+      return EX_EXCEL_TABLE_DETAILS[alias];
+    }
+  }
+  return null;
+}
+
+function renderExExcelTableDetails(table = {}) {
+  const details = getExExcelTableDetails(table);
+  if (!details) {
+    return "";
+  }
+  return `
+    <div class="ex-legend-block">
+      <strong>Značenje oznaka:</strong>
+      <div class="ex-legend-grid">
+        ${(details.legend || []).map((line) => `<span>${escapeNativeHtml(line)}</span>`).join("")}
+      </div>
+      ${details.note ? `<p class="ex-note">${escapeNativeHtml(details.note)}</p>` : ""}
+      ${details.conclusion ? `<p class="ex-sheet-conclusion"><strong>ZAKLJUČAK</strong> ${escapeNativeHtml(details.conclusion)}</p>` : ""}
+    </div>
+  `;
+}
+
+function renderExExcelMeasurementPageContent(model = {}, serviceCode = "", table = {}, rows = [], tablePageIndex = 0, tablePageCount = 1) {
   const primaryTitle = clean(table.label || getMeasurementTableTitle(model));
   const summary = clean(table.summary || table.assessmentLabel || "");
+  const showTableDetails = tablePageIndex === Math.max(0, tablePageCount - 1);
   return `
     <div class="ex-report-heading">
       <div>
@@ -2195,6 +2347,7 @@ function renderExExcelMeasurementPageContent(model = {}, serviceCode = "", table
       <span>Datum: ${escapeNativeHtml(formatDocumentDate(model.inspectionDate) || "-")}</span>
     </div>
     ${renderExExcelMeasurementGrid(table, rows, serviceCode)}
+    ${showTableDetails ? renderExExcelTableDetails(table) : ""}
   `;
 }
 
@@ -2216,7 +2369,7 @@ function renderExExcelMeasurementPages(model = {}, rows = [], serviceCode = "") 
     return chunks.map((chunk, tablePageIndex) => ({
       orientation,
       className: "measurement",
-      bodyHtml: renderExExcelMeasurementPageContent(model, serviceCode, table, chunk, tablePageIndex),
+      bodyHtml: renderExExcelMeasurementPageContent(model, serviceCode, table, chunk, tablePageIndex, chunks.length),
     }));
   });
 }
@@ -2386,6 +2539,14 @@ function buildExExcelDocumentationHtml({ model = {}, rows = [] } = {}) {
     .landscape .ex-grid { font-size: 5.25px; }
     .landscape .ex-grid.dense { font-size: 4.8px; }
     .landscape .ex-grid.superdense { font-size: 4.3px; }
+    .ex-legend-block { margin-top: 2mm; border: .22mm solid #111; padding: 1.2mm 1.5mm; font-size: 5.25px; line-height: 1.18; page-break-inside: avoid; break-inside: avoid; }
+    .ex-legend-block > strong { display: block; margin-bottom: .8mm; font-size: 5.7px; }
+    .ex-legend-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 4mm; row-gap: .55mm; }
+    .ex-legend-grid span { display: block; }
+    .ex-note { margin: 1mm 0 0; min-height: 3mm; }
+    .ex-sheet-conclusion { margin: 1mm 0 0; border-top: .22mm solid #777; padding-top: .9mm; }
+    .portrait .ex-legend-block { font-size: 4.8px; }
+    .portrait .ex-legend-grid { grid-template-columns: 1fr; }
     .status-pass { color: #166534; font-weight: 700; }
     .status-fail { color: #991b1b; font-weight: 700; }
     .ex-assessments td { text-align: right; font-weight: 700; }

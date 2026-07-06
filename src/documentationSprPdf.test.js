@@ -39,6 +39,7 @@ test("native documentation HTML renders every XLSM-backed report preset", () => 
       assert.match(html, /ISPITNI IZVJEŠTAJ/, "ExEi renders measurement report pages");
       assert.match(html, /ex-page landscape measurement/, "ExEi keeps landscape measurement sheets");
       assert.match(html, /ex-page portrait measurement/, "ExEi keeps portrait measurement sheets");
+      assert.match(html, /Značenje oznaka/, "ExEi renders sheet legends from the Excel export");
       assert.equal(excelGridTableCount > 0, true, "ExEi renders Excel-like gridline tables");
     }
 
@@ -54,4 +55,22 @@ test("native documentation HTML renders every XLSM-backed report preset", () => 
   }
 
   assert.equal(presets.length > 0, true);
+});
+
+test("generic ExEi native documentation HTML keeps Excel sheet legends", () => {
+  const model = {
+    ...createDocumentationReportModelDefaults("EXEI"),
+    companyName: "Petrol d.o.o.",
+    workOrderNumber: "26-672",
+    recordNumber: "26-672-EXEI",
+    inspectionPlace: "PM Zagreb Lucko",
+    inspectionObject: "Test objekt",
+    inspectionDate: "2026-07-05",
+    issueDate: "2026-07-05",
+    responsiblePerson: "Test Ispitivac",
+  };
+  const html = buildDocumentationNativeHtml({ model, rows: [] });
+
+  assert.match(html, /ex-legend-block/, "generic ExEi tables render Excel legend blocks");
+  assert.match(html, /ex-sheet-conclusion/, "generic ExEi tables render Excel sheet conclusions");
 });

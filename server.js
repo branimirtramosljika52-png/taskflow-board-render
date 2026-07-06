@@ -27650,6 +27650,15 @@ function buildMobileDocumentationSprModel({
     organization.address || "",
     [organization.postalCode, organization.city].filter(Boolean).join(" "),
   ].filter(Boolean).join(", "));
+  const explicitTechnicalData = normalizeInputValue(
+    common.technicalData
+    || common.fieldValues?.TECHNICAL_DATA
+    || common.fieldValues?.TEHNICKI_PODACI
+    || common.fieldValues?.DOCUMENTATION_TECHNICAL_DATA
+    || placeholders.TECHNICAL_DATA
+    || placeholders.TEHNICKI_PODACI
+    || placeholders.DOCUMENTATION_TECHNICAL_DATA,
+  );
   const inspectionPlace = normalizeInputValue(
     common.testingLocation
       || placeholders.WORK_ORDER_TESTING_LOCATION
@@ -27717,8 +27726,10 @@ function buildMobileDocumentationSprModel({
     inspectionDate: formatMobileSprDate(inspectionDate),
     issueDate: formatMobileSprDate(issuedDate),
     validUntil: formatMobileSprDate(validUntil),
-    equipment: getMobileSprEquipmentText(template, scopedSnapshot, common),
-    regulations: getMobileSprRegulationsText(template, scopedSnapshot, common),
+    equipment: normalizeInputValue(common.equipment || common.fieldValues?.MEASUREMENT_EQUIPMENT || common.fieldValues?.MJERNA_OPREMA)
+      || getMobileSprEquipmentText(template, scopedSnapshot, common),
+    regulations: normalizeInputValue(common.regulations || common.fieldValues?.REGULATIONS || common.fieldValues?.PRIMIJENJENI_PROPISI)
+      || getMobileSprRegulationsText(template, scopedSnapshot, common),
     projectDocumentation: normalizeInputValue(
       common.projectDocumentation
       || common.fieldValues?.KORISTENA_DOKUMENTACIJA
@@ -27730,8 +27741,8 @@ function buildMobileDocumentationSprModel({
       || reportDefaults.projectDocumentation
     ),
     technicalData: normalizeInputValue(serviceCode).toUpperCase() === "STROJEVI"
-      ? (buildMobileStrojeviTechnicalDataText(common) || buildMobileDocumentationTechnicalDataText(template, reportDefaults, common, placeholders))
-      : buildMobileDocumentationTechnicalDataText(template, reportDefaults, common, placeholders),
+      ? (buildMobileStrojeviTechnicalDataText(common) || explicitTechnicalData || buildMobileDocumentationTechnicalDataText(template, reportDefaults, common, placeholders))
+      : (explicitTechnicalData || buildMobileDocumentationTechnicalDataText(template, reportDefaults, common, placeholders)),
     systemDescription: getMobileDocumentationTemplateFieldValues(common, template, ["systemDescription", "DOCUMENTATION_SPR_SYSTEM_DESCRIPTION", "SYSTEM_DESCRIPTION", "OPIS_SUSTAVA"])
       || getMobileSprFirstValue(placeholders, ["DOCUMENTATION_SPR_SYSTEM_DESCRIPTION", "SYSTEM_DESCRIPTION", "OPIS_SUSTAVA", "OPIS_SUSTAVA_HTML"])
       || normalizeInputValue(template.systemDescription || reportDefaults.systemDescription),
@@ -36667,6 +36678,18 @@ async function handleApiRequest(request, response, url) {
       });
       if (pdfFiles.length === 0) {
         sendError(response, 400, "PDF paket nema nijedan generirani zapisnik.");
+        return true;
+      }
+
+      if (pdfFiles.length === 1 && body.singleFileAsPdf === true) {
+        const singleFileName = sanitizeGeneratedDocumentFileName(
+          body.fileName || pdfFiles[0].fileName || "zapisnik",
+          { fallback: "zapisnik", extension: "pdf" },
+        );
+        sendBinary(response, 200, pdfFiles[0].buffer, {
+          contentType: "application/pdf",
+          fileName: singleFileName,
+        });
         return true;
       }
 
