@@ -27409,14 +27409,17 @@ function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, co
   }
   const tables = baseTables.map((table, index) => {
     const sheet = getMobileDocumentationMeasurementSheetForTable(table, index, entry, template, common);
-    const pageOrientation = normalizeInputValue(
+    const explicitOrientation = normalizeInputValue(
       sheet?.pageOrientation
       || table?.pageOrientation
       || table?.orientation
       || "",
-    ).toLowerCase() === "landscape" || (sheet?.columns?.length || 0) > 5
+    ).toLowerCase();
+    const pageOrientation = explicitOrientation === "landscape"
       ? "landscape"
-      : "";
+      : explicitOrientation === "portrait"
+        ? "portrait"
+        : ((sheet?.columns?.length || 0) > 5 ? "landscape" : "");
     return {
       ...table,
       pageOrientation,
@@ -27643,6 +27646,10 @@ function buildMobileDocumentationSprModel({
       || placeholders.SJEDISTE
       || placeholders.COMPANY_ADDRESS,
   );
+  const organizationAddress = normalizeInputValue([
+    organization.address || "",
+    [organization.postalCode, organization.city].filter(Boolean).join(" "),
+  ].filter(Boolean).join(", "));
   const inspectionPlace = normalizeInputValue(
     common.testingLocation
       || placeholders.WORK_ORDER_TESTING_LOCATION
@@ -27686,6 +27693,12 @@ function buildMobileDocumentationSprModel({
     serviceId: "",
     serviceCode,
     serviceName: normalizeInputValue(entry.serviceName || template.documentType || reportDefaults.serviceName),
+    providerName: normalizeInputValue(organization.name || organization.companyName || "SafeNexus"),
+    providerAddress: organizationAddress,
+    providerOib: normalizeInputValue(organization.oib || organization.OIB),
+    providerPhone: normalizeInputValue(organization.phone || organization.telephone || organization.mobile),
+    providerEmail: normalizeInputValue(organization.email),
+    providerWebsite: normalizeInputValue(organization.website || organization.web),
     reportTitle: normalizeInputValue(template.reportTitle || entry.reportTitle || reportDefaults.reportTitle),
     coverSubtitle: normalizeInputValue(template.coverSubtitle || entry.coverSubtitle || reportDefaults.coverSubtitle),
     measurementTableTitle: normalizeInputValue(template.measurementTableTitle || entry.measurementTableTitle || reportDefaults.measurementTableTitle),
@@ -27787,7 +27800,7 @@ function buildMobileDocumentationSprSignatureGroup(model = {}, scopedSnapshot = 
       signerEmail: normalizeInputValue(responsibleUser?.email),
       signerOib: oib,
       signerTitle: getMobileUserDocumentTitle(responsibleUser),
-      signerOrganization: normalizeInputValue(model.companyName),
+      signerOrganization: normalizeInputValue(model.providerName || model.companyName),
       signatureMode: "digital",
       signatureFieldRole: fieldCode,
       signatureFieldOib: oib,

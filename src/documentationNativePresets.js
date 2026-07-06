@@ -2662,7 +2662,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
         c7: `=IF(B${rowNumber}="","",1)`,
         c8: `=IF(B${rowNumber}="","","DA")`,
       }),
-      pageOrientation: "landscape",
+      pageOrientation: "portrait",
     },
     {
       id: "exei-cista-zuds",
@@ -2679,7 +2679,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
         c15: `=IF(J${rowNumber}="","",RANDBETWEEN(236,238))`,
         c17: `=IF(J${rowNumber}="","","DA")`,
       }),
-      pageOrientation: "landscape",
+      pageOrientation: "portrait",
     },
     {
       id: "exei-cista-pe-ipk",
@@ -2699,7 +2699,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
         c14: `=IF(C${rowNumber}="","","DA")`,
         c16: `=IF(C${rowNumber}="","","DA")`,
       }),
-      pageOrientation: "landscape",
+      pageOrientation: "portrait",
     },
     {
       id: "exei-cista-pe-direct",
@@ -2755,7 +2755,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
         c20: `=IFERROR(IF(E${rowNumber}="","",RANDBETWEEN(VLOOKUP(E${rowNumber},ExPodaci!K1:R24,7,FALSE),VLOOKUP(E${rowNumber},ExPodaci!K1:R24,8,FALSE))),"")`,
         c21: `=IF(E${rowNumber}="","","DA")`,
       }),
-      pageOrientation: "landscape",
+      pageOrientation: "portrait",
     },
     {
       id: "exei-cista-overload-d",
@@ -2771,7 +2771,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
         c16: `=IFERROR(IF(E${rowNumber}="","",RANDBETWEEN(VLOOKUP(E${rowNumber},ExPodaci!T1:Y24,5,FALSE),VLOOKUP(E${rowNumber},ExPodaci!T1:Y24,6,FALSE))),"")`,
         c18: `=IF(E${rowNumber}="","","DA")`,
       }),
-      pageOrientation: "landscape",
+      pageOrientation: "portrait",
     },
   ],
   EXSE: [
@@ -2783,7 +2783,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       columns: ["R.br.", "Mjerno mjesto", "Otpor uzemljenja [ohm]", "Otpor cijevi [kohm]", "Elektrostaticko polje [kV/m]", "Dozvoljeni otpor [ohm]", "Ocjena ispravnosti DA/NE", "Napomena"],
       rowCount: EXSE_EARTHING_ROWS.length,
       rowBuilder: makeExseEarthingCistaRow,
-      pageOrientation: "landscape",
+      pageOrientation: "portrait",
     },
     {
       id: "exse-cista-static",
@@ -2793,7 +2793,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       columns: ["R.br.", "Mjerno mjesto", "Otpor uzemljenja [ohm]", "Otpor cijevi [kohm]", "Elektrostaticko polje [kV/m]", "Dozvoljeni otpor [Mohm]", "Ocjena ispravnosti DA/NE", "Napomena"],
       rowCount: EXSE_STATIC_ROWS.length,
       rowBuilder: makeExseStaticCistaRow,
-      pageOrientation: "landscape",
+      pageOrientation: "portrait",
     },
   ],
   EXOV: [],

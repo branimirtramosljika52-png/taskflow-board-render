@@ -1882,10 +1882,541 @@ function renderNativeHtmlSignature(model = {}) {
   `;
 }
 
+const EX_EXCEL_SERVICE_TITLES = Object.freeze({
+  EXEI: "O ISPITIVANJU INSTALACIJA U PODRUČJIMA S EKSPLOZIVNOM ATMOSFEROM",
+  EXSE: "O MJERENJU OTPORA UZEMLJENJA I STATIČKOG ELEKTRICITETA",
+  EXOV: "O FUNKCIONALNOM ISPITIVANJU ODZRAČNIH VENTILA",
+});
+
+const EX_EXCEL_SERVICE_PREFIXES = Object.freeze({
+  EXEI: "ExEi",
+  EXSE: "ExSe",
+  EXOV: "ExOv",
+});
+
+const EX_EXCEL_TABLE_ORIENTATIONS = Object.freeze({
+  EXEI: {
+    "exei-cista-ipk": "landscape",
+    "exei-cista-oi": "portrait",
+    "exei-cista-zuds": "portrait",
+    "exei-cista-pe-ipk": "portrait",
+    "exei-cista-pe-direct": "landscape",
+    "exei-cista-motors": "landscape",
+    "exei-cista-overload-e": "portrait",
+    "exei-cista-overload-d": "portrait",
+  },
+  EXSE: {
+    "exse-cista-earthing": "portrait",
+    "exse-cista-static": "portrait",
+  },
+});
+
+function isExExcelDocumentation(model = {}) {
+  return Object.prototype.hasOwnProperty.call(EX_EXCEL_SERVICE_TITLES, clean(getServiceCode(model)).toUpperCase());
+}
+
+function getExExcelServicePrefix(serviceCode = "") {
+  return EX_EXCEL_SERVICE_PREFIXES[clean(serviceCode).toUpperCase()] || clean(serviceCode).toUpperCase() || "Ex";
+}
+
+function getExExcelTitle(serviceCode = "", model = {}) {
+  const code = clean(serviceCode).toUpperCase();
+  return EX_EXCEL_SERVICE_TITLES[code] || clean(model.reportTitle || getReportServiceTitle(model));
+}
+
+function getExExcelProvider(model = {}) {
+  const name = clean(model.providerName || model.executorName || "SafeNexus");
+  const address = clean(model.providerAddress || model.executorAddress || "");
+  const oib = clean(model.providerOib || model.executorOib || "");
+  const contact = [
+    clean(model.providerPhone || ""),
+    clean(model.providerEmail || ""),
+    clean(model.providerWebsite || ""),
+  ].filter(Boolean).join(" | ");
+  const initials = (name.match(/\b[\p{L}\p{N}]/gu) || [])
+    .slice(0, 3)
+    .join("")
+    .toUpperCase() || "SN";
+  return { name, address, oib, contact, initials };
+}
+
+function renderExExcelText(value = "", fallback = "") {
+  const text = cleanMultiline(value || fallback);
+  return escapeNativeHtml(text || "-").replace(/\n/g, "<br>");
+}
+
+function renderExExcelRichBox(value = "", fallback = "") {
+  return `<div class="ex-text-box">${formatNativeRichTextHtml(value || fallback)}</div>`;
+}
+
+function renderExExcelSection(number = "", title = "", bodyHtml = "", extraClass = "") {
+  return `
+    <section class="ex-section ${extraClass}">
+      <div class="ex-section-title">${number ? `${escapeNativeHtml(number)} ` : ""}${escapeNativeHtml(title)}</div>
+      ${bodyHtml}
+    </section>
+  `;
+}
+
+function renderExExcelKeyValueTable(rows = []) {
+  const body = rows
+    .map(([label, value]) => [clean(label), cleanMultiline(value)])
+    .filter(([label, value]) => label || value)
+    .map(([label, value]) => `
+      <tr>
+        <th>${escapeNativeHtml(label)}</th>
+        <td>${renderExExcelText(value)}</td>
+      </tr>
+    `)
+    .join("");
+  return `<table class="ex-kv"><tbody>${body || `<tr><td class="ex-muted">Nije upisano.</td></tr>`}</tbody></table>`;
+}
+
+function getExExcelCommonRows(model = {}) {
+  return [
+    ["Naručitelj", [
+      clean(model.companyName),
+      clean(model.companyAddress),
+      clean(model.companyOib) ? `OIB: ${clean(model.companyOib)}` : "",
+    ].filter(Boolean).join("\n")],
+    ["Korisnik prostora", model.spaceUser],
+    ["Mjesto ispitivanja", model.inspectionPlace],
+    ["Objekt ispitivanja", model.inspectionObject],
+    ["Vrsta ispitivanja", model.inspectionType],
+    ["Datum ispitivanja", formatDocumentDate(model.inspectionDate)],
+    ["Broj zapisnika", model.recordNumber],
+  ];
+}
+
+function renderExExcelTechnicalBody(model = {}) {
+  const rows = getPdfTechnicalDataEntries(model.technicalData);
+  if (rows.some(([, value]) => clean(value))) {
+    return renderExExcelKeyValueTable(rows);
+  }
+  return renderExExcelRichBox(model.technicalData);
+}
+
+function renderExExcelHeader(model = {}, serviceCode = "") {
+  const provider = getExExcelProvider(model);
+  const headerImage = clean(model.headerImageDataUrl || "");
+  return `
+    <header class="ex-header">
+      <div class="ex-brand">
+        ${headerImage ? `<img src="${escapeNativeHtml(headerImage)}" alt="">` : `<div class="ex-brand-mark">${escapeNativeHtml(provider.initials)}</div>`}
+        <div>
+          <strong>${escapeNativeHtml(provider.name)}</strong>
+          <span>${escapeNativeHtml(provider.address || "Dokumentacija ispitivanja")}</span>
+          ${provider.oib ? `<span>OIB: ${escapeNativeHtml(provider.oib)}</span>` : ""}
+        </div>
+      </div>
+      <div class="ex-header-center">
+        <strong>Sektor: ZAŠTITNI SUSTAVI</strong>
+        <span>Zaštita na radu | Zaštita od požara | Zaštita okoliša</span>
+      </div>
+      <div class="ex-header-meta">
+        <strong>${escapeNativeHtml(getExExcelServicePrefix(serviceCode))}</strong>
+        <span>RN ${escapeNativeHtml(clean(model.workOrderNumber || "-"))}</span>
+      </div>
+    </header>
+  `;
+}
+
+function renderExExcelFooter(model = {}, serviceCode = "", pageNumber = 1, totalPages = 1) {
+  return `
+    <footer class="ex-footer">
+      <span>${escapeNativeHtml(getExExcelServicePrefix(serviceCode))}-${pageNumber}/${totalPages}</span>
+      <span>Povjerenje se stvara osjećajem sigurnosti</span>
+      <span>${escapeNativeHtml(clean(model.recordNumber || ""))}</span>
+    </footer>
+  `;
+}
+
+function renderExExcelCoverTitle(model = {}, serviceCode = "") {
+  return `
+    <div class="ex-cover-title">
+      <h1>Z A P I S N I K</h1>
+      <h2>${escapeNativeHtml(getExExcelTitle(serviceCode, model))}</h2>
+      <p>${escapeNativeHtml(clean(model.coverSubtitle || getReportCoverSubtitle(model)))}</p>
+    </div>
+  `;
+}
+
+function renderExExcelCoverPageOne(model = {}, serviceCode = "") {
+  if (serviceCode === "EXOV") {
+    return `
+      ${renderExExcelCoverTitle(model, serviceCode)}
+      ${renderExExcelSection("1.", "OPĆI PODACI", renderExExcelKeyValueTable(getExExcelCommonRows(model)))}
+      ${renderExExcelSection("2.", "MJERNE METODE", renderExExcelRichBox(model.resultsText || model.systemDescription))}
+      ${renderExExcelSection("3.", "PRIMIJENJENI PROPISI", renderExExcelRichBox(model.regulations))}
+      ${renderExExcelSection("4.", "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA", renderExExcelRichBox(model.projectDocumentation))}
+      ${renderExExcelSection("5.", "NEDOSTATCI", renderExExcelRichBox(model.defects, "Nisu utvrđeni nedostatci."))}
+    `;
+  }
+  return `
+    ${renderExExcelCoverTitle(model, serviceCode)}
+    ${renderExExcelSection("1.", "OPĆI PODACI", renderExExcelKeyValueTable(getExExcelCommonRows(model)))}
+    ${renderExExcelSection("2.", getPdfTechnicalSectionTitle(model).toUpperCase(), renderExExcelTechnicalBody(model))}
+    ${renderExExcelSection("3.", "MJERNA I ISPITNA OPREMA", renderExExcelRichBox(model.equipment))}
+  `;
+}
+
+function renderExExcelCoverPageTwo(model = {}, serviceCode = "") {
+  return `
+    <div class="ex-page-heading">
+      <strong>ZAPISNIK</strong>
+      <span>${escapeNativeHtml(getExExcelTitle(serviceCode, model))}</span>
+    </div>
+    ${renderExExcelSection("4.", "PRIMIJENJENI PROPISI", renderExExcelRichBox(model.regulations))}
+    ${renderExExcelSection("5.", "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA", renderExExcelRichBox(model.projectDocumentation))}
+    ${renderExExcelSection("6.", "OPIS SUSTAVA", renderExExcelRichBox(model.systemDescription))}
+    ${renderExExcelSection("7.", "REZULTATI ISPITIVANJA", renderExExcelRichBox(model.resultsText))}
+  `;
+}
+
+function getExExcelTableOrientation(serviceCode = "", table = {}) {
+  const code = clean(serviceCode).toUpperCase();
+  const key = clean(table.key || table.id || "").toLowerCase();
+  const mapped = EX_EXCEL_TABLE_ORIENTATIONS[code]?.[key];
+  return mapped || getPdfMeasurementOrientation(table);
+}
+
+function getExExcelRowsPerPage(serviceCode = "", orientation = "portrait", columns = []) {
+  const code = clean(serviceCode).toUpperCase();
+  if (code === "EXEI") {
+    return orientation === "landscape" ? 5 : 4;
+  }
+  if (code === "EXSE") {
+    return 16;
+  }
+  if (columns.length >= 14) {
+    return orientation === "landscape" ? 8 : 6;
+  }
+  return orientation === "landscape" ? 12 : 18;
+}
+
+function getExExcelMeasurementRows(table = {}) {
+  const sheet = normalizePdfMeasurementSheet(table.sheet);
+  const columns = sheet.columns.length ? sheet.columns : [
+    { id: "number", label: "R. br.", width: 70 },
+    { id: "place", label: "Mjesto ispitivanja", width: 240 },
+    { id: "pass", label: "ZADOVOLJAVA", width: 120 },
+  ];
+  const sourceRows = sheet.rows.length ? sheet.rows : Array.from({ length: 8 }, (_, index) => ({
+    id: `blank-${index + 1}`,
+    cells: {},
+    formats: {},
+  }));
+  return sourceRows.map((row, rowIndex) => ({
+    ...row,
+    rowIndex,
+    cells: Object.fromEntries(columns.map((column, columnIndex) => [
+      column.id,
+      clean(getPdfMeasurementCellRawValue(sheet, rowIndex, columnIndex, new Set(), table.formulaContext, table.formulaContext?.current)),
+    ])),
+    formats: row.formats || {},
+  }));
+}
+
+function getExExcelColumnLabel(column = {}) {
+  const label = clean(column.label || column.placeholder || column.id);
+  return /^razmak\b/i.test(label) ? "" : label;
+}
+
+function getExExcelColumnPercentages(columns = []) {
+  const weighted = columns.map((column) => {
+    const label = getExExcelColumnLabel(column);
+    const spacer = !label;
+    return {
+      ...column,
+      width: spacer ? 22 : (Number(column.width) || 120),
+    };
+  });
+  return getNativeHtmlColumnPercentages(weighted);
+}
+
+function renderExExcelMeasurementGrid(table = {}, rows = [], serviceCode = "") {
+  const sheet = normalizePdfMeasurementSheet(table.sheet);
+  const columns = sheet.columns.length ? sheet.columns : [
+    { id: "number", label: "R. br.", width: 70 },
+    { id: "place", label: "Mjesto ispitivanja", width: 240 },
+    { id: "pass", label: "ZADOVOLJAVA", width: 120 },
+  ];
+  const widths = getExExcelColumnPercentages(columns);
+  const densityClass = columns.length >= 18 ? "superdense" : columns.length >= 12 ? "dense" : "";
+  const body = rows.map((row) => `
+    <tr>
+      ${columns.map((column, columnIndex) => {
+        if (isPdfMeasurementCoveredByMerge(sheet, row.rowIndex, columnIndex)) {
+          return "";
+        }
+        const merge = getPdfMeasurementMerge(sheet, row.rowIndex, columnIndex);
+        const attributes = [];
+        if (merge && merge.row === row.rowIndex && merge.column === columnIndex) {
+          if (merge.columnSpan > 1) attributes.push(`colspan="${merge.columnSpan}"`);
+          if (merge.rowSpan > 1) attributes.push(`rowspan="${merge.rowSpan}"`);
+        }
+        const value = row.cells?.[column.id] ?? "";
+        const statusClass = /pass|ocjena|zadovoljava/i.test(column.id) || /zadovoljava|ocjena/i.test(column.label || "")
+          ? getNativeHtmlStatusClass(value)
+          : "";
+        return `<td${attributes.length ? ` ${attributes.join(" ")}` : ""} class="${statusClass}">${escapeNativeHtml(value)}</td>`;
+      }).join("")}
+    </tr>
+  `).join("");
+  return `
+    <table class="ex-grid ${densityClass}" data-service="${escapeNativeHtml(clean(serviceCode))}">
+      <colgroup>${widths.map((width) => `<col style="width:${width}">`).join("")}</colgroup>
+      <thead>
+        <tr>${columns.map((column) => `<th>${escapeNativeHtml(getExExcelColumnLabel(column))}</th>`).join("")}</tr>
+      </thead>
+      <tbody>${body}</tbody>
+    </table>
+  `;
+}
+
+function renderExExcelMeasurementPageContent(model = {}, serviceCode = "", table = {}, rows = [], tablePageIndex = 0) {
+  const primaryTitle = clean(table.label || getMeasurementTableTitle(model));
+  const summary = clean(table.summary || table.assessmentLabel || "");
+  return `
+    <div class="ex-report-heading">
+      <div>
+        <strong>ISPITNI IZVJEŠTAJ</strong>
+        <span>${escapeNativeHtml(summary || getExExcelServicePrefix(serviceCode))}</span>
+      </div>
+      <div>
+        <span>Broj zapisnika</span>
+        <strong>${escapeNativeHtml(clean(model.recordNumber || "-"))}</strong>
+      </div>
+    </div>
+    <h3 class="ex-measurement-title">${escapeNativeHtml(primaryTitle.toUpperCase())}${tablePageIndex > 0 ? " - nastavak" : ""}</h3>
+    <div class="ex-measurement-meta">
+      <span>Mjesto ispitivanja: ${escapeNativeHtml(clean(model.inspectionPlace || "-"))}</span>
+      <span>Objekt: ${escapeNativeHtml(clean(model.inspectionObject || "-"))}</span>
+      <span>Datum: ${escapeNativeHtml(formatDocumentDate(model.inspectionDate) || "-")}</span>
+    </div>
+    ${renderExExcelMeasurementGrid(table, rows, serviceCode)}
+  `;
+}
+
+function renderExExcelMeasurementPages(model = {}, rows = [], serviceCode = "") {
+  const tables = normalizePdfMeasurementTables(model, rows).filter((table) => table.includeInReport !== false);
+  return tables.flatMap((table) => {
+    const sheet = normalizePdfMeasurementSheet(table.sheet);
+    const columns = sheet.columns.length ? sheet.columns : [];
+    const orientation = getExExcelTableOrientation(serviceCode, table);
+    const tableRows = getExExcelMeasurementRows(table);
+    const rowsPerPage = Math.max(1, getExExcelRowsPerPage(serviceCode, orientation, columns));
+    const chunks = [];
+    for (let index = 0; index < tableRows.length; index += rowsPerPage) {
+      chunks.push(tableRows.slice(index, index + rowsPerPage));
+    }
+    if (!chunks.length) {
+      chunks.push([]);
+    }
+    return chunks.map((chunk, tablePageIndex) => ({
+      orientation,
+      className: "measurement",
+      bodyHtml: renderExExcelMeasurementPageContent(model, serviceCode, table, chunk, tablePageIndex),
+    }));
+  });
+}
+
+function renderExExcelAssessments(model = {}) {
+  const assessments = normalizePdfMeasurementAssessments(model);
+  const entries = assessments.length > 0
+    ? assessments
+    : [{ label: getAssessmentLabel(model), value: clean(model.resultStatus || "ZADOVOLJAVA") }];
+  return `
+    <table class="ex-assessments">
+      <tbody>
+        ${entries.map((entry) => `
+          <tr>
+            <th>${escapeNativeHtml(entry.label)}</th>
+            <td class="${getNativeHtmlStatusClass(entry.value)}">${escapeNativeHtml(entry.value || "-")}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderExExcelSignature(model = {}) {
+  const fieldName = clean(model.signatureMode).toLowerCase() === "digital" ? signatureFieldName(model) : "";
+  return `
+    <div class="ex-signature-row">
+      <div class="ex-stamp">M.P.</div>
+      <div class="ex-signature-box">
+        <p>Dokaze iz Zapisnika ocijenio:</p>
+        <strong>${escapeNativeHtml(clean(model.responsiblePerson) || "Ispitivač")}</strong>
+        ${clean(model.signatureClass) ? `<span>KLASA: ${escapeNativeHtml(model.signatureClass)}</span>` : ""}
+        ${clean(model.signatureNumber) ? `<span>${escapeNativeHtml(model.signatureNumber)}</span>` : ""}
+        ${fieldName ? `<small>${escapeNativeHtml(fieldName)}</small>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function renderExExcelFinalPageContent(model = {}, serviceCode = "", {
+  includeDefects = true,
+  startNumber = 8,
+} = {}) {
+  const status = clean(model.resultStatus || "ZADOVOLJAVA");
+  const issuedText = [clean(model.issuePlace || "Zagreb"), formatDocumentDate(model.issueDate)].filter(Boolean).join(", ");
+  let number = startNumber;
+  const nextNumber = () => `${number++}.`;
+  return `
+    <div class="ex-page-heading">
+      <strong>ISPITNI IZVJEŠTAJ</strong>
+      <span>${escapeNativeHtml(getExExcelTitle(serviceCode, model))}</span>
+    </div>
+    ${includeDefects ? renderExExcelSection(nextNumber(), "NEDOSTATCI", renderExExcelRichBox(model.defects, "Nisu utvrđeni nedostatci.")) : ""}
+    ${renderExExcelSection(nextNumber(), "PREPORUKE", renderExExcelRichBox(model.recommendations, "Redovito održavati i provjeravati predmetni sustav."))}
+    ${renderExExcelSection(nextNumber(), "OCJENA REZULTATA ISPITIVANJA", `
+      <p>Na temelju usporedbe rezultata mjerenja i ispitivanja s propisanim odnosno dopuštenim parametrima utvrđeno je slijedeće:</p>
+      ${renderExExcelAssessments(model)}
+    `)}
+    ${renderExExcelSection(nextNumber(), "ZAKLJUČAK", `
+      <p>${escapeNativeHtml(getConclusionLead(model))}</p>
+      <div class="ex-status ${getNativeHtmlStatusClass(status)}">${escapeNativeHtml(status)}</div>
+      <p>zahtjeve spomenutih propisa u pogledu navedenih ispitivanja, te se za navedeno izdaje ZAPISNIK broj:</p>
+      <div class="ex-record-number">${escapeNativeHtml(clean(model.recordNumber || "-"))}</div>
+      <p class="ex-validity">${escapeNativeHtml(getValiditySentence(model))} ${escapeNativeHtml(formatDocumentDate(model.validUntil))}</p>
+      <p class="ex-issued">U ${escapeNativeHtml(issuedText || "Zagrebu")}</p>
+      ${renderExExcelSignature(model)}
+    `)}
+  `;
+}
+
+function renderExExcelPage(page = {}, model = {}, serviceCode = "", pageNumber = 1, totalPages = 1) {
+  const orientation = page.orientation === "landscape" ? "landscape" : "portrait";
+  return `
+    <section class="ex-page ${orientation} ${escapeNativeHtml(clean(page.className || ""))}">
+      ${renderExExcelHeader(model, serviceCode)}
+      <main class="ex-page-body">${page.bodyHtml}</main>
+      ${renderExExcelFooter(model, serviceCode, pageNumber, totalPages)}
+    </section>
+  `;
+}
+
+function buildExExcelDocumentationHtml({ model = {}, rows = [] } = {}) {
+  const serviceCode = clean(getServiceCode(model)).toUpperCase();
+  const pages = [{
+    orientation: "portrait",
+    className: "cover",
+    bodyHtml: renderExExcelCoverPageOne(model, serviceCode),
+  }];
+  if (serviceCode !== "EXOV") {
+    pages.push({
+      orientation: "portrait",
+      className: "cover secondary",
+      bodyHtml: renderExExcelCoverPageTwo(model, serviceCode),
+    });
+    pages.push(...renderExExcelMeasurementPages(model, rows, serviceCode));
+    pages.push({
+      orientation: "portrait",
+      className: "final",
+      bodyHtml: renderExExcelFinalPageContent(model, serviceCode, {
+        includeDefects: true,
+        startNumber: serviceCode === "EXSE" ? 7 : 8,
+      }),
+    });
+  } else {
+    pages.push({
+      orientation: "portrait",
+      className: "final",
+      bodyHtml: renderExExcelFinalPageContent(model, serviceCode, {
+        includeDefects: false,
+        startNumber: 6,
+      }),
+    });
+  }
+  const totalPages = pages.length;
+  return `<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="utf-8">
+  <title>${escapeNativeHtml(clean(model.recordNumber || getExExcelTitle(serviceCode, model) || "Zapisnik"))}</title>
+  <style>
+    @page ex-excel-portrait { size: A4 portrait; margin: 0; }
+    @page ex-excel-landscape { size: A4 landscape; margin: 0; }
+    html, body { margin: 0; padding: 0; background: #fff; color: #111; font-family: Arial, "DejaVu Sans", sans-serif; font-size: 7.4px; line-height: 1.22; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    * { box-sizing: border-box; }
+    p { margin: 0 0 3.2mm; }
+    table { width: 100%; border-collapse: collapse; }
+    .ex-page { position: relative; background: #fff; page-break-after: always; break-after: page; }
+    .ex-page:last-child { page-break-after: auto; break-after: auto; }
+    .ex-page.portrait { page: ex-excel-portrait; width: 210mm; min-height: 297mm; padding: 8mm 10mm 11mm; }
+    .ex-page.landscape { page: ex-excel-landscape; width: 297mm; min-height: 210mm; padding: 6mm 8mm 9mm; }
+    .ex-page.cover::before { content: ""; position: absolute; left: 7mm; top: 34mm; bottom: 14mm; width: 1.4mm; background: #0f70b7; }
+    .ex-header { display: grid; grid-template-columns: 1.2fr 1.45fr .55fr; gap: 6mm; align-items: start; border-top: 1.3mm solid #0f70b7; border-bottom: .55mm solid #0f70b7; padding: 2.3mm 0 2mm; margin-bottom: 6mm; color: #0f172a; }
+    .ex-brand { display: flex; gap: 2.5mm; align-items: center; min-width: 0; }
+    .ex-brand img { width: 22mm; max-height: 13mm; object-fit: contain; }
+    .ex-brand-mark { width: 15mm; height: 10mm; border: .45mm solid #0f70b7; display: flex; align-items: center; justify-content: center; color: #0f70b7; font-weight: 700; font-size: 8px; }
+    .ex-brand strong, .ex-header-center strong, .ex-header-meta strong { display: block; color: #0f70b7; font-size: 8.2px; line-height: 1.1; }
+    .ex-brand span, .ex-header-center span, .ex-header-meta span { display: block; color: #4b5563; font-size: 5.7px; line-height: 1.18; }
+    .ex-header-center { text-align: center; padding-top: .8mm; }
+    .ex-header-meta { text-align: right; }
+    .ex-cover-title { text-align: center; margin: 12mm 0 9mm; }
+    .ex-cover-title h1 { margin: 0 0 3mm; font-size: 18px; letter-spacing: 0; line-height: 1.1; }
+    .ex-cover-title h2 { margin: 0 auto 2mm; max-width: 155mm; font-size: 11px; line-height: 1.28; text-transform: uppercase; }
+    .ex-cover-title p { margin: 0; font-size: 7px; color: #374151; text-transform: uppercase; }
+    .ex-page-heading { display: flex; justify-content: space-between; align-items: end; gap: 8mm; margin: 0 0 5mm; padding-bottom: 1.6mm; border-bottom: .3mm solid #9ca3af; }
+    .ex-page-heading strong { color: #111827; font-size: 9px; }
+    .ex-page-heading span { color: #374151; font-size: 7px; text-align: right; text-transform: uppercase; }
+    .ex-section { margin: 0 0 4.2mm; page-break-inside: avoid; break-inside: avoid; }
+    .ex-section-title { background: #bfbfbf; border: .25mm solid #8f8f8f; color: #111; font-weight: 700; text-transform: uppercase; padding: 1.2mm 2mm; margin: 0 0 1.6mm; font-size: 7px; }
+    .ex-kv th, .ex-kv td, .ex-assessments th, .ex-assessments td { border: .25mm solid #6b7280; padding: 1.35mm 1.6mm; vertical-align: top; font-size: 6.8px; }
+    .ex-kv th, .ex-assessments th { width: 34%; background: #e5e7eb; text-align: left; font-weight: 700; }
+    .ex-text-box { border: .25mm solid #6b7280; min-height: 10mm; padding: 1.7mm 2mm; font-size: 6.8px; }
+    .ex-text-box p { margin: 0 0 1.6mm; }
+    .ex-text-box p:last-child { margin-bottom: 0; }
+    .ex-text-box ul, .ex-text-box ol { margin: 0 0 1.6mm 4mm; padding: 0; }
+    .ex-text-box table th, .ex-text-box table td { border: .25mm solid #6b7280; padding: 1mm; }
+    .ex-muted, .muted { color: #6b7280; }
+    .ex-report-heading { display: flex; justify-content: space-between; align-items: start; gap: 8mm; margin: 0 0 2.6mm; }
+    .ex-report-heading strong { display: block; font-size: 8px; color: #111827; }
+    .ex-report-heading span { display: block; font-size: 6px; color: #4b5563; }
+    .ex-measurement-title { margin: 0 0 2mm; padding: 1.2mm 1.6mm; background: #bfbfbf; border: .25mm solid #777; text-align: center; font-size: 7.2px; line-height: 1.15; text-transform: uppercase; }
+    .ex-measurement-meta { display: flex; justify-content: space-between; gap: 3mm; margin: 0 0 2mm; font-size: 5.8px; color: #374151; }
+    .ex-grid { table-layout: fixed; font-size: 5.6px; line-height: 1.05; }
+    .ex-grid.dense { font-size: 4.9px; }
+    .ex-grid.superdense { font-size: 4.35px; }
+    .ex-grid th, .ex-grid td { border: .22mm solid #111; padding: .75mm .65mm; vertical-align: middle; text-align: center; word-break: break-word; overflow-wrap: anywhere; min-height: 4mm; }
+    .ex-grid th { background: #d9d9d9; font-weight: 700; }
+    .landscape .ex-grid { font-size: 5.25px; }
+    .landscape .ex-grid.dense { font-size: 4.8px; }
+    .landscape .ex-grid.superdense { font-size: 4.3px; }
+    .status-pass { color: #166534; font-weight: 700; }
+    .status-fail { color: #991b1b; font-weight: 700; }
+    .ex-assessments td { text-align: right; font-weight: 700; }
+    .ex-status { margin: 3mm 0; text-align: center; font-size: 13px; font-weight: 700; color: #166534; }
+    .ex-status.status-fail { color: #991b1b; }
+    .ex-record-number { margin: 2mm 0; text-align: center; font-size: 9px; font-weight: 700; }
+    .ex-validity { text-align: center; }
+    .ex-issued { text-align: right; font-weight: 700; margin-top: 3mm; }
+    .ex-signature-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 14mm; margin-top: 9mm; }
+    .ex-stamp { flex: 1 1 auto; text-align: center; font-weight: 700; }
+    .ex-signature-box { flex: 0 0 64mm; min-height: 24mm; text-align: center; border-top: .25mm solid #111; padding-top: 1.8mm; }
+    .ex-signature-box p { margin: 0 0 1.4mm; }
+    .ex-signature-box strong, .ex-signature-box span, .ex-signature-box small { display: block; }
+    .ex-signature-box small { margin-top: 2mm; color: #6b7280; font-size: 4.4px; }
+    .ex-footer { position: absolute; left: 10mm; right: 10mm; bottom: 4mm; display: flex; justify-content: space-between; gap: 4mm; border-top: .25mm solid #cfd4dc; padding-top: 1mm; color: #4b5563; font-size: 5.4px; }
+    .landscape .ex-footer { left: 8mm; right: 8mm; }
+  </style>
+</head>
+<body>
+  ${pages.map((page, index) => renderExExcelPage(page, model, serviceCode, index + 1, totalPages)).join("\n")}
+</body>
+</html>`;
+}
+
 export function buildDocumentationNativeHtml({
   model = {},
   rows = [],
 } = {}) {
+  if (isExExcelDocumentation(model)) {
+    return buildExExcelDocumentationHtml({ model, rows });
+  }
   const serviceCode = clean(getServiceCode(model)).toUpperCase() || "ZAPISNIK";
   const title = clean(model.reportTitle || getReportServiceTitle(model));
   const hasTechnicalData = splitTextLines(model.technicalData).length > 0;
