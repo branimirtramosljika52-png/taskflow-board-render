@@ -1637,6 +1637,11 @@ function normalizePdfMeasurementTables(model = {}, legacyRows = []) {
       includeInReport: withLegacyRows.includeInReport !== false,
       formulaOnly: withLegacyRows.formulaOnly === true,
       pageOrientation: getPdfMeasurementOrientation(withLegacyRows),
+      legend: Array.isArray(withLegacyRows.legend)
+        ? withLegacyRows.legend.map((entry) => clean(entry)).filter(Boolean)
+        : undefined,
+      note: clean(withLegacyRows.note || ""),
+      conclusion: clean(withLegacyRows.conclusion || ""),
       sheet: normalizePdfMeasurementSheet(withLegacyRows.sheet),
     };
   });
@@ -2969,9 +2974,159 @@ function drawMeasurementTable(page, table, y, fonts, rowsOverride = null, option
   return cursorY;
 }
 
-function drawMeasurementTablePage(pdfDoc, model, table, fonts, rows, pageIndex = 0) {
+function getPdfMeasurementTableDetails(table = {}) {
+  const explicitLegend = Array.isArray(table.legend)
+    ? table.legend.map((entry) => clean(entry)).filter(Boolean)
+    : [];
+  const explicitNote = clean(table.note || "");
+  const explicitConclusion = clean(table.conclusion || "");
+  if (explicitLegend.length || explicitNote || explicitConclusion) {
+    return {
+      legend: explicitLegend,
+      note: explicitNote,
+      conclusion: explicitConclusion,
+    };
+  }
+  const exDetails = getExExcelTableDetails(table);
+  if (!exDetails) {
+    return null;
+  }
+  return {
+    legend: Array.isArray(exDetails.legend)
+      ? exDetails.legend.map((entry) => clean(entry)).filter(Boolean)
+      : [],
+    note: clean(exDetails.note || ""),
+    conclusion: clean(exDetails.conclusion || ""),
+  };
+}
+
+function splitPdfLegendColumns(lines = [], columnCount = 1) {
+  const count = Math.max(1, columnCount);
+  const perColumn = Math.ceil(lines.length / count);
+  return Array.from({ length: count }, (_, index) => (
+    lines.slice(index * perColumn, (index + 1) * perColumn)
+  )).filter((column) => column.length);
+}
+
+function estimatePdfMeasurementTableDetailsHeight(details = {}, fonts, metrics = getPdfPageMetrics()) {
+  if (!details || (!details.legend?.length && !details.note && !details.conclusion)) {
+    return 0;
+  }
+  const padding = 6;
+  const gap = 5;
+  const titleHeight = 10;
+  const lineHeight = 7.4;
+  const columnCount = metrics.orientation === "landscape" && (details.legend?.length || 0) > 3 ? 2 : 1;
+  const columnGap = columnCount > 1 ? 12 : 0;
+  const columnWidth = (metrics.contentWidth - (padding * 2) - columnGap) / columnCount;
+  const legendColumns = splitPdfLegendColumns(details.legend || [], columnCount);
+  const legendHeight = Math.max(0, ...legendColumns.map((column) => (
+    column.reduce((sum, line) => (
+      sum + (wrapText(line, fonts.regular, 5.6, columnWidth).length * lineHeight)
+    ), 0)
+  )));
+  const noteHeight = details.note
+    ? gap + (wrapText(details.note, fonts.regular, 5.8, metrics.contentWidth - (padding * 2)).length * lineHeight)
+    : 0;
+  const conclusionText = details.conclusion ? `ZAKLJUCAK ${details.conclusion}` : "";
+  const conclusionHeight = conclusionText
+    ? gap + (wrapText(conclusionText, fonts.regular, 5.8, metrics.contentWidth - (padding * 2)).length * lineHeight)
+    : 0;
+  return padding + titleHeight + legendHeight + noteHeight + conclusionHeight + padding;
+}
+
+function drawPdfMeasurementTableDetails(page, details = {}, y, fonts, metrics = getPdfPageMetrics()) {
+  const height = estimatePdfMeasurementTableDetailsHeight(details, fonts, metrics);
+  if (!height) {
+    return y;
+  }
+  const x = metrics.marginX;
+  const width = metrics.contentWidth;
+  const padding = 6;
+  const titleSize = 6.2;
+  const fontSize = 5.6;
+  const lineHeight = 7.4;
+  const gap = 5;
+  const columnCount = metrics.orientation === "landscape" && (details.legend?.length || 0) > 3 ? 2 : 1;
+  const columnGap = columnCount > 1 ? 12 : 0;
+  const columnWidth = (width - (padding * 2) - columnGap) / columnCount;
+
+  page.drawRectangle({
+    x,
+    y: y - height,
+    width,
+    height,
+    color: rgb(0.98, 0.98, 0.97),
+    borderColor: DARK,
+    borderWidth: 0.45,
+  });
+
+  let cursorY = y - padding;
+  drawTextLine(page, "Znacenje oznaka:", {
+    x: x + padding,
+    y: cursorY,
+    font: fonts.bold,
+    size: titleSize,
+  });
+  cursorY -= 10;
+
+  const legendColumns = splitPdfLegendColumns(details.legend || [], columnCount);
+  const columnStartY = cursorY;
+  legendColumns.forEach((column, columnIndex) => {
+    let columnY = columnStartY;
+    const columnX = x + padding + (columnIndex * (columnWidth + columnGap));
+    column.forEach((line) => {
+      const wrapped = wrapText(line, fonts.regular, fontSize, columnWidth);
+      wrapped.forEach((wrappedLine) => {
+        drawTextLine(page, wrappedLine, {
+          x: columnX,
+          y: columnY,
+          font: fonts.regular,
+          size: fontSize,
+        });
+        columnY -= lineHeight;
+      });
+    });
+  });
+  const legendHeight = Math.max(0, ...legendColumns.map((column) => (
+    column.reduce((sum, line) => (
+      sum + (wrapText(line, fonts.regular, fontSize, columnWidth).length * lineHeight)
+    ), 0)
+  )));
+  cursorY = columnStartY - legendHeight;
+
+  if (details.note) {
+    cursorY -= gap;
+    cursorY = drawTextBlock(page, details.note, {
+      x: x + padding,
+      y: cursorY,
+      width: width - (padding * 2),
+      font: fonts.regular,
+      size: 5.8,
+      lineHeight,
+      bottomY: y - height + padding,
+    });
+  }
+
+  if (details.conclusion) {
+    cursorY -= gap;
+    cursorY = drawTextBlock(page, `ZAKLJUCAK ${details.conclusion}`, {
+      x: x + padding,
+      y: cursorY,
+      width: width - (padding * 2),
+      font: fonts.regular,
+      size: 5.8,
+      lineHeight,
+      bottomY: y - height + padding,
+    });
+  }
+
+  return y - height - 6;
+}
+
+function drawMeasurementTablePage(pdfDoc, model, table, fonts, rows, pageIndex = 0, options = {}) {
   const metrics = getPdfPageMetrics(getPdfMeasurementOrientation(table));
-  const page = pdfDoc.addPage([metrics.width, metrics.height]);
+  let page = pdfDoc.addPage([metrics.width, metrics.height]);
   let y = drawMeasurementSimpleHeader(page, model, fonts, metrics);
   const primaryTitle = clean(table.label || getMeasurementTableTitle(model));
   const summaryTitle = clean(table.summary || "");
@@ -2996,7 +3151,28 @@ function drawMeasurementTablePage(pdfDoc, model, table, fonts, rows, pageIndex =
       color: MUTED,
     });
   }
-  drawMeasurementTable(page, table, y - 6, fonts, rows, { metrics });
+  const tableBottomY = drawMeasurementTable(page, table, y - 6, fonts, rows, { metrics });
+  if (options.drawDetails === true) {
+    const details = getPdfMeasurementTableDetails(table);
+    const detailsHeight = estimatePdfMeasurementTableDetailsHeight(details, fonts, metrics);
+    if (detailsHeight > 0) {
+      const detailsTopY = tableBottomY - 7;
+      if (detailsTopY - detailsHeight < metrics.bottomY) {
+        page = pdfDoc.addPage([metrics.width, metrics.height]);
+        y = drawMeasurementSimpleHeader(page, model, fonts, metrics);
+        drawTextLine(page, `${tableTitle} - znacenje oznaka`, {
+          x: metrics.marginX,
+          y: y + 6,
+          font: fonts.regular,
+          size: 8.2,
+          color: DARK,
+        });
+        drawPdfMeasurementTableDetails(page, details, y - 10, fonts, metrics);
+      } else {
+        drawPdfMeasurementTableDetails(page, details, detailsTopY, fonts, metrics);
+      }
+    }
+  }
   return page;
 }
 
@@ -3021,7 +3197,7 @@ function drawMeasurementTablePages(pdfDoc, model, rows, fonts) {
     let cursor = 0;
     let tablePageIndex = 0;
     if (!bodyRows.length) {
-      drawMeasurementTablePage(pdfDoc, model, table, fonts, headerRows, tablePageIndex);
+      drawMeasurementTablePage(pdfDoc, model, table, fonts, headerRows, tablePageIndex, { drawDetails: true });
       pageCount += 1;
       return;
     }
@@ -3043,7 +3219,9 @@ function drawMeasurementTablePages(pdfDoc, model, rows, fonts) {
         cursor += 1;
       }
       const pageRows = [...headerRows, ...pageBodyRows];
-      drawMeasurementTablePage(pdfDoc, model, table, fonts, pageRows, tablePageIndex);
+      drawMeasurementTablePage(pdfDoc, model, table, fonts, pageRows, tablePageIndex, {
+        drawDetails: cursor >= bodyRows.length,
+      });
       tablePageIndex += 1;
       pageCount += 1;
     }
