@@ -74,3 +74,27 @@ test("generic ExEi native documentation HTML keeps Excel sheet legends", () => {
   assert.match(html, /ex-legend-block/, "generic ExEi tables render Excel legend blocks");
   assert.match(html, /ex-sheet-conclusion/, "generic ExEi tables render Excel sheet conclusions");
 });
+
+test("SPR native documentation HTML keeps the uploaded document header", () => {
+  const model = {
+    ...createDocumentationReportModelDefaults("SPR"),
+    providerName: "Adria Grupa d.o.o.",
+    providerAddress: "Heinzelova 53a, Zagreb",
+    providerOib: "12345678901",
+    companyName: "Petrol d.o.o.",
+    workOrderNumber: "26-672",
+    recordNumber: "26-672-SPR",
+    inspectionPlace: "PM Zagreb Lucko",
+    inspectionObject: "Test objekt",
+    inspectionDate: "2026-07-05",
+    issueDate: "2026-07-05",
+    responsiblePerson: "Test Ispitivac",
+    headerImageDataUrl: "data:image/png;base64,aGVhZGVy",
+    headerImageName: "spr-header.png",
+  };
+  const html = buildDocumentationNativeHtml({ model, rows: [] });
+
+  assert.match(html, /doc-header is-uploaded/, "SPR renders the uploaded header block");
+  assert.match(html, /data:image\/png;base64,aGVhZGVy/, "SPR keeps uploaded header image data");
+  assert.doesNotMatch(html, /<div class="brand">SafeNexus<\/div>/, "uploaded SPR header does not fall back to SafeNexus text");
+});

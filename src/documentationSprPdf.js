@@ -1866,6 +1866,60 @@ function renderNativeHtmlMeasurementTables(model = {}, rows = []) {
   return tables.map((table) => renderNativeHtmlMeasurementTable(table, model)).join("");
 }
 
+function getNativeHtmlProvider(model = {}) {
+  const name = clean(model.providerName || model.executorName || "SafeNexus");
+  const address = clean(model.providerAddress || model.executorAddress || "");
+  const oib = clean(model.providerOib || model.executorOib || "");
+  const contact = [
+    clean(model.providerPhone || ""),
+    clean(model.providerEmail || ""),
+    clean(model.providerWebsite || ""),
+  ].filter(Boolean).join(" | ");
+  const initials = (name.match(/\b[\p{L}\p{N}]/gu) || [])
+    .slice(0, 3)
+    .join("")
+    .toUpperCase() || "SN";
+  return { name, address, oib, contact, initials };
+}
+
+function renderNativeHtmlDocumentHeader(model = {}, serviceCode = "", {
+  subtitle = "",
+  showWorkOrderNumber = true,
+} = {}) {
+  const headerImage = clean(model.headerImageDataUrl || "");
+  const workOrderNumber = clean(model.workOrderNumber || "");
+  if (headerImage) {
+    return `
+      <header class="doc-header is-uploaded">
+        <img src="${escapeNativeHtml(headerImage)}" alt="${escapeNativeHtml(clean(model.headerImageName || "Header dokumenta"))}">
+        ${showWorkOrderNumber && workOrderNumber ? `<div class="doc-header-number">RN ${escapeNativeHtml(workOrderNumber)}</div>` : ""}
+      </header>
+    `;
+  }
+  const provider = getNativeHtmlProvider(model);
+  const details = [
+    provider.address,
+    provider.oib ? `OIB: ${provider.oib}` : "",
+    provider.contact,
+  ].filter(Boolean).join(" | ");
+  return `
+    <header class="doc-header">
+      <div class="doc-header-brand">
+        <div class="doc-header-mark">${escapeNativeHtml(provider.initials)}</div>
+        <div class="doc-header-copy">
+          <div class="brand">${escapeNativeHtml(provider.name)}</div>
+          ${details ? `<div class="muted">${escapeNativeHtml(details)}</div>` : ""}
+          ${subtitle ? `<div class="muted">${escapeNativeHtml(subtitle)}</div>` : ""}
+        </div>
+      </div>
+      <div class="code">
+        <strong>${escapeNativeHtml(serviceCode)}</strong><br>
+        RN ${escapeNativeHtml(workOrderNumber || "-")}
+      </div>
+    </header>
+  `;
+}
+
 function renderNativeHtmlSignature(model = {}) {
   const fieldName = clean(model.signatureMode).toLowerCase() === "digital" ? signatureFieldName(model) : "";
   return `
@@ -2609,6 +2663,12 @@ export function buildDocumentationNativeHtml({
     .sn-ex-cover { min-height: 250mm; position: relative; page-break-after: always; }
     .sn-ex-cover::before { content: ""; position: absolute; left: -5mm; top: 18mm; bottom: 14mm; width: 3px; background: #0f72ba; }
     .doc-header { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; border-bottom: 2px solid #0f72ba; padding-bottom: 10px; margin-bottom: 24px; }
+    .doc-header.is-uploaded { display: block; position: relative; min-height: 58px; }
+    .doc-header.is-uploaded img { display: block; width: 100%; max-height: 78px; object-fit: contain; object-position: center top; }
+    .doc-header-number { position: absolute; right: 0; top: 0; padding: 2px 4px; background: rgba(255,255,255,.86); color: #475569; font-size: 10px; text-align: right; }
+    .doc-header-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .doc-header-mark { flex: 0 0 auto; width: 38px; height: 28px; border: 1.5px solid #0f72ba; display: flex; align-items: center; justify-content: center; color: #0f72ba; font-weight: 700; }
+    .doc-header-copy { min-width: 0; }
     .doc-header .brand { font-weight: 700; color: #0f172a; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
     .doc-header .code { color: #475569; font-size: 10px; text-align: right; }
     .cover-title { text-align: center; margin: 34px 0 24px; }
@@ -2659,16 +2719,9 @@ export function buildDocumentationNativeHtml({
   <article class="sn-ex-document">
     <div class="footer-note"><span>${escapeNativeHtml(serviceCode)}</span><span>${escapeNativeHtml(clean(model.recordNumber || ""))}</span></div>
     <section class="sn-ex-cover">
-      <header class="doc-header">
-        <div>
-          <div class="brand">SafeNexus</div>
-          <div class="muted">${escapeNativeHtml(clean(model.templateCode || `${serviceCode} zapisnik`))}</div>
-        </div>
-        <div class="code">
-          <strong>${escapeNativeHtml(serviceCode)}</strong><br>
-          RN ${escapeNativeHtml(clean(model.workOrderNumber || "-"))}
-        </div>
-      </header>
+      ${renderNativeHtmlDocumentHeader(model, serviceCode, {
+        subtitle: clean(model.templateCode || `${serviceCode} zapisnik`),
+      })}
       <div class="cover-title">
         <div class="eyebrow">Zapisnik</div>
         <h1>${escapeNativeHtml(title)}</h1>
@@ -2717,10 +2770,7 @@ export function buildDocumentationNativeHtml({
     ${renderNativeHtmlMeasurementTables(model, rows)}
 
     <section class="conclusion-page">
-      <header class="doc-header">
-        <div><div class="brand">SafeNexus</div><div class="muted">${escapeNativeHtml(serviceCode)}</div></div>
-        <div class="code">RN ${escapeNativeHtml(clean(model.workOrderNumber || "-"))}</div>
-      </header>
+      ${renderNativeHtmlDocumentHeader(model, serviceCode, { subtitle: serviceCode })}
       ${isFailingResult(model) ? `
         <section class="sn-ex-section">
           <div class="section-label">Nedostatci</div>
