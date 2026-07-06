@@ -25829,10 +25829,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
   services.forEach((service, serviceIndex) => {
     const nativeTemplate = buildMobileNativeDocumentationTemplate(service, serviceIndex, workOrder, scopedSnapshot);
     if (nativeTemplate) {
-      const latestRecord = findLatestMobileDocumentRecordForTemplate(nativeTemplate, workOrder, scopedSnapshot);
-      const dataSource = buildMobileDocumentTemplateDataSource(nativeTemplate, latestRecord);
-      const recordDefaults = buildMobileDocumentRecordWizardDefaults(latestRecord, workOrder);
-      mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, recordDefaults, nativeTemplate);
+      const dataSource = buildMobileDocumentTemplateDataSource(nativeTemplate, null);
       const templateServiceKey = `${serviceIndex}::native::${nativeTemplate.serviceCode}`;
       if (!seenTemplateKeys.has(templateServiceKey)) {
         seenTemplateKeys.add(templateServiceKey);
@@ -26522,17 +26519,7 @@ const MOBILE_DOCUMENTATION_NATIVE_HTML_SERVICE_KEYS = new Set(
 );
 
 function shouldUseMobileDocumentationNativeHtmlPdf(model = {}) {
-  return [
-    model?.serviceCode,
-    model?.serviceName,
-    model?.reportTitle,
-    model?.documentType,
-    model?.templateCode,
-    model?.serviceBinding?.serviceCode,
-    model?.serviceBinding?.serviceName,
-  ].some((value) => MOBILE_DOCUMENTATION_NATIVE_HTML_SERVICE_KEYS.has(
-    normalizeMobileDocumentationNativeHtmlServiceKey(value),
-  ));
+  return false;
 }
 
 function getMobileSprFirstValue(source = {}, keys = []) {
