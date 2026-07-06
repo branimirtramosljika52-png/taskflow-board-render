@@ -25482,6 +25482,10 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       : []),
     ...(preset.serviceCode === "EIZ"
       ? [
+        buildMobileNativeDocumentationField("eizZudsVoiceTranscript", "Diktat ZUDS", "spr_voice", {
+          defaultValue: "",
+          helpText: "Primjer: GRO Q1 40/30. Puni razdjelnik, strujni krug i In/Idn, formule ostaju u tablici.",
+        }),
         buildMobileNativeDocumentationField("eizIpkVoiceTranscript", "Diktat impedancije petlje kvara", "spr_voice", {
           defaultValue: "",
           helpText: "Primjer: Prodajni prostor 7 uticnica 230 V. Puni IPK tablicu grupnim redom i mjernim mjestima.",
@@ -25609,6 +25613,15 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         typeLabel: "Glasovni unos",
         summary: "Primjer: Prodajni prostor 7 uticnica 230 V. Dodaje grupni red i mjerna mjesta u IPK tablicu.",
         helpText: "Zamijeni tablicu krece od prvog reda. Dodaj upisuje ispod zadnjeg unesenog IPK bloka.",
+      }));
+    }
+    if (preset.serviceCode === "EIZ" && isMobileEizZudsMeasurementTable(table, index)) {
+      sectionBlocks.push(buildMobileNativeDocumentationBlock("eizZudsVoiceTranscript", "Diktat ZUDS", "spr_voice", {
+        group: title,
+        editable: true,
+        typeLabel: "Glasovni unos",
+        summary: "Primjer: GRO Q1 40/30. Upisuje razdjelnik, strujni krug i In/Idn bez brisanja formula.",
+        helpText: "Dodaj upisuje ispod zadnjeg ZUDS retka. Ako je tablica jos primjer iz predloska, zamjenjuje pocetne retke.",
       }));
     }
     return sectionBlocks;
@@ -26744,6 +26757,15 @@ const MOBILE_EIZ_IPK_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
   "Glasovni unos EIZ IPK",
 ]);
 
+const MOBILE_EIZ_ZUDS_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
+  "eizZudsVoiceTranscript",
+  "EIZ_ZUDS_VOICE_TRANSCRIPT",
+  "Diktat ZUDS",
+  "Diktat FID",
+  "Diktat RCD",
+  "Glasovni unos EIZ ZUDS",
+]);
+
 const MOBILE_SPR_VOICE_NUMBER_WORDS = Object.freeze({
   jedan: 1,
   jedna: 1,
@@ -27204,6 +27226,101 @@ function parseMobileEizIpkVoiceRows(transcript = "") {
   return rows;
 }
 
+function normalizeMobileEizElectricalLabel(value = "") {
+  const raw = normalizeInputValue(value)
+    .replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!raw) {
+    return "";
+  }
+  if (/^[A-Za-z0-9ČĆŠĐŽčćšđž_.\-\/ ]{1,28}$/.test(raw)) {
+    return raw.toUpperCase();
+  }
+  return raw;
+}
+
+function normalizeMobileEizZudsRating(value = "", idnValue = "") {
+  const raw = normalizeInputValue(value)
+    .replace(/\\/g, "/")
+    .replace(/\s+/g, " ")
+    .trim();
+  const match = raw.match(/(\d{1,3})\s*(?:a)?\s*\/\s*(\d{1,4})\s*(?:m\s*a|ma)?/i);
+  if (match) {
+    return `${match[1]}/${match[2]}`;
+  }
+  const inOnly = normalizeInputValue(value).match(/\d{1,3}/)?.[0] || "";
+  const idnOnly = normalizeInputValue(idnValue).match(/\d{1,4}/)?.[0] || "";
+  return inOnly && idnOnly ? `${inOnly}/${idnOnly}` : "";
+}
+
+function parseMobileEizZudsVoiceRows(transcript = "") {
+  const source = normalizeInputValue(transcript);
+  if (!source) {
+    return [];
+  }
+  const rows = [];
+  let lastBoard = "";
+  const addRow = (prefix = "", rating = "") => {
+    const parts = normalizeInputValue(prefix)
+      .replace(/\b(?:i onda|pa onda|zatim|onda)\b/giu, " ")
+      .split(/[,;]+/g)
+      .map((part) => normalizeInputValue(part))
+      .filter(Boolean);
+    let board = "";
+    let circuit = "";
+    if (parts.length >= 2) {
+      board = parts.slice(0, -1).join(" ");
+      circuit = parts[parts.length - 1];
+    } else {
+      const tokens = normalizeInputValue(prefix)
+        .replace(/[,;]+/g, " ")
+        .split(/\s+/g)
+        .map((token) => normalizeInputValue(token))
+        .filter(Boolean);
+      if (tokens.length >= 2) {
+        board = tokens.slice(0, -1).join(" ");
+        circuit = tokens[tokens.length - 1];
+      } else if (tokens.length === 1) {
+        board = lastBoard;
+        circuit = tokens[0];
+      }
+    }
+    board = normalizeMobileEizElectricalLabel(board || lastBoard);
+    circuit = normalizeMobileEizElectricalLabel(circuit);
+    const rcdRating = normalizeMobileEizZudsRating(rating);
+    if (!board || !circuit || !rcdRating) {
+      return;
+    }
+    lastBoard = board;
+    rows.push({
+      key: `zuds-${normalizeMobileSprLookupText(board)}-${normalizeMobileSprLookupText(circuit)}-${rows.length + 1}`,
+      board,
+      circuit,
+      rcdRating,
+      kind: "measurement",
+    });
+  };
+  source
+    .replace(/\b(?:i onda|pa onda|zatim|onda)\b/giu, "\n")
+    .replace(/[;]+/g, "\n")
+    .split(/\r?\n/g)
+    .map((segment) => normalizeInputValue(segment))
+    .filter(Boolean)
+    .forEach((segment) => {
+      const ratingRegex = /(\d{1,3}\s*(?:a)?\s*(?:\/|\\)\s*\d{1,4}\s*(?:m\s*a|ma)?)/giu;
+      let cursor = 0;
+      let match = ratingRegex.exec(segment);
+      while (match) {
+        const prefix = segment.slice(cursor, match.index);
+        addRow(prefix, match[1]);
+        cursor = ratingRegex.lastIndex;
+        match = ratingRegex.exec(segment);
+      }
+    });
+  return rows;
+}
+
 function normalizeMobileSprVoiceRows(rows = []) {
   const normalizedRows = [];
   const seen = new Set();
@@ -27271,9 +27388,8 @@ function normalizeMobileEizIpkVoiceRows(rows = []) {
       || rawKind === "etaza"
       || rawKind.startsWith("eta")
       || row?.isSection === true;
-    const place = isSection
-      ? cleanMobileEizIpkSectionTitle(row?.place || row?.mjesto || row?.location || row?.room || row?.name || "")
-      : cleanMobileEizIpkVoicePoint(row?.place || row?.mjesto || row?.location || row?.room || row?.name || "");
+    const rawPlace = normalizeInputValue(row?.place || row?.mjesto || row?.location || row?.room || row?.name || "");
+    const rawSection = normalizeInputValue(row?.section || row?.floor || row?.group || row?.prostor || row?.prostorija || "");
     const quantity = parseMobileSprVoiceCount(
       row?.lampCount
       || row?.brojLampi
@@ -27282,6 +27398,21 @@ function normalizeMobileEizIpkVoiceRows(rows = []) {
       || row?.value
       || "",
     ) || "1";
+    const count = Math.max(1, Number.parseInt(quantity, 10) || 1);
+    const rawPlaceLookup = normalizeMobileSprLookupText(rawPlace);
+    const rawLooksLikePoint = rawPlaceLookup.includes("utic")
+      || rawPlaceLookup.includes("uti")
+      || rawPlaceLookup.includes("suko")
+      || rawPlaceLookup.includes("rasvjet")
+      || rawPlaceLookup.includes("svjet")
+      || rawPlaceLookup.includes("230")
+      || rawPlaceLookup.includes("400");
+    const inferredSectionPlace = !isSection
+      ? cleanMobileEizIpkSectionTitle(rawSection || ((rawPlace && !rawLooksLikePoint) ? rawPlace : ""))
+      : "";
+    const place = isSection
+      ? cleanMobileEizIpkSectionTitle(rawPlace || rawSection)
+      : cleanMobileEizIpkVoicePoint([rawLooksLikePoint ? rawPlace : "", row?.point || row?.device || row?.mjernoMjesto || ""].join(" "));
     const key = normalizeMobileSprLookupText(place);
     if (!place || !key) {
       return;
@@ -27294,7 +27425,18 @@ function normalizeMobileEizIpkVoiceRows(rows = []) {
       normalizedRows.push({ key, place, lampCount: "", kind: "section" });
       return;
     }
-    const count = Math.max(1, Number.parseInt(quantity, 10) || 1);
+    if (inferredSectionPlace) {
+      const sectionKey = normalizeMobileSprLookupText(inferredSectionPlace);
+      if (sectionKey && !seenSections.has(sectionKey)) {
+        seenSections.add(sectionKey);
+        normalizedRows.push({
+          key: sectionKey,
+          place: inferredSectionPlace,
+          lampCount: "",
+          kind: "section",
+        });
+      }
+    }
     for (let repeatedIndex = 0; repeatedIndex < count; repeatedIndex += 1) {
       normalizedRows.push({
         key: `${key}-${index + 1}-${repeatedIndex + 1}`,
@@ -27340,6 +27482,89 @@ function buildMobileEizIpkVoiceLocalPayload(body = {}, message = "") {
   };
 }
 
+function normalizeMobileEizZudsVoiceRows(rows = []) {
+  const normalizedRows = [];
+  const seen = new Set();
+  let lastBoard = "";
+  (Array.isArray(rows) ? rows : []).forEach((row, index) => {
+    const board = normalizeMobileEizElectricalLabel(
+      row?.board
+      || row?.razdjelnik
+      || row?.panel
+      || row?.ormar
+      || row?.distributionBoard
+      || lastBoard
+      || "",
+    );
+    const circuit = normalizeMobileEizElectricalLabel(
+      row?.circuit
+      || row?.strujniKrug
+      || row?.osigurac
+      || row?.breaker
+      || row?.device
+      || "",
+    );
+    const rcdRating = normalizeMobileEizZudsRating(
+      row?.rcdRating
+      || row?.rating
+      || row?.inIdn
+      || row?.zuds
+      || row?.fid
+      || row?.inCurrent
+      || row?.in
+      || row?.nazivnaStruja
+      || "",
+      row?.idn || row?.delta || row?.iDeltaN || "",
+    );
+    const key = normalizeMobileSprLookupText(`${board} ${circuit} ${rcdRating}`);
+    if (!board || !circuit || !rcdRating || !key || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    lastBoard = board;
+    normalizedRows.push({
+      key: `zuds-${key}-${index + 1}`,
+      board,
+      circuit,
+      rcdRating,
+      kind: "measurement",
+    });
+  });
+  return normalizedRows;
+}
+
+function buildMobileEizZudsVoiceLocalPayload(body = {}, message = "") {
+  const rows = normalizeMobileEizZudsVoiceRows(parseMobileEizZudsVoiceRows(body?.transcript || body?.text || ""));
+  return {
+    ok: true,
+    provider: "local",
+    rows,
+    message: message || `Lokalni parser je pripremio ${rows.length} ZUDS redaka.`,
+  };
+}
+
+function isMobileEizZudsVoiceRequest(body = {}) {
+  const serviceCode = normalizeInputValue(body?.serviceCode).toUpperCase();
+  const table = body?.measurementTable && typeof body.measurementTable === "object" ? body.measurementTable : {};
+  const tableText = normalizeMobileSprLookupText([
+    table.id,
+    table.key,
+    table.tokenKey,
+    table.label,
+    table.summary,
+    table.sourceSheet,
+    body?.templateTitle,
+  ].join(" "));
+  return serviceCode === "EIZ" && (
+    tableText.includes("eiz zuds")
+    || tableText.includes("eiz1 3")
+    || tableText.includes("zuds")
+    || tableText.includes("diferencijal")
+    || tableText.includes("rcd")
+    || tableText.includes("fid")
+  );
+}
+
 function isMobileEizIpkVoiceRequest(body = {}) {
   const serviceCode = normalizeInputValue(body?.serviceCode).toUpperCase();
   const table = body?.measurementTable && typeof body.measurementTable === "object" ? body.measurementTable : {};
@@ -27361,6 +27586,9 @@ function isMobileEizIpkVoiceRequest(body = {}) {
 }
 
 async function buildMobileMeasurementVoiceStructuredRows(body = {}, user = null) {
+  if (isMobileEizZudsVoiceRequest(body)) {
+    return buildMobileEizZudsVoiceLocalPayload(body);
+  }
   if (isMobileEizIpkVoiceRequest(body)) {
     return buildMobileEizIpkVoiceLocalPayload(body);
   }
@@ -27567,6 +27795,26 @@ function applyMobileSprVoiceTranscriptToMeasurementTables(tables = [], common = 
   });
 }
 
+function isMobileEizZudsMeasurementTable(table = {}, index = -1) {
+  const lookup = normalizeMobileSprLookupText([
+    table?.id,
+    table?.key,
+    table?.tokenKey,
+    table?.fieldKey,
+    table?.label,
+    table?.summary,
+    table?.chapterTitle,
+    table?.sourceSheet,
+    index === 0 ? "fallback-zuds" : "",
+  ].join(" "));
+  return lookup.includes("eiz zuds")
+    || lookup.includes("eiz1 3")
+    || lookup.includes("zuds")
+    || lookup.includes("diferencijal")
+    || lookup.includes("rcd")
+    || lookup.includes("fid");
+}
+
 function isMobileEizIpkMeasurementTable(table = {}, index = -1) {
   const lookup = normalizeMobileSprLookupText([
     table?.id,
@@ -27583,6 +27831,141 @@ function isMobileEizIpkMeasurementTable(table = {}, index = -1) {
     || lookup.includes("eiz1 4")
     || lookup.includes("impedanc")
     || lookup.includes("petlje kvara");
+}
+
+function isMobileEizZudsSheetTemplateLike(sheet = {}, boardColumn = null, circuitColumn = null, ratingColumn = null) {
+  if (!Array.isArray(sheet?.rows) || sheet.rows.length === 0) {
+    return true;
+  }
+  return !sheet.rows.some((row) => {
+    const board = normalizeMobileSprLookupText(row?.cells?.[boardColumn?.id || ""]);
+    const circuit = normalizeMobileSprLookupText(row?.cells?.[circuitColumn?.id || ""]);
+    const rating = normalizeInputValue(row?.cells?.[ratingColumn?.id || ""]);
+    if (!board && !circuit && !rating) {
+      return false;
+    }
+    const isDefaultBoard = !board || board === "ro bs";
+    const isDefaultCircuit = !circuit
+      || circuit.startsWith("f100")
+      || circuit.startsWith("f140")
+      || circuit.startsWith("f141")
+      || circuit.startsWith("f133")
+      || circuit.startsWith("f142")
+      || circuit.startsWith("f340");
+    const isDefaultRating = !rating || ["63/300", "40/30", "25/300"].includes(rating.replace(/\s+/g, ""));
+    return !(isDefaultBoard && isDefaultCircuit && isDefaultRating);
+  });
+}
+
+function applyMobileEizZudsVoiceRowsToSheet(sheet = null, voiceRows = [], replaceExisting = false) {
+  const normalized = normalizeWorkOrderMeasurementSheet(sheet);
+  const rowsToApply = normalizeMobileEizZudsVoiceRows(voiceRows);
+  if (!normalized?.columns?.length || rowsToApply.length === 0) {
+    return normalized || sheet;
+  }
+  const numberColumn = findMobileSprSheetColumn(normalized, ["r br", "redni broj", "broj", "rb"], 0);
+  const boardColumn = findMobileSprSheetColumn(normalized, ["razdjelnik", "ormar", "board", "ro", "gro"], 1);
+  const circuitColumn = findMobileSprSheetColumn(normalized, ["strujni krug", "oznaka kruga", "osigurac", "circuit"], 2);
+  const ratingColumn = findMobileSprSheetColumn(normalized, ["in idn", "in delta", "fid", "rcd", "zuds"], 3);
+  const inColumn = findMobileSprSheetColumn(normalized, ["in a", "nazivna struja"], 3);
+  const idnColumn = findMobileSprSheetColumn(normalized, ["idn", "i delta n", "diferencijalna struja"], 5);
+  const iiskColumn = findMobileSprSheetColumn(normalized, ["iisk"], 4);
+  const tiskColumn = findMobileSprSheetColumn(normalized, ["tisk"], 5);
+  const u0Column = findMobileSprSheetColumn(normalized, ["u0", "uo"], 6);
+  const passColumn = findMobileSprSheetColumn(normalized, ["zadovoljava", "pass", "iisk idn"], normalized.columns.length - 1);
+  if (!boardColumn?.id || !circuitColumn?.id || !ratingColumn?.id) {
+    return normalized;
+  }
+  const originalRows = (Array.isArray(normalized.rows) ? normalized.rows : []).map((row, index) => ({
+    id: normalizeInputValue(row?.id) || `measurement-row-${index + 1}`,
+    cells: { ...(row?.cells || {}) },
+    formats: { ...(row?.formats || {}) },
+  }));
+  const rows = originalRows.map((row) => ({
+    id: row.id,
+    cells: { ...row.cells },
+    formats: { ...row.formats },
+  }));
+  const formulaColumnIds = new Set([
+    iiskColumn?.id,
+    tiskColumn?.id,
+    u0Column?.id,
+    passColumn?.id,
+  ].filter(Boolean));
+  const clearRow = (row) => {
+    normalized.columns.forEach((column) => {
+      row.cells[column.id] = "";
+      delete row.formats[column.id];
+    });
+  };
+  const createRow = (targetIndex = rows.length) => {
+    const base = originalRows[targetIndex] || {};
+    const targetRow = {
+      id: normalizeInputValue(base.id) || `measurement-row-${rows.length + 1}`,
+      cells: Object.fromEntries(normalized.columns.map((column) => [column.id, ""])),
+      formats: {},
+    };
+    rows.push(targetRow);
+    return targetRow;
+  };
+  const shouldReset = replaceExisting || isMobileEizZudsSheetTemplateLike(normalized, boardColumn, circuitColumn, ratingColumn);
+  if (shouldReset) {
+    rows.forEach(clearRow);
+  }
+  const seedFormulaDefaults = (row, targetIndex, measurementNumber) => {
+    const originalCells = originalRows[targetIndex]?.cells || {};
+    normalized.columns.forEach((column) => {
+      const originalValue = normalizeInputValue(originalCells[column.id]);
+      if (originalValue.startsWith("=") || formulaColumnIds.has(column.id)) {
+        row.cells[column.id] = originalValue;
+      }
+    });
+    if (numberColumn?.id) {
+      row.cells[numberColumn.id] = String(measurementNumber);
+    }
+    if (passColumn?.id && !normalizeInputValue(row.cells[passColumn.id])) {
+      row.cells[passColumn.id] = normalizeInputValue(originalCells[passColumn.id]) || "DA";
+    }
+  };
+  const rowHasUserContent = (row) => {
+    const board = normalizeInputValue(row.cells?.[boardColumn.id]);
+    const circuit = normalizeInputValue(row.cells?.[circuitColumn.id]);
+    const rating = normalizeInputValue(row.cells?.[ratingColumn.id]);
+    return Boolean(board || circuit || rating);
+  };
+  let insertIndex = shouldReset ? 0 : Math.max(0, rows.findLastIndex(rowHasUserContent) + 1);
+  let measurementNumber = 1;
+  rows.forEach((row) => {
+    const parsed = Number.parseInt(normalizeInputValue(row.cells?.[numberColumn?.id || ""]), 10);
+    if (Number.isFinite(parsed)) {
+      measurementNumber = Math.max(measurementNumber, parsed + 1);
+    }
+  });
+  if (shouldReset) {
+    measurementNumber = 1;
+  }
+  rowsToApply.forEach((entry) => {
+    const targetRow = rows[insertIndex] || createRow(insertIndex);
+    const targetIndex = insertIndex;
+    insertIndex += 1;
+    clearRow(targetRow);
+    seedFormulaDefaults(targetRow, targetIndex, measurementNumber);
+    targetRow.cells[boardColumn.id] = entry.board;
+    targetRow.cells[circuitColumn.id] = entry.circuit;
+    targetRow.cells[ratingColumn.id] = entry.rcdRating;
+    const [inValue = "", idnValue = ""] = String(entry.rcdRating || "").split("/");
+    if (inColumn?.id && inColumn.id !== ratingColumn.id) {
+      targetRow.cells[inColumn.id] = inValue;
+    }
+    if (idnColumn?.id && idnColumn.id !== ratingColumn.id) {
+      targetRow.cells[idnColumn.id] = idnValue;
+    }
+    measurementNumber += 1;
+  });
+  return {
+    ...normalized,
+    rows,
+  };
 }
 
 function isMobileEizIpkSheetTemplateLike(sheet = {}, placeColumn = null) {
@@ -27670,8 +28053,12 @@ function applyMobileEizIpkVoiceRowsToSheet(sheet = null, voiceRows = [], replace
   const sectionMerges = [];
   const firstColumn = normalized.columns[0] || placeColumn;
   const makeSectionRow = (row, title = "") => {
+    const sectionTitle = cleanMobileEizIpkSectionTitle(title) || normalizeInputValue(title);
     clearRow(row);
-    row.cells[firstColumn.id] = title;
+    row.cells[firstColumn.id] = sectionTitle;
+    if (placeColumn?.id && placeColumn.id !== firstColumn.id) {
+      row.cells[placeColumn.id] = sectionTitle;
+    }
     row.formats[firstColumn.id] = {
       bold: true,
       fillColor: "#eef7ff",
@@ -27760,6 +28147,27 @@ function applyMobileEizIpkVoiceTranscriptToMeasurementTables(tables = [], common
     return {
       ...table,
       sheet: applyMobileEizIpkVoiceRowsToSheet(table.sheet, voiceRows, false),
+    };
+  });
+}
+
+function applyMobileEizZudsVoiceTranscriptToMeasurementTables(tables = [], common = {}, template = {}) {
+  const transcript = getMobileDocumentationTemplateFieldValues(
+    common,
+    template,
+    MOBILE_EIZ_ZUDS_VOICE_TRANSCRIPT_FIELD_KEYS,
+  );
+  const voiceRows = normalizeMobileEizZudsVoiceRows(parseMobileEizZudsVoiceRows(transcript));
+  if (!voiceRows.length) {
+    return tables;
+  }
+  return tables.map((table, index) => {
+    if (!isMobileEizZudsMeasurementTable(table, index)) {
+      return table;
+    }
+    return {
+      ...table,
+      sheet: applyMobileEizZudsVoiceRowsToSheet(table.sheet, voiceRows, false),
     };
   });
 }
@@ -28031,7 +28439,11 @@ function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, co
     return applyMobileSprVoiceTranscriptToMeasurementTables(tables, common, template);
   }
   if (normalizedServiceCode === "EIZ") {
-    return applyMobileEizIpkVoiceTranscriptToMeasurementTables(tables, common, template);
+    return applyMobileEizIpkVoiceTranscriptToMeasurementTables(
+      applyMobileEizZudsVoiceTranscriptToMeasurementTables(tables, common, template),
+      common,
+      template,
+    );
   }
   return tables;
 }
