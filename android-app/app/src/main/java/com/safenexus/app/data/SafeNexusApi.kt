@@ -1056,7 +1056,8 @@ class SafeNexusApi(
                         .put("serviceCode", record.serviceCode)
                         .put("serviceName", record.serviceName)
                         .put("objectId", record.objectId)
-                        .put("objectName", record.objectName),
+                        .put("objectName", record.objectName)
+                        .put("objectSequence", record.objectSequence),
                 )
             }
             val payload = JSONObject()

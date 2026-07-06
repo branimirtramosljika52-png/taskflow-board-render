@@ -26866,6 +26866,7 @@ private data class DocumentationAdditionalObjectRecord(
     val serviceName: String,
     val objectId: String,
     val objectName: String,
+    val objectSequence: Int = 0,
 )
 
 private data class DocumentationFlowTab(
@@ -28504,9 +28505,19 @@ private fun WorkOrderDocumentationWizardDialog(
             }.ifEmpty { context.measurementEquipmentOptions }
         }
     }
-    val currentDocumentNumber = selectedFlowItem?.documentNumbers?.firstOrNull()
+    val baseCurrentDocumentNumber = selectedFlowItem?.documentNumbers?.firstOrNull()
         ?: activeTemplates.firstOrNull()?.documentNumber
         ?: workOrder.displayNumber
+    val currentDocumentNumber = selectedAdditionalRecord?.objectSequence
+        ?.takeIf { it > 1 }
+        ?.let { sequence ->
+            if (baseCurrentDocumentNumber.endsWith("-$sequence")) {
+                baseCurrentDocumentNumber
+            } else {
+                "$baseCurrentDocumentNumber-$sequence"
+            }
+        }
+        ?: baseCurrentDocumentNumber
     val summaryDocumentNumbers = remember(serviceFlowItems, workOrder.displayNumber) {
         serviceFlowItems
             .flatMap { item -> item.documentNumbers }
@@ -29225,6 +29236,7 @@ private fun WorkOrderDocumentationWizardDialog(
             .map { it.objectId }
             .toSet() + selectedObjectId
         val selectableObjects = availableLocationObjects.filter { it.id !in usedObjectIds }
+        val targetExistingCount = additionalRecords.count { it.serviceKey == target.serviceKey }
         AlertDialog(
             onDismissRequest = { additionalRecordTarget = null },
             title = { Text("Novi zapisnik za objekt", fontWeight = FontWeight.Black) },
@@ -29274,6 +29286,7 @@ private fun WorkOrderDocumentationWizardDialog(
                                 serviceName = target.serviceName,
                                 objectId = selected.id,
                                 objectName = selected.name,
+                                objectSequence = targetExistingCount + 2,
                             )
                             val nextRecords = additionalRecords + newRecord
                             additionalRecords = nextRecords
@@ -29289,8 +29302,38 @@ private fun WorkOrderDocumentationWizardDialog(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { additionalRecordTarget = null }, enabled = !formLoading) {
-                    Text("Odustani")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            if (selectableObjects.isNotEmpty()) {
+                                val baseRecords = additionalRecords
+                                val newRecords = selectableObjects.mapIndexed { objectIndex, selected ->
+                                    DocumentationAdditionalObjectRecord(
+                                        serviceKey = target.serviceKey,
+                                        serviceIndex = target.serviceIndex,
+                                        serviceCode = target.serviceCode,
+                                        serviceName = target.serviceName,
+                                        objectId = selected.id,
+                                        objectName = selected.name,
+                                        objectSequence = targetExistingCount + objectIndex + 2,
+                                    )
+                                }
+                                val nextRecords = baseRecords + newRecords
+                                additionalRecords = nextRecords
+                                newRecords.firstOrNull()?.let { firstRecord ->
+                                    selectedFlowService = documentationAdditionalRecordFlowKey(firstRecord, baseRecords.size)
+                                }
+                                additionalRecordTarget = null
+                                additionalRecordObjectId = ""
+                            }
+                        },
+                        enabled = !formLoading && selectableObjects.isNotEmpty(),
+                    ) {
+                        Text("Dodaj sve")
+                    }
+                    TextButton(onClick = { additionalRecordTarget = null }, enabled = !formLoading) {
+                        Text("Odustani")
+                    }
                 }
             },
         )
@@ -29765,6 +29808,24 @@ private fun WorkOrderDocumentationWizardDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
                     )
+                    selectedFlowTab?.additionalRecordIndex?.let { additionalIndex ->
+                        OutlinedButton(
+                            onClick = {
+                                additionalRecords = additionalRecords.filterIndexed { index, _ -> index != additionalIndex }
+                                selectedFlowService = selectedFlowTab?.serviceItem?.serviceKey ?: DOCUMENTATION_BASICS_FLOW_KEY
+                            },
+                            enabled = !formLoading,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error,
+                            ),
+                        ) {
+                            Icon(Icons.Rounded.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Makni zapisnik za ovaj objekt", fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
                 if (aiCapableTemplates.isNotEmpty()) {
                     DocumentationAiAssistantSection(
@@ -30338,6 +30399,7 @@ private fun WorkOrderDocumentationWizardDialog(
                                     serviceName = record.serviceName,
                                     objectId = record.objectId,
                                     objectName = record.objectName,
+                                    objectSequence = record.objectSequence,
                                 )
                             },
                             includeHandoverProtocol = includeHandoverProtocol,

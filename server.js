@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.339.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.340.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -21377,6 +21377,13 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
       objectSequence: Number.isFinite(Number(entry?.objectSequence)) ? Number(entry.objectSequence) : index + 2,
     })).filter((entry) => entry.objectId || entry.objectName)
     : [];
+  const addAllObjects = source.addAllObjects === true
+    || source.addAllLocationObjects === true
+    || source.createAllObjectReports === true;
+  const addAllObjectsServiceIndex = Number.isFinite(Number(source.addAllObjectsServiceIndex ?? source.activeServiceIndex))
+    ? Number(source.addAllObjectsServiceIndex ?? source.activeServiceIndex)
+    : -1;
+  const addAllObjectsServiceCode = normalizeInputValue(source.addAllObjectsServiceCode || source.activeServiceCode);
   const fieldValues = source.fieldValues && typeof source.fieldValues === "object" && !Array.isArray(source.fieldValues)
     ? Object.fromEntries(Object.entries(source.fieldValues)
       .map(([key, value]) => [normalizeInputValue(key), value])
@@ -21504,6 +21511,9 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     includedMeasurementTableKeys,
     attachments,
     templateAttachments,
+    addAllObjects,
+    addAllObjectsServiceIndex,
+    addAllObjectsServiceCode,
   };
 }
 
@@ -25925,6 +25935,14 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         }),
       ]
       : []),
+    ...(preset.serviceCode === "EMM"
+      ? [
+        buildMobileNativeDocumentationField("emmVoiceTranscript", "Diktat povezanosti metalnih masa", "spr_voice", {
+          defaultValue: "",
+          helpText: "Primjer: PE sabirnica sudoper; PE sabirnica metalna konstrukcija. Puni ispitno mjesto 1 i ispitno mjesto 2, formule ostaju u tablici.",
+        }),
+      ]
+      : []),
     ...(preset.serviceCode === "EIZ"
       ? [
         buildMobileNativeDocumentationField("eizZudsVoiceTranscript", "Diktat ZUDS", "spr_voice", {
@@ -26067,6 +26085,15 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         typeLabel: "Glasovni unos",
         summary: "Unesi SZOM mjerna mjesta po redu. Posebne dijelove puni samo kad ih izricito kazes.",
         helpText: "Primjer: Odvod 1 2,4; skriveni spojevi spoj 0,6; povezanost masa poklopac 0,8.",
+      }));
+    }
+    if (preset.serviceCode === "EMM" && index === 0) {
+      sectionBlocks.push(buildMobileNativeDocumentationBlock("emmVoiceTranscript", "Diktat povezanosti metalnih masa", "spr_voice", {
+        group: title,
+        editable: true,
+        typeLabel: "Glasovni unos",
+        summary: "Unesi parove ispitnih mjesta po redu, npr. PE sabirnica sudoper.",
+        helpText: "Svaki izgovoreni par puni ispitno mjesto 1 i ispitno mjesto 2. Iisp, Rizm, R i ocjena ostaju formule.",
       }));
     }
     if (preset.serviceCode === "EIZ" && isMobileEizIpkMeasurementTable(table, index)) {
@@ -27228,6 +27255,15 @@ const MOBILE_SZOM_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
   "Glasovni unos SZOM",
 ]);
 
+const MOBILE_EMM_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
+  "emmVoiceTranscript",
+  "EMM_VOICE_TRANSCRIPT",
+  "Diktat EMM",
+  "Diktat povezanosti metalnih masa",
+  "Diktat ispitnih mjesta EMM",
+  "Glasovni unos EMM",
+]);
+
 const MOBILE_EIZ_IPK_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
   "eizIpkVoiceTranscript",
   "EIZ_IPK_VOICE_TRANSCRIPT",
@@ -27810,6 +27846,86 @@ function parseMobileSzomVoiceRows(transcript = "") {
   return rows;
 }
 
+function cleanMobileEmmVoicePoint(value = "") {
+  return cleanMobileSprVoicePlace(value)
+    .replace(/\b(?:ispitno|mjesto|mjerenje|povezanost|kontinuitet|metalnih|masa)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitMobileEmmVoicePair(segment = "") {
+  const text = normalizeInputValue(segment)
+    .replace(/\b(?:ispitno\s*mjesto\s*1|mjesto\s*1|prvo\s*mjesto)\b/giu, " ")
+    .replace(/\b(?:ispitno\s*mjesto\s*2|mjesto\s*2|drugo\s*mjesto)\b/giu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) {
+    return null;
+  }
+  const delimiterMatch = text.match(/^(.+?)\s+(?:do|prema|sa|s|na|i|\/|-|->|:)\s+(.+)$/iu);
+  if (delimiterMatch) {
+    return {
+      point1: cleanMobileEmmVoicePoint(delimiterMatch[1]),
+      point2: cleanMobileEmmVoicePoint(delimiterMatch[2]),
+    };
+  }
+  const knownFirstPoint = text.match(/^(pe\s+sabirnica|sabirnica\s+pe|glavna\s+sabirnica|gro|pe)\s+(.+)$/iu);
+  if (knownFirstPoint) {
+    return {
+      point1: cleanMobileEmmVoicePoint(knownFirstPoint[1]),
+      point2: cleanMobileEmmVoicePoint(knownFirstPoint[2]),
+    };
+  }
+  const tokens = text.split(/\s+/g).filter(Boolean);
+  if (tokens.length >= 4) {
+    const splitIndex = Math.ceil(tokens.length / 2);
+    return {
+      point1: cleanMobileEmmVoicePoint(tokens.slice(0, splitIndex).join(" ")),
+      point2: cleanMobileEmmVoicePoint(tokens.slice(splitIndex).join(" ")),
+    };
+  }
+  if (tokens.length >= 2) {
+    return {
+      point1: cleanMobileEmmVoicePoint(tokens[0]),
+      point2: cleanMobileEmmVoicePoint(tokens.slice(1).join(" ")),
+    };
+  }
+  return null;
+}
+
+function parseMobileEmmVoiceRows(transcript = "") {
+  const source = normalizeInputValue(transcript);
+  if (!source) {
+    return [];
+  }
+  const rows = [];
+  const segments = source
+    .replace(/\b(?:i onda|pa onda|zatim|onda|sljedece|sljedeće)\b/giu, "\n")
+    .replace(/[;]+/g, "\n")
+    .replace(/(?<!\d),(?!\d)/gu, "\n")
+    .split(/\r?\n/g)
+    .map((segment) => normalizeInputValue(segment))
+    .filter(Boolean);
+  segments.forEach((segment, index) => {
+    const pair = splitMobileEmmVoicePair(segment);
+    if (!pair?.point1 || !pair?.point2) {
+      return;
+    }
+    const key = normalizeMobileSprLookupText(`${pair.point1} ${pair.point2} ${index + 1}`);
+    rows.push({
+      key,
+      place1: pair.point1,
+      place2: pair.point2,
+      point1: pair.point1,
+      point2: pair.point2,
+      place: `${pair.point1} - ${pair.point2}`,
+      lampCount: "",
+      kind: "measurement",
+    });
+  });
+  return rows;
+}
+
 function parseMobileEizIpkVoiceRows(transcript = "") {
   const source = normalizeInputValue(transcript);
   if (!source) {
@@ -28151,6 +28267,50 @@ function buildMobileTzinVoiceLocalPayload(body = {}, message = "") {
   };
 }
 
+function normalizeMobileEmmVoiceRows(rows = []) {
+  const normalizedRows = [];
+  (Array.isArray(rows) ? rows : []).forEach((row, index) => {
+    const point1 = cleanMobileEmmVoicePoint(
+      row?.point1
+      || row?.place1
+      || row?.testPoint1
+      || row?.ispitnoMjesto1
+      || "",
+    );
+    const point2 = cleanMobileEmmVoicePoint(
+      row?.point2
+      || row?.place2
+      || row?.testPoint2
+      || row?.ispitnoMjesto2
+      || "",
+    );
+    if (!point1 || !point2) {
+      return;
+    }
+    normalizedRows.push({
+      key: normalizeMobileSprLookupText(`${point1} ${point2} ${index + 1}`),
+      point1,
+      point2,
+      place1: point1,
+      place2: point2,
+      place: `${point1} - ${point2}`,
+      lampCount: "",
+      kind: "measurement",
+    });
+  });
+  return normalizedRows;
+}
+
+function buildMobileEmmVoiceLocalPayload(body = {}, message = "") {
+  const rows = normalizeMobileEmmVoiceRows(parseMobileEmmVoiceRows(body?.transcript || body?.text || ""));
+  return {
+    ok: true,
+    provider: "local",
+    rows,
+    message: message || `Lokalni parser je pripremio ${rows.length} EMM redaka.`,
+  };
+}
+
 function normalizeMobileSzomVoiceRows(rows = []) {
   const normalizedRows = [];
   (Array.isArray(rows) ? rows : []).forEach((row, index) => {
@@ -28358,6 +28518,26 @@ function isMobileSzomVoiceRequest(body = {}) {
   );
 }
 
+function isMobileEmmVoiceRequest(body = {}) {
+  const serviceCode = normalizeInputValue(body?.serviceCode).toUpperCase();
+  const table = body?.measurementTable && typeof body.measurementTable === "object" ? body.measurementTable : {};
+  const tableText = normalizeMobileSprLookupText([
+    table.id,
+    table.key,
+    table.tokenKey,
+    table.label,
+    table.summary,
+    table.sourceSheet,
+    body?.templateTitle,
+  ].join(" "));
+  return serviceCode === "EMM" && (
+    tableText.includes("emm")
+    || tableText.includes("metalnemase")
+    || tableText.includes("povezanost")
+    || tableText.includes("kontinuitet")
+  );
+}
+
 async function buildMobileMeasurementVoiceStructuredRows(body = {}, user = null) {
   if (isMobileEizZudsVoiceRequest(body)) {
     return buildMobileEizZudsVoiceLocalPayload(body);
@@ -28370,6 +28550,9 @@ async function buildMobileMeasurementVoiceStructuredRows(body = {}, user = null)
   }
   if (isMobileSzomVoiceRequest(body)) {
     return buildMobileSzomVoiceLocalPayload(body);
+  }
+  if (isMobileEmmVoiceRequest(body)) {
+    return buildMobileEmmVoiceLocalPayload(body);
   }
   return buildMobileSprVoiceStructuredRows(body, user);
 }
@@ -28736,6 +28919,85 @@ function applyMobileSzomVoiceTranscriptToMeasurementTables(tables = [], common =
     return {
       ...table,
       sheet: applyMobileSzomVoiceRowsToSheet(table.sheet, voiceRows),
+    };
+  });
+}
+
+function applyMobileEmmVoiceRowsToSheet(sheet = null, voiceRows = []) {
+  const normalized = normalizeWorkOrderMeasurementSheet(sheet);
+  const rowsToApply = normalizeMobileEmmVoiceRows(voiceRows);
+  if (!normalized?.columns?.length || rowsToApply.length === 0) {
+    return normalized || sheet;
+  }
+  const numberColumn = findMobileSprSheetColumn(normalized, ["r br", "rbr", "redni broj", "broj", "rb"], 0);
+  const point1Column = findMobileSprSheetColumn(normalized, ["ispitno mjesto 1", "mjesto 1", "test point 1"], 1);
+  const point2Column = findMobileSprSheetColumn(normalized, ["ispitno mjesto 2", "mjesto 2", "test point 2"], 2);
+  const testCurrentColumn = findMobileSprSheetColumn(normalized, ["iisp", "ispitna struja"], 3);
+  const measuredColumn = findMobileSprSheetColumn(normalized, ["rizm", "izmjereni otpor", "izmjeren otpor"], 4);
+  const expectedColumn = findMobileSprSheetColumn(normalized, ["r ohm", "dozvoljeni", "ocekivani", "r"], 5);
+  const passColumn = findMobileSprSheetColumn(normalized, ["rizm r", "zadovoljava", "ocjena", "pass"], 6);
+  if (!point1Column?.id || !point2Column?.id) {
+    return normalized;
+  }
+  const rows = (Array.isArray(normalized.rows) ? normalized.rows : []).map((row, index) => ({
+    id: normalizeInputValue(row?.id) || `measurement-row-${index + 1}`,
+    cells: { ...(row?.cells || {}) },
+    formats: { ...(row?.formats || {}) },
+  }));
+  const createRow = () => {
+    const targetRow = {
+      id: `measurement-row-${rows.length + 1}`,
+      cells: Object.fromEntries(normalized.columns.map((column) => [column.id, ""])),
+      formats: {},
+    };
+    rows.push(targetRow);
+    return targetRow;
+  };
+  const formulaRowNumber = (row) => Math.max(1, rows.indexOf(row) + 1);
+  rowsToApply.forEach((entry, index) => {
+    const targetRow = rows[index] || createRow();
+    const rowNumber = formulaRowNumber(targetRow);
+    if (numberColumn?.id && !normalizeInputValue(targetRow.cells[numberColumn.id])) {
+      targetRow.cells[numberColumn.id] = String(index + 1);
+    }
+    targetRow.cells[point1Column.id] = entry.point1;
+    targetRow.cells[point2Column.id] = entry.point2;
+    if (testCurrentColumn?.id && !normalizeInputValue(targetRow.cells[testCurrentColumn.id])) {
+      targetRow.cells[testCurrentColumn.id] = `=IF(B${rowNumber}="","",0.2)`;
+    }
+    if (measuredColumn?.id && !normalizeInputValue(targetRow.cells[measuredColumn.id])) {
+      targetRow.cells[measuredColumn.id] = `=IF(B${rowNumber}="","",RANDBETWEEN(40,150)/100)`;
+    }
+    if (expectedColumn?.id && !normalizeInputValue(targetRow.cells[expectedColumn.id])) {
+      targetRow.cells[expectedColumn.id] = `=IF(B${rowNumber}="","","<2")`;
+    }
+    if (passColumn?.id && !normalizeInputValue(targetRow.cells[passColumn.id])) {
+      targetRow.cells[passColumn.id] = `=IF(B${rowNumber}="","",IF(E${rowNumber}<2,"DA","NE"))`;
+    }
+  });
+  return {
+    ...normalized,
+    rows,
+  };
+}
+
+function applyMobileEmmVoiceTranscriptToMeasurementTables(tables = [], common = {}, template = {}) {
+  const transcript = getMobileDocumentationTemplateFieldValues(
+    common,
+    template,
+    MOBILE_EMM_VOICE_TRANSCRIPT_FIELD_KEYS,
+  );
+  const voiceRows = parseMobileEmmVoiceRows(transcript);
+  if (!voiceRows.length) {
+    return tables;
+  }
+  return tables.map((table, index) => {
+    if (index !== 0) {
+      return table;
+    }
+    return {
+      ...table,
+      sheet: applyMobileEmmVoiceRowsToSheet(table.sheet, voiceRows),
     };
   });
 }
@@ -29388,6 +29650,9 @@ function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, co
   }
   if (normalizedServiceCode === "SZOM") {
     return applyMobileSzomVoiceTranscriptToMeasurementTables(tables, common, template);
+  }
+  if (normalizedServiceCode === "EMM") {
+    return applyMobileEmmVoiceTranscriptToMeasurementTables(tables, common, template);
   }
   if (normalizedServiceCode === "EIZ") {
     return applyMobileEizIpkVoiceTranscriptToMeasurementTables(
@@ -30795,7 +31060,54 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
     appendEntriesForService(service, serviceIndex, workOrder);
   });
 
-  (common.additionalRecords || []).forEach((record, index) => {
+  const additionalRecords = [...(common.additionalRecords || [])];
+  if (common.addAllObjects) {
+    const currentObjectId = getMobileWorkOrderLocationObjectId(workOrder);
+    const allLocationObjects = buildMobileWorkOrderLocationObjectOptions(scopedSnapshot.locationObjects)
+      .filter((object) => (
+        (!workOrder.companyId || String(object.companyId) === String(workOrder.companyId))
+        && (!workOrder.locationId || String(object.locationId) === String(workOrder.locationId))
+        && String(object.id || "") !== String(currentObjectId || "")
+      ));
+    const targetServiceIndexes = [];
+    if (common.addAllObjectsServiceIndex >= 0 && services[common.addAllObjectsServiceIndex]) {
+      targetServiceIndexes.push(common.addAllObjectsServiceIndex);
+    } else if (common.addAllObjectsServiceCode) {
+      services.forEach((service, index) => {
+        const code = normalizeInputValue(service?.serviceCode || service?.code || service?.shortCode).toLowerCase();
+        if (code === common.addAllObjectsServiceCode.toLowerCase()) {
+          targetServiceIndexes.push(index);
+        }
+      });
+    }
+    if (targetServiceIndexes.length === 0 && services.length > 0) {
+      targetServiceIndexes.push(0);
+    }
+    const usedKeys = new Set(additionalRecords.map((record) => [
+      String(record.serviceIndex),
+      String(record.objectId || record.objectName || ""),
+    ].join("::")));
+    targetServiceIndexes.forEach((serviceIndex) => {
+      const service = services[serviceIndex] || {};
+      allLocationObjects.forEach((object, objectIndex) => {
+        const key = [String(serviceIndex), String(object.id || object.name || "")].join("::");
+        if (usedKeys.has(key)) {
+          return;
+        }
+        usedKeys.add(key);
+        additionalRecords.push({
+          serviceIndex,
+          serviceCode: normalizeInputValue(service.serviceCode || service.code || service.shortCode),
+          serviceName: normalizeInputValue(service.name || service.serviceName || service.title),
+          objectId: object.id,
+          objectName: object.name,
+          objectSequence: objectIndex + 2,
+        });
+      });
+    });
+  }
+
+  additionalRecords.forEach((record, index) => {
     const serviceIndex = Number.isFinite(Number(record.serviceIndex)) ? Number(record.serviceIndex) : -1;
     const service = services[serviceIndex] || services.find((item) => (
       normalizeInputValue(item?.serviceCode || item?.code).toLowerCase() === normalizeInputValue(record.serviceCode).toLowerCase()

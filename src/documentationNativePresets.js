@@ -2657,6 +2657,13 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       sourceSheet: "EMM1.2",
       columns: ["R.br.", "Ispitno mjesto 1", "Ispitno mjesto 2", "Iisp [A]", "Rizm [ohm]", "R [ohm]", "Rizm ~ R DA/NE"],
       rowCount: 12,
+      rowBuilder: (rowNumber) => ({
+        c1: String(rowNumber),
+        c4: `=IF(B${rowNumber}="","",0.2)`,
+        c5: `=IF(B${rowNumber}="","",RANDBETWEEN(40,150)/100)`,
+        c6: `=IF(B${rowNumber}="","","<2")`,
+        c7: `=IF(B${rowNumber}="","",IF(E${rowNumber}<2,"DA","NE"))`,
+      }),
       pageOrientation: "landscape",
     },
   ],
@@ -2667,7 +2674,33 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       summary: "Tablica 1. - rezultati ispitivanja ventilacije",
       sourceSheet: "VS1.2",
       columns: ["Prostor", "Efektivni volumen", "Vrsta otvora", "Povrsina otvora", "Brzina strujanja", "Protok", "Volumni protok", "Potrebni protok", "Broj izmjena", "Trazeni broj izmjena", "Podtlak / Nadtlak", "Zadovoljava"],
-      rowCount: 8,
+      rowCount: 14,
+      rowBuilder: (rowNumber, index) => {
+        const firstRow = 1;
+        const lastRow = 14;
+        if (index === 0) {
+          return {
+            c1: "Prodajni prostor",
+            c2: "18700",
+            c3: "usis",
+            c4: "0.5",
+            c5: `=RANDBETWEEN(195,244)/100`,
+            c6: `=D${rowNumber}*E${rowNumber}*3600`,
+            c7: `=SUM(F${firstRow}:F${lastRow})`,
+            c8: "-",
+            c9: `=G${firstRow}/B${firstRow}`,
+            c10: "2",
+            c11: "Podtlak",
+            c12: "DA",
+          };
+        }
+        return {
+          c3: "usis",
+          c4: "0.5",
+          c5: `=RANDBETWEEN(195,244)/100`,
+          c6: `=D${rowNumber}*E${rowNumber}*3600`,
+        };
+      },
       pageOrientation: "landscape",
     },
   ],

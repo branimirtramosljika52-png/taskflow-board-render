@@ -427,6 +427,7 @@ data class WorkOrderDocumentationAdditionalRecord(
     val serviceName: String,
     val objectId: String,
     val objectName: String,
+    val objectSequence: Int = 0,
 )
 
 data class WorkOrderTrainingImportProfile(

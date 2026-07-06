@@ -88144,6 +88144,17 @@ function getDocumentTemplateRuntimeObjectIdsInUse(workOrder = {}, template = bui
   );
 }
 
+function createDocumentTemplateRuntimeObjectActionButton(label = "", variant = "ghost-button", onClick = null) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = variant;
+  button.textContent = label;
+  if (typeof onClick === "function") {
+    button.addEventListener("click", onClick);
+  }
+  return button;
+}
+
 function openDocumentTemplateRuntimeDuplicateObjectPicker(workOrder = {}, template = buildDocumentTemplateDraft()) {
   return new Promise((resolve) => {
     const company = getCompany(workOrder.companyId);
@@ -88174,12 +88185,12 @@ function openDocumentTemplateRuntimeDuplicateObjectPicker(workOrder = {}, templa
     const titleWrap = document.createElement("div");
     const kicker = document.createElement("span");
     kicker.className = "section-kicker";
-    kicker.textContent = "Poduplaj zapisnik";
+    kicker.textContent = "Novi zapisnik objekta";
     const title = document.createElement("h3");
     title.id = "document-template-object-picker-title";
     title.textContent = "Odaberi objekt za novi zapisnik";
     const subtitle = document.createElement("p");
-    subtitle.textContent = "Izaberi postojeći objekt na ovoj lokaciji ili odmah dodaj novi.";
+    subtitle.textContent = "Izaberi postojeći objekt, dodaj novi ili napravi zapisnike za sve preostale objekte na lokaciji.";
     titleWrap.append(kicker, title, subtitle);
     const closeButton = document.createElement("button");
     closeButton.type = "button";
@@ -88320,11 +88331,16 @@ function openDocumentTemplateRuntimeDuplicateObjectPicker(workOrder = {}, templa
     cancelButton.type = "button";
     cancelButton.className = "ghost-button";
     cancelButton.textContent = "Odustani";
+    const addAllButton = document.createElement("button");
+    addAllButton.type = "button";
+    addAllButton.className = "ghost-button";
+    addAllButton.textContent = `Dodaj sve objekte (${selectableObjects.length})`;
+    addAllButton.disabled = selectableObjects.length === 0;
     const confirmButton = document.createElement("button");
     confirmButton.type = "button";
     confirmButton.className = "primary-button";
-    confirmButton.textContent = "Poduplaj zapisnik";
-    actions.append(cancelButton, confirmButton);
+    confirmButton.textContent = "Dodaj zapisnik";
+    actions.append(addAllButton, cancelButton, confirmButton);
 
     const close = (result = null) => {
       if (isClosed) {
@@ -88350,6 +88366,11 @@ function openDocumentTemplateRuntimeDuplicateObjectPicker(workOrder = {}, templa
 
     closeButton.addEventListener("click", () => close(null));
     cancelButton.addEventListener("click", () => close(null));
+    addAllButton.addEventListener("click", () => {
+      if (selectableObjects.length > 0) {
+        close({ objects: selectableObjects, allObjects: true });
+      }
+    });
     backdrop.addEventListener("pointerdown", (event) => {
       if (event.target === backdrop) {
         close(null);
@@ -88454,6 +88475,104 @@ function buildDocumentTemplateRuntimeObjectSelectBadge(workOrder, template) {
   return badge;
 }
 
+function addDocumentTemplateRuntimeObjectSequenceEntries(activeWorkOrder = null, template = buildDocumentTemplateDraft(), targetObjects = []) {
+  const normalizedTargets = (Array.isArray(targetObjects) ? targetObjects : [targetObjects])
+    .map((object) => (object && typeof object === "object" ? object : null))
+    .filter((object) => String(object?.id || object?.name || "").trim());
+  if (!activeWorkOrder || normalizedTargets.length === 0) {
+    return [];
+  }
+
+  const sequenceState = getDocumentTemplateRuntimeSequenceState();
+  const activeTemplateId = getDocumentTemplateRuntimeTemplateId(template);
+  if (!sequenceState || sequenceState.isSummary) {
+    const firstObject = normalizedTargets[0];
+    if (firstObject?.id) {
+      setDocumentTemplateRuntimeObjectSelection(activeWorkOrder.id, firstObject.id);
+    }
+    return firstObject ? [{
+      objectId: String(firstObject.id || ""),
+      objectName: String(firstObject.name || ""),
+      objectSequence: 1,
+    }] : [];
+  }
+
+  const activeIndex = sequenceState.index;
+  const activeEntry = sequenceState.entries[activeIndex];
+  const sameEntryIndexes = sequenceState.entries
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => (
+      String(entry.workOrderId || "") === String(activeWorkOrder.id || "")
+      && String(entry.templateId || "") === String(activeTemplateId)
+    ));
+  const sameIndexes = new Set(sameEntryIndexes.map(({ index }) => index));
+  const currentObject = getDocumentTemplateRuntimeObjectForWorkOrder(activeWorkOrder);
+  const normalizedEntries = sequenceState.entries.map((entry, index) => {
+    if (!sameIndexes.has(index)) {
+      return entry;
+    }
+    const currentSequence = Number.parseInt(entry.objectSequence, 10) || 0;
+    if (index === activeIndex) {
+      return {
+        ...entry,
+        objectSequence: currentSequence > 0 ? currentSequence : 1,
+        objectId: entry.objectId || currentObject?.id || "",
+        objectName: entry.objectName || currentObject?.name || "",
+      };
+    }
+    return {
+      ...entry,
+      objectSequence: currentSequence > 0 ? currentSequence : 1,
+    };
+  });
+
+  const usedObjectIds = new Set(
+    normalizedEntries
+      .filter((entry) => (
+        String(entry.workOrderId || "") === String(activeWorkOrder.id || "")
+        && String(entry.templateId || "") === String(activeTemplateId)
+      ))
+      .map((entry) => String(entry.objectId || "").trim())
+      .filter(Boolean),
+  );
+  const maxSequence = normalizedEntries.reduce((max, entry) => (
+    String(entry.workOrderId || "") === String(activeWorkOrder.id || "")
+      && String(entry.templateId || "") === String(activeTemplateId)
+      ? Math.max(max, Number.parseInt(entry.objectSequence, 10) || 0)
+      : max
+  ), 0);
+  let nextSequence = Math.max(2, maxSequence + 1);
+  const duplicateEntries = normalizedTargets
+    .filter((object) => {
+      const objectId = String(object.id || "").trim();
+      return !objectId || !usedObjectIds.has(objectId);
+    })
+    .map((object) => {
+      const entry = {
+        ...activeEntry,
+        objectId: String(object.id || ""),
+        objectName: String(object.name || ""),
+        objectSequence: nextSequence,
+      };
+      nextSequence += 1;
+      if (entry.objectId) {
+        usedObjectIds.add(entry.objectId);
+      }
+      return entry;
+    });
+
+  if (duplicateEntries.length === 0) {
+    return [];
+  }
+
+  normalizedEntries.splice(activeIndex + 1, 0, ...duplicateEntries);
+  state.documentTemplateRuntime.sequenceEntries = normalizedEntries;
+  state.documentTemplateRuntime.sequenceIndex = activeIndex + 1;
+  state.documentTemplateRuntime.activeWorkOrderId = String(activeWorkOrder.id || "").trim();
+  syncDocumentTemplateRuntimeObjectSelectionFromEntry(duplicateEntries[0]);
+  return duplicateEntries;
+}
+
 async function duplicateActiveDocumentTemplateRuntimeForNewObject() {
   const template = buildDocumentTemplateDraft();
   const activeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder();
@@ -88463,68 +88582,82 @@ async function duplicateActiveDocumentTemplateRuntimeForNewObject() {
   }
 
   try {
-    const targetObject = await openDocumentTemplateRuntimeDuplicateObjectPicker(activeWorkOrder, template);
-    if (!targetObject) {
+    const targetSelection = await openDocumentTemplateRuntimeDuplicateObjectPicker(activeWorkOrder, template);
+    if (!targetSelection) {
       return;
     }
 
-    const sequenceState = getDocumentTemplateRuntimeSequenceState();
-    const activeTemplateId = getDocumentTemplateRuntimeTemplateId(template);
-    if (sequenceState && !sequenceState.isSummary) {
-      const activeIndex = sequenceState.index;
-      const activeEntry = sequenceState.entries[activeIndex];
-      const sameEntryIndexes = sequenceState.entries
-        .map((entry, index) => ({ entry, index }))
-        .filter(({ entry }) => (
-          String(entry.workOrderId || "") === String(activeWorkOrder.id || "")
-          && String(entry.templateId || "") === String(activeTemplateId)
-        ));
-      const maxSequence = sameEntryIndexes.reduce((max, { entry }) => (
-        Math.max(max, Number.parseInt(entry.objectSequence, 10) || 0)
-      ), 0);
-      const nextSequence = Math.max(2, maxSequence + 1);
-      const currentObject = getDocumentTemplateRuntimeObjectForWorkOrder(activeWorkOrder);
-      const normalizedEntries = sequenceState.entries.map((entry, index) => {
-        if (!sameEntryIndexes.some((candidate) => candidate.index === index)) {
-          return entry;
-        }
-        if (index === activeIndex) {
-          return {
-            ...entry,
-            objectSequence: Number.parseInt(entry.objectSequence, 10) > 0 ? entry.objectSequence : 1,
-            objectId: entry.objectId || currentObject?.id || "",
-            objectName: entry.objectName || currentObject?.name || "",
-          };
-        }
-        return {
-          ...entry,
-          objectSequence: Number.parseInt(entry.objectSequence, 10) > 0 ? entry.objectSequence : 1,
-        };
-      });
-      const duplicateEntry = {
-        ...activeEntry,
-        objectId: String(targetObject.id),
-        objectName: String(targetObject.name || ""),
-        objectSequence: nextSequence,
-      };
-      normalizedEntries.splice(activeIndex + 1, 0, duplicateEntry);
-      state.documentTemplateRuntime.sequenceEntries = normalizedEntries;
-      state.documentTemplateRuntime.sequenceIndex = activeIndex + 1;
-      state.documentTemplateRuntime.activeWorkOrderId = String(activeWorkOrder.id || "").trim();
-      syncDocumentTemplateRuntimeObjectSelectionFromEntry(duplicateEntry);
-    } else {
-      setDocumentTemplateRuntimeObjectSelection(activeWorkOrder.id, targetObject.id);
+    const targetObjects = Array.isArray(targetSelection?.objects)
+      ? targetSelection.objects
+      : [targetSelection];
+    const duplicateEntries = addDocumentTemplateRuntimeObjectSequenceEntries(activeWorkOrder, template, targetObjects);
+    if (duplicateEntries.length === 0) {
+      setDocumentTemplateMessage("Nema novih objekata za dodati.");
+      return;
     }
 
     saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
     renderDocumentTemplateRuntimeContext();
     renderDocumentTemplateFieldRows();
     renderDocumentTemplatePreviewContent();
-    setDocumentTemplateMessage(`Zapisnik je podupljan za objekt "${targetObject.name}".`, { type: "success" });
+    setDocumentTemplateMessage(
+      duplicateEntries.length === 1
+        ? `Dodan je zapisnik za objekt "${duplicateEntries[0].objectName || "bez naziva"}".`
+        : `Dodano je ${duplicateEntries.length} zapisnika za objekte ove lokacije.`,
+      { type: "success" },
+    );
   } catch (error) {
-    console.error("Ne mogu poduplati zapisnik za novi objekt.", error);
-    setDocumentTemplateMessage(error?.message || "Ne mogu poduplati zapisnik za novi objekt.");
+    console.error("Ne mogu dodati zapisnik za novi objekt.", error);
+    setDocumentTemplateMessage(error?.message || "Ne mogu dodati zapisnik za novi objekt.");
   }
+}
+
+function removeActiveDocumentTemplateRuntimeObjectSequence() {
+  const template = buildDocumentTemplateDraft();
+  const activeWorkOrder = getDocumentTemplateRuntimeActiveWorkOrder();
+  const sequenceState = getDocumentTemplateRuntimeSequenceState();
+  if (!activeWorkOrder || !sequenceState || sequenceState.isSummary) {
+    setDocumentTemplateMessage("Nema aktivnog zapisnika objekta za maknuti.");
+    return;
+  }
+
+  const activeEntry = sequenceState.entries[sequenceState.index];
+  const activeTemplateId = getDocumentTemplateRuntimeTemplateId(template);
+  const activeSequence = Number.parseInt(activeEntry?.objectSequence, 10) || 0;
+  if (
+    String(activeEntry?.workOrderId || "") !== String(activeWorkOrder.id || "")
+    || String(activeEntry?.templateId || "") !== String(activeTemplateId)
+  ) {
+    setDocumentTemplateMessage("Aktivni zapisnik ne pripada ovom predlošku.");
+    return;
+  }
+
+  if (activeSequence <= 1) {
+    setDocumentTemplateRuntimeObjectSelection(activeWorkOrder.id, "", { render: false });
+    saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
+    renderDocumentTemplateRuntimeContext();
+    renderDocumentTemplateFieldRows();
+    renderDocumentTemplatePreviewContent();
+    setDocumentTemplateMessage("Objekt je maknut s osnovnog zapisnika.", { type: "success" });
+    return;
+  }
+
+  const nextEntries = sequenceState.entries.filter((entry, index) => index !== sequenceState.index);
+  state.documentTemplateRuntime.sequenceEntries = nextEntries;
+  state.documentTemplateRuntime.sequenceIndex = clampDocumentTemplateRuntimeSequenceIndex(
+    Math.max(0, sequenceState.index - 1),
+    nextEntries,
+  );
+  state.documentTemplateRuntime.activeWorkOrderId = String(activeWorkOrder.id || "").trim();
+  const nextState = getDocumentTemplateRuntimeSequenceState();
+  if (nextState && !nextState.isSummary) {
+    syncDocumentTemplateRuntimeObjectSelectionFromEntry(nextState.entry);
+  }
+  saveDocumentTemplateRuntimeLocalDraft({ syncButton: true });
+  renderDocumentTemplateRuntimeContext();
+  renderDocumentTemplateFieldRows();
+  renderDocumentTemplatePreviewContent();
+  setDocumentTemplateMessage(`Maknut je zapisnik za objekt "${activeEntry.objectName || "bez naziva"}".`, { type: "success" });
 }
 
 function renderDocumentTemplateRuntimeContext() {
@@ -88907,6 +89040,15 @@ function renderDocumentTemplateRuntimeContext() {
     }
 
     headerCards.push(buildDocumentTemplateRuntimeObjectSelectBadge(activeWorkOrder, template));
+    headerCards.push(createDocumentTemplateRuntimeObjectActionButton("Dodaj objekt", "ghost-button", () => {
+      void duplicateActiveDocumentTemplateRuntimeForNewObject();
+    }));
+    const activeObjectSequence = Number.parseInt(activeSequenceEntry?.objectSequence, 10) || 0;
+    if (activeObjectSequence > 1 || String(activeSequenceEntry?.objectId || "").trim()) {
+      headerCards.push(createDocumentTemplateRuntimeObjectActionButton("Makni objekt", "ghost-button card-danger", () => {
+        removeActiveDocumentTemplateRuntimeObjectSequence();
+      }));
+    }
 
     const recordBadge = document.createElement("label");
     recordBadge.className = "document-template-runtime-badge is-primary document-template-runtime-badge-select-wrap";
@@ -88995,9 +89137,9 @@ function renderDocumentTemplateRuntimeContext() {
 
   if (fillMode && activeWorkOrder) {
     if (documentTemplateRuntimeDockDuplicateObjectButton) {
-      documentTemplateRuntimeDockDuplicateObjectButton.hidden = true;
+      documentTemplateRuntimeDockDuplicateObjectButton.hidden = false;
       documentTemplateRuntimeDockDuplicateObjectButton.disabled = false;
-      documentTemplateRuntimeDockDuplicateObjectButton.title = "Poduplaj zapisnik za novi objekt na istoj lokaciji";
+      documentTemplateRuntimeDockDuplicateObjectButton.title = "Dodaj zapisnik za drugi objekt na istoj lokaciji";
     }
     const signatureMode = normalizeDocumentTemplateSignatureMethod(state.documentTemplateRuntime.common?.signatureMode);
     const signatureEntries = getDocumentTemplateRuntimeSignatureEntriesFor(template, activeWorkOrder);
