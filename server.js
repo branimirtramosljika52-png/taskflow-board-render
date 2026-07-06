@@ -26441,6 +26441,26 @@ function isMobileDocumentationSprEntry(entry = {}, template = {}) {
   if (["documentation native", "native documentation", "documentation_spr"].includes(explicitKind)) {
     return true;
   }
+  const nativeFields = [
+    entry?.serviceCode,
+    entry?.code,
+    entry?.shortCode,
+    entry?.serviceName,
+    entry?.templateTitle,
+    entry?.documentType,
+    template?.id,
+    template?.name,
+    template?.title,
+    template?.documentType,
+    template?.serviceCode,
+    template?.serviceName,
+    template?.reportTitle,
+  ];
+  if (nativeFields.some((value) => MOBILE_DOCUMENTATION_NATIVE_HTML_SERVICE_KEYS.has(
+    normalizeMobileDocumentationNativeHtmlServiceKey(value),
+  ))) {
+    return true;
+  }
   const lookup = normalizeMobileSprLookupText([
     entry?.serviceCode,
     entry?.serviceName,
