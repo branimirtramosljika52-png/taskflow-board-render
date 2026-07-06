@@ -30579,6 +30579,10 @@ private data class SprVoiceMeasurementRow(
     val place: String,
     val lampCount: String,
     val kind: String = "",
+    val protectionType: String = "",
+    val zLpe: String = "",
+    val zLn: String = "",
+    val zLl: String = "",
 )
 
 private data class DocumentationGridlinePreviewRow(
@@ -30829,6 +30833,157 @@ private fun cleanEizIpkVoicePoint(value: String): String {
     }
 }
 
+private data class EizIpkVoiceProfile(
+    val point: String = "Utičnica 230 V",
+    val protectionType: String = "",
+    val zLpe: List<String> = emptyList(),
+    val zLn: List<String> = emptyList(),
+    val zLl: List<String> = emptyList(),
+)
+
+private fun cleanEizIpkSectionTitle(value: String): String =
+    cleanSprVoicePlace(value)
+        .replace(Regex("^(prostorija|prostor|prostorije|lokacija|mjesto)\\s+", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("\\b(uticnica|uticnice|utičnica|utičnice|suko|komada|kom)\\b", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+private fun parseEizIpkNumericToken(value: String): Double? {
+    val raw = value
+        .trim()
+        .replace(Regex("[^\\d,.-]"), "")
+        .replace(Regex("\\.(?=\\d{3}\\b)"), "")
+        .replace(",", ".")
+    if (raw.isBlank() || raw == "-" || raw == ".") return null
+    val parsed = raw.toDoubleOrNull() ?: return null
+    return if (Regex("^\\d{2,3}$").matches(raw) && parsed > 9.0) parsed / 100.0 else parsed
+}
+
+private fun formatEizIpkNumericValue(value: Double?): String {
+    if (value == null || !value.isFinite()) return ""
+    return String.format(Locale.US, "%.2f", value)
+        .replace(".", ",")
+        .replace(Regex(",00$"), "")
+        .replace(Regex(",(\\d)0$"), ",$1")
+}
+
+private fun formatEizIpkRandBetweenFormula(value: Double?, spread: Double = 0.05): String {
+    if (value == null || !value.isFinite()) return ""
+    val low = kotlin.math.max(0, kotlin.math.round(value * (1 - spread) * 100).toInt())
+    val high = kotlin.math.max(low, kotlin.math.round(value * (1 + spread) * 100).toInt())
+    return "=RANDBETWEEN($low,$high)/100"
+}
+
+private fun eizIpkDeterministicUnit(seed: String): Double {
+    var hash = 2166136261L
+    seed.forEach { char ->
+        hash = hash xor char.code.toLong()
+        hash = (hash * 16777619L) and 0xffffffffL
+    }
+    return (hash % 10000L).toDouble() / 10000.0
+}
+
+private fun expandEizIpkValues(values: List<String>, count: Int, seed: String): List<String> {
+    val numericValues = values.mapNotNull(::parseEizIpkNumericToken)
+    val safeCount = count.coerceIn(1, 200)
+    if (numericValues.isEmpty()) return emptyList()
+    if (numericValues.size == 1) {
+        val base = numericValues.first()
+        return List(safeCount) { formatEizIpkRandBetweenFormula(base) }
+    }
+    if (safeCount == 1) return listOf(formatEizIpkRandBetweenFormula(numericValues.first()))
+    return List(safeCount) { index ->
+        val position = (index.toDouble() / (safeCount - 1).toDouble()) * (numericValues.size - 1).toDouble()
+        val leftIndex = kotlin.math.floor(position).toInt()
+        val rightIndex = kotlin.math.ceil(position).toInt().coerceAtMost(numericValues.lastIndex)
+        val ratio = position - leftIndex.toDouble()
+        val value = numericValues[leftIndex] + ((numericValues[rightIndex] - numericValues[leftIndex]) * ratio)
+        formatEizIpkRandBetweenFormula(value)
+    }
+}
+
+private fun getEizIpkValueAlias(value: String): String {
+    val lookup = normalizeSprVoiceLookup(value).replace(Regex("\\s+"), "")
+    return when {
+        lookup in listOf("zlp", "zlpe", "zl-pe", "z-lpe", "z-l-pe") || lookup.contains("zlpe") -> "zLpe"
+        lookup in listOf("zln", "zl-n", "zl1", "zlone", "z-l-n") || lookup.contains("zln") -> "zLn"
+        lookup in listOf("zll", "zl-l", "z-l-l") || lookup.contains("zll") -> "zLl"
+        else -> ""
+    }
+}
+
+private fun isEizIpkModifierToken(value: String): Boolean {
+    val lookup = normalizeSprVoiceLookup(value)
+    return getEizIpkValueAlias(value).isNotBlank() ||
+        lookup in listOf("between", "izmedu", "izmedju", "između") ||
+        Regex("^[bcd]?\\d{1,3}$", RegexOption.IGNORE_CASE).matches(lookup) ||
+        lookup.startsWith("rcd") ||
+        lookup.startsWith("zuds")
+}
+
+private fun parseEizIpkModifiers(
+    tokens: List<String>,
+    count: Int,
+    seed: String,
+    previousProfile: EizIpkVoiceProfile,
+): EizIpkVoiceProfile {
+    val protectionParts = mutableListOf<String>()
+    val zLpe = mutableListOf<String>()
+    val zLn = mutableListOf<String>()
+    val zLl = mutableListOf<String>()
+    var index = 0
+    while (index < tokens.size) {
+        val token = tokens[index]
+        val lookup = normalizeSprVoiceLookup(token)
+        val alias = getEizIpkValueAlias(token)
+        if (alias.isNotBlank()) {
+            val values = mutableListOf<String>()
+            var valueIndex = index + 1
+            while (valueIndex < tokens.size) {
+                val nextToken = tokens[valueIndex]
+                if (
+                    getEizIpkValueAlias(nextToken).isNotBlank() ||
+                    (isEizIpkModifierToken(nextToken) && parseEizIpkNumericToken(nextToken) == null)
+                ) {
+                    break
+                }
+                if (parseEizIpkNumericToken(nextToken) != null) {
+                    values += nextToken
+                }
+                valueIndex += 1
+            }
+            val expanded = expandEizIpkValues(values, count, "$seed:$alias")
+            when (alias) {
+                "zLpe" -> zLpe += expanded
+                "zLn" -> zLn += expanded
+                "zLl" -> zLl += expanded
+            }
+            index = maxOf(index, valueIndex - 1)
+        } else if (Regex("^[bcd]\\d{1,3}$", RegexOption.IGNORE_CASE).matches(lookup)) {
+            protectionParts += token.uppercase(Locale.getDefault())
+        } else if (lookup.startsWith("rcd") || lookup.startsWith("zuds")) {
+            val first = tokens.getOrNull(index + 1).orEmpty()
+            val second = tokens.getOrNull(index + 2).orEmpty()
+            val rating = if (first.isNotBlank() && parseEizIpkNumericToken(first) != null) {
+                if (second.isNotBlank() && parseEizIpkNumericToken(second) != null) "$first/$second" else first
+            } else {
+                ""
+            }
+            protectionParts += if (rating.isBlank()) "RCD" else "RCD $rating"
+            index += if (rating.isNotBlank() && second.isNotBlank()) 2 else if (rating.isNotBlank()) 1 else 0
+        }
+        index += 1
+    }
+    val point = cleanEizIpkVoicePoint(tokens.joinToString(" "))
+    return EizIpkVoiceProfile(
+        point = point.ifBlank { previousProfile.point },
+        protectionType = protectionParts.joinToString(", ").ifBlank { previousProfile.protectionType },
+        zLpe = zLpe.ifEmpty { previousProfile.zLpe },
+        zLn = zLn.ifEmpty { previousProfile.zLn },
+        zLl = zLl.ifEmpty { previousProfile.zLl },
+    )
+}
+
 private fun parseEizIpkVoiceMeasurementRows(transcript: String): List<SprVoiceMeasurementRow> {
     val source = transcript.trim()
     if (source.isBlank()) return emptyList()
@@ -30840,26 +30995,33 @@ private fun parseEizIpkVoiceMeasurementRows(transcript: String): List<SprVoiceMe
         .replace(floorPattern) { match -> "\n§FLOOR§${cleanSprVoiceFloor(match.groupValues[1])}\n" }
         .replace(Regex("\\b(?:i onda|pa onda|zatim|onda)\\b", RegexOption.IGNORE_CASE), "\n")
         .replace(";", "\n")
-        .replace(",", "\n")
+        .replace(Regex("(?<!\\d),(?!\\d)"), "\n")
     val rows = mutableListOf<SprVoiceMeasurementRow>()
     val seenSections = mutableSetOf<String>()
+    var lastProfile = EizIpkVoiceProfile()
     fun addSection(rawPlace: String) {
-        val place = cleanSprVoicePlace(rawPlace)
+        val place = cleanEizIpkSectionTitle(rawPlace)
         val key = normalizeSprVoiceLookup(place)
         if (place.isBlank() || key.isBlank() || key in seenSections) return
         seenSections += key
         rows += SprVoiceMeasurementRow(key = "section-$key", place = place, lampCount = "", kind = "section")
     }
-    fun addMeasurements(rawSection: String, rawCount: String, rawPoint: String) {
+    fun addMeasurements(rawSection: String, rawCount: String, modifierTokens: List<String>) {
         val count = parseSprVoiceCount(rawCount).toIntOrNull()?.coerceIn(1, 200) ?: return
         addSection(rawSection)
-        val point = cleanEizIpkVoicePoint(rawPoint)
+        val sectionKey = normalizeSprVoiceLookup(rawSection)
+        val profile = parseEizIpkModifiers(modifierTokens, count, sectionKey, lastProfile)
+        lastProfile = profile
         repeat(count) { index ->
             rows += SprVoiceMeasurementRow(
                 key = "${normalizeSprVoiceLookup(rawSection)}-${rows.size + index + 1}",
-                place = point,
+                place = profile.point,
                 lampCount = "1",
                 kind = "measurement",
+                protectionType = profile.protectionType,
+                zLpe = profile.zLpe.getOrNull(index).orEmpty(),
+                zLn = profile.zLn.getOrNull(index).orEmpty(),
+                zLl = profile.zLl.getOrNull(index).orEmpty(),
             )
         }
     }
@@ -30873,7 +31035,7 @@ private fun parseEizIpkVoiceMeasurementRows(transcript: String): List<SprVoiceMe
                 return@forEach
             }
             val tokens = segment
-                .replace(Regex("[,:]+"), " ")
+                .replace(Regex("[:]+"), " ")
                 .split(Regex("\\s+"))
                 .map { it.trim(' ', ',', '.', ';', ':', '-') }
                 .filter { it.isNotBlank() }
@@ -30887,15 +31049,10 @@ private fun parseEizIpkVoiceMeasurementRows(transcript: String): List<SprVoiceMe
                     index += 1
                     continue
                 }
-                val pointTokens = mutableListOf<String>()
-                var nextIndex = index + 1
-                while (nextIndex < tokens.size && isEizIpkVoiceUnitToken(tokens[nextIndex])) {
-                    pointTokens += tokens[nextIndex]
-                    nextIndex += 1
-                }
-                addMeasurements(placeTokens.joinToString(" "), count, pointTokens.joinToString(" "))
+                val modifierTokens = tokens.drop(index + 1)
+                addMeasurements(placeTokens.joinToString(" "), count, modifierTokens)
                 placeTokens.clear()
-                index = nextIndex
+                break
             }
         }
     return rows
@@ -30903,7 +31060,15 @@ private fun parseEizIpkVoiceMeasurementRows(transcript: String): List<SprVoiceMe
 
 private fun parseEizIpkVoiceTranscriptToAiRows(transcript: String): List<SprVoiceAiRow> =
     parseEizIpkVoiceMeasurementRows(transcript).map { row ->
-        SprVoiceAiRow(place = row.place, lampCount = row.lampCount, kind = row.kind)
+        SprVoiceAiRow(
+            place = row.place,
+            lampCount = row.lampCount,
+            kind = row.kind,
+            protectionType = row.protectionType,
+            zLpe = row.zLpe,
+            zLn = row.zLn,
+            zLl = row.zLl,
+        )
     }
 
 private fun findSprMeasurementColumn(
@@ -31096,6 +31261,9 @@ private fun applyEizIpkVoiceRowsToSheet(
     val protectionColumn = findSprMeasurementColumn(sheet, listOf("tip i karakteristika", "zastitnog uredaja", "zaštitnog uređaja"), 3)
     val idnColumn = findSprMeasurementColumn(sheet, listOf("idn ia", "iΔn", "ia"), 4)
     val tdColumn = findSprMeasurementColumn(sheet, listOf("td"), 5)
+    val zLpeColumn = findSprMeasurementColumn(sheet, listOf("zl pe", "z l pe", "z(l pe)", "z(l-pe)", "zlp", "zlpe"), 6)
+    val zLnColumn = findSprMeasurementColumn(sheet, listOf("zl n", "z l n", "z(l n)", "z(l-n)", "zln"), 8)
+    val zLlColumn = findSprMeasurementColumn(sheet, listOf("zl l", "z l l", "z(l l)", "z(l-l)", "zll"), 9)
     val passColumn = findSprMeasurementColumn(sheet, listOf("zadovoljava", "ocjena", "pass"), sheet.columns.lastIndex)
     val originalRows = sheet.rows.mapIndexed { index, row ->
         EditableSprMeasurementRow(
@@ -31189,6 +31357,10 @@ private fun applyEizIpkVoiceRowsToSheet(
             clearRow(row)
             seedMeasurementDefaults(row, rowIndex, measurementNumber)
             row.cells[placeColumn.id] = cleanEizIpkVoicePoint(entry.place)
+            protectionColumn?.id?.takeIf { it.isNotBlank() && entry.protectionType.isNotBlank() }?.let { row.cells[it] = entry.protectionType }
+            zLpeColumn?.id?.takeIf { it.isNotBlank() && entry.zLpe.isNotBlank() }?.let { row.cells[it] = entry.zLpe }
+            zLnColumn?.id?.takeIf { it.isNotBlank() && entry.zLn.isNotBlank() }?.let { row.cells[it] = entry.zLn }
+            zLlColumn?.id?.takeIf { it.isNotBlank() && entry.zLl.isNotBlank() }?.let { row.cells[it] = entry.zLl }
             measurementNumber += 1
         }
     }
@@ -31254,7 +31426,16 @@ private fun applySprVoiceAiRowsToMeasurementSheets(
             val lampCount = if (isSection) "" else parseSprVoiceCount(row.lampCount).ifBlank { row.lampCount.trim().ifBlank { "1" } }
             val key = normalizeSprVoiceLookup(place)
             if (place.isBlank() || (!isSection && lampCount.isBlank()) || key.isBlank()) null else {
-                SprVoiceMeasurementRow(key = key, place = place, lampCount = lampCount, kind = if (isSection) "section" else row.kind)
+                SprVoiceMeasurementRow(
+                    key = key,
+                    place = place,
+                    lampCount = lampCount,
+                    kind = if (isSection) "section" else row.kind,
+                    protectionType = row.protectionType,
+                    zLpe = row.zLpe,
+                    zLn = row.zLn,
+                    zLl = row.zLl,
+                )
             }
         }
     if (voiceRows.isEmpty()) return sheets

@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.337.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.338.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -26849,6 +26849,174 @@ function cleanMobileEizIpkVoicePoint(value = "") {
   return "Utičnica 230 V";
 }
 
+function cleanMobileEizIpkSectionTitle(value = "") {
+  return cleanMobileSprVoicePlace(value)
+    .replace(/^(?:prostorija|prostor|prostorije|lokacija|mjesto)\s+/i, "")
+    .replace(/\b(?:uticnica|uticnice|utiÄŤnica|utiÄŤnice|suko|komada|kom)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseMobileEizIpkNumericToken(value = "") {
+  const raw = normalizeInputValue(value)
+    .replace(/[^\d,.-]/g, "")
+    .replace(/\.(?=\d{3}\b)/g, "")
+    .replace(",", ".");
+  if (!raw || raw === "-" || raw === ".") {
+    return null;
+  }
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  if (/^\d{2,3}$/.test(raw) && parsed > 9) {
+    return parsed / 100;
+  }
+  return parsed;
+}
+
+function formatMobileEizIpkNumericValue(value = null) {
+  if (!Number.isFinite(value)) {
+    return "";
+  }
+  return value
+    .toFixed(2)
+    .replace(".", ",")
+    .replace(/,00$/u, "")
+    .replace(/,(\d)0$/u, ",$1");
+}
+
+function formatMobileEizIpkRandBetweenFormula(value = null, spread = 0.05) {
+  if (!Number.isFinite(value)) {
+    return "";
+  }
+  const low = Math.max(0, Math.round(value * (1 - spread) * 100));
+  const high = Math.max(low, Math.round(value * (1 + spread) * 100));
+  return `=RANDBETWEEN(${low},${high})/100`;
+}
+
+function mobileEizIpkDeterministicUnit(seed = "") {
+  const text = normalizeInputValue(seed);
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return ((hash >>> 0) % 10000) / 10000;
+}
+
+function expandMobileEizIpkValues(values = [], count = 1, seed = "") {
+  const numericValues = (Array.isArray(values) ? values : [])
+    .map(parseMobileEizIpkNumericToken)
+    .filter((value) => Number.isFinite(value));
+  const safeCount = Math.max(1, Math.min(200, Number.parseInt(count, 10) || 1));
+  if (!numericValues.length) {
+    return [];
+  }
+  if (numericValues.length === 1) {
+    const base = numericValues[0];
+    return Array.from({ length: safeCount }, () => formatMobileEizIpkRandBetweenFormula(base));
+  }
+  if (safeCount === 1) {
+    return [formatMobileEizIpkRandBetweenFormula(numericValues[0])];
+  }
+  return Array.from({ length: safeCount }, (_item, index) => {
+    const position = (index / (safeCount - 1)) * (numericValues.length - 1);
+    const leftIndex = Math.floor(position);
+    const rightIndex = Math.min(numericValues.length - 1, Math.ceil(position));
+    const ratio = position - leftIndex;
+    const value = numericValues[leftIndex] + ((numericValues[rightIndex] - numericValues[leftIndex]) * ratio);
+    return formatMobileEizIpkRandBetweenFormula(value);
+  });
+}
+
+function getMobileEizIpkValueAlias(value = "") {
+  const lookup = normalizeMobileSprLookupText(value).replace(/\s+/g, "");
+  if (["zlp", "zlpe", "zl-pe", "z-lpe", "z-l-pe"].includes(lookup) || lookup.includes("zlpe")) {
+    return "zLpe";
+  }
+  if (["zln", "zl-n", "zl1", "zlone", "z-l-n"].includes(lookup) || lookup.includes("zln")) {
+    return "zLn";
+  }
+  if (["zll", "zl-l", "z-l-l"].includes(lookup) || lookup.includes("zll")) {
+    return "zLl";
+  }
+  return "";
+}
+
+function isMobileEizIpkModifierToken(value = "") {
+  const lookup = normalizeMobileSprLookupText(value);
+  return Boolean(getMobileEizIpkValueAlias(value))
+    || lookup === "between"
+    || lookup === "izmedu"
+    || lookup === "izmedju"
+    || lookup === "izmeÄ‘u"
+    || /^[bcd]?\d{1,3}$/iu.test(lookup)
+    || lookup.startsWith("rcd")
+    || lookup.startsWith("zuds");
+}
+
+function parseMobileEizIpkModifiers(tokens = [], count = 1, seed = "", previousProfile = {}) {
+  const profile = {
+    point: cleanMobileEizIpkVoicePoint(tokens.join(" ")),
+    protectionType: "",
+    zLpe: [],
+    zLn: [],
+    zLl: [],
+  };
+  const protectionParts = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const lookup = normalizeMobileSprLookupText(token);
+    const alias = getMobileEizIpkValueAlias(token);
+    if (alias) {
+      const values = [];
+      let valueIndex = index + 1;
+      while (valueIndex < tokens.length) {
+        const nextToken = tokens[valueIndex];
+        if (
+          getMobileEizIpkValueAlias(nextToken)
+          || (isMobileEizIpkModifierToken(nextToken) && parseMobileEizIpkNumericToken(nextToken) === null)
+        ) {
+          break;
+        }
+        if (Number.isFinite(parseMobileEizIpkNumericToken(nextToken))) {
+          values.push(nextToken);
+        }
+        valueIndex += 1;
+      }
+      profile[alias] = expandMobileEizIpkValues(values, count, `${seed}:${alias}`);
+      index = Math.max(index, valueIndex - 1);
+      continue;
+    }
+    if (/^[bcd]\d{1,3}$/iu.test(lookup)) {
+      protectionParts.push(token.toUpperCase());
+      continue;
+    }
+    if (lookup.startsWith("rcd") || lookup.startsWith("zuds")) {
+      const first = normalizeInputValue(tokens[index + 1]);
+      const second = normalizeInputValue(tokens[index + 2]);
+      const rating = first && parseMobileEizIpkNumericToken(first) !== null
+        ? (second && parseMobileEizIpkNumericToken(second) !== null ? `${first}/${second}` : first)
+        : "";
+      protectionParts.push(`RCD${rating ? ` ${rating}` : ""}`);
+      if (rating && second) {
+        index += 2;
+      } else if (rating) {
+        index += 1;
+      }
+    }
+  }
+  profile.protectionType = protectionParts.join(", ");
+  return {
+    point: profile.point || previousProfile.point || "UtiÄŤnica 230 V",
+    protectionType: profile.protectionType || previousProfile.protectionType || "",
+    zLpe: profile.zLpe.length ? profile.zLpe : (previousProfile.zLpe || []),
+    zLn: profile.zLn.length ? profile.zLn : (previousProfile.zLn || []),
+    zLl: profile.zLl.length ? profile.zLl : (previousProfile.zLl || []),
+  };
+}
+
 function parseMobileSprVoiceLooseRows(transcript = "") {
   const tokens = normalizeInputValue(transcript)
     .replace(/\b(?:i onda|pa onda|zatim|onda)\b/giu, " ")
@@ -26960,11 +27128,19 @@ function parseMobileEizIpkVoiceRows(transcript = "") {
   const normalizedSource = source
     .replace(floorPattern, (_match, floor) => `\n§FLOOR§${cleanMobileSprVoiceFloor(floor)}\n`)
     .replace(/\b(?:i onda|pa onda|zatim|onda)\b/giu, "\n")
-    .replace(/[;,]+/g, "\n");
+    .replace(/[;]+/g, "\n")
+    .replace(/(?<!\d),(?!\d)/gu, "\n");
   const rows = [];
   const seenSections = new Set();
+  let lastProfile = {
+    point: "Utičnica 230 V",
+    protectionType: "",
+    zLpe: [],
+    zLn: [],
+    zLl: [],
+  };
   const addSection = (place = "") => {
-    const cleanedPlace = cleanMobileSprVoicePlace(place);
+    const cleanedPlace = cleanMobileEizIpkSectionTitle(place);
     const key = normalizeMobileSprLookupText(cleanedPlace);
     if (!cleanedPlace || !key || seenSections.has(key)) {
       return;
@@ -26972,19 +27148,26 @@ function parseMobileEizIpkVoiceRows(transcript = "") {
     seenSections.add(key);
     rows.push({ key: `section-${key}`, place: cleanedPlace, lampCount: "", kind: "section" });
   };
-  const addMeasurementRows = (section = "", countValue = "", pointValue = "") => {
+  const addMeasurementRows = (section = "", countValue = "", modifierTokens = []) => {
     const count = Number.parseInt(parseMobileSprVoiceCount(countValue), 10);
     if (!Number.isFinite(count) || count <= 0) {
       return;
     }
     addSection(section);
-    const point = cleanMobileEizIpkVoicePoint(pointValue);
-    for (let index = 0; index < Math.min(count, 200); index += 1) {
+    const safeCount = Math.min(count, 200);
+    const sectionKey = normalizeMobileSprLookupText(section);
+    const profile = parseMobileEizIpkModifiers(modifierTokens, safeCount, sectionKey, lastProfile);
+    lastProfile = profile;
+    for (let index = 0; index < safeCount; index += 1) {
       rows.push({
-        key: `ipk-${normalizeMobileSprLookupText(section)}-${rows.length + 1}`,
-        place: point,
+        key: `ipk-${sectionKey}-${rows.length + 1}`,
+        place: profile.point || "Utičnica 230 V",
         lampCount: "1",
         kind: "measurement",
+        protectionType: profile.protectionType || "",
+        zLpe: profile.zLpe[index] || "",
+        zLn: profile.zLn[index] || "",
+        zLl: profile.zLl[index] || "",
       });
     }
   };
@@ -26999,7 +27182,7 @@ function parseMobileEizIpkVoiceRows(transcript = "") {
         return;
       }
       const tokens = segment
-        .replace(/[,:]+/g, " ")
+        .replace(/[:]+/g, " ")
         .split(/\s+/g)
         .map((token) => normalizeInputValue(token).replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, ""))
         .filter(Boolean);
@@ -27012,15 +27195,10 @@ function parseMobileEizIpkVoiceRows(transcript = "") {
           continue;
         }
         const section = placeTokens.join(" ");
-        const pointTokens = [];
-        let nextIndex = index + 1;
-        while (nextIndex < tokens.length && isMobileEizIpkVoiceUnitToken(tokens[nextIndex])) {
-          pointTokens.push(tokens[nextIndex]);
-          nextIndex += 1;
-        }
-        addMeasurementRows(section, count, pointTokens.join(" "));
+        const modifierTokens = tokens.slice(index + 1);
+        addMeasurementRows(section, count, modifierTokens);
         placeTokens.length = 0;
-        index = nextIndex - 1;
+        break;
       }
     });
   return rows;
@@ -27123,6 +27301,10 @@ function normalizeMobileEizIpkVoiceRows(rows = []) {
         place,
         lampCount: "1",
         kind: rawKind || "measurement",
+        protectionType: normalizeInputValue(row?.protectionType || row?.protection || row?.zastita || ""),
+        zLpe: normalizeInputValue(row?.zLpe || row?.zlpe || row?.zlp || row?.["ZL-PE"] || row?.["Z(L-PE)"] || ""),
+        zLn: normalizeInputValue(row?.zLn || row?.zln || row?.["ZL-N"] || row?.["Z(L-N)"] || ""),
+        zLl: normalizeInputValue(row?.zLl || row?.zll || row?.["ZL-L"] || row?.["Z(L-L)"] || ""),
       });
     }
   });
@@ -27431,6 +27613,9 @@ function applyMobileEizIpkVoiceRowsToSheet(sheet = null, voiceRows = [], replace
   const protectionColumn = findMobileSprSheetColumn(normalized, ["tip i karakteristika", "zastitnog uredaja", "zaštitnog uređaja"], 3);
   const idnColumn = findMobileSprSheetColumn(normalized, ["idn ia", "iΔn", "ia"], 4);
   const tdColumn = findMobileSprSheetColumn(normalized, ["td"], 5);
+  const zLpeColumn = findMobileSprSheetColumn(normalized, ["zl pe", "z l pe", "z(l pe)", "z(l-pe)", "zlp", "zlpe"], 6);
+  const zLnColumn = findMobileSprSheetColumn(normalized, ["zl n", "z l n", "z(l n)", "z(l-n)", "zln"], 8);
+  const zLlColumn = findMobileSprSheetColumn(normalized, ["zl l", "z l l", "z(l l)", "z(l-l)", "zll"], 9);
   const passColumn = findMobileSprSheetColumn(normalized, ["zadovoljava", "ocjena", "pass"], normalized.columns.length - 1);
   if (!placeColumn?.id) {
     return normalized;
@@ -27530,6 +27715,18 @@ function applyMobileEizIpkVoiceRowsToSheet(sheet = null, voiceRows = [], replace
     clearRow(targetRow);
     seedMeasurementDefaults(targetRow, Math.max(0, insertIndex - 1), measurementNumber);
     targetRow.cells[placeColumn.id] = cleanMobileEizIpkVoicePoint(entry.place);
+    if (protectionColumn?.id && normalizeInputValue(entry.protectionType)) {
+      targetRow.cells[protectionColumn.id] = normalizeInputValue(entry.protectionType);
+    }
+    if (zLpeColumn?.id && normalizeInputValue(entry.zLpe)) {
+      targetRow.cells[zLpeColumn.id] = normalizeInputValue(entry.zLpe);
+    }
+    if (zLnColumn?.id && normalizeInputValue(entry.zLn)) {
+      targetRow.cells[zLnColumn.id] = normalizeInputValue(entry.zLn);
+    }
+    if (zLlColumn?.id && normalizeInputValue(entry.zLl)) {
+      targetRow.cells[zLlColumn.id] = normalizeInputValue(entry.zLl);
+    }
     measurementNumber += 1;
   });
   const sectionRowIds = new Set(sectionMerges.map((merge) => merge.rowId));

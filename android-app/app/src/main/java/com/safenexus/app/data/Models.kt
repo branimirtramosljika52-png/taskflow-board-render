@@ -862,6 +862,10 @@ data class SprVoiceAiRow(
     val place: String,
     val lampCount: String,
     val kind: String = "",
+    val protectionType: String = "",
+    val zLpe: String = "",
+    val zLn: String = "",
+    val zLl: String = "",
 )
 
 data class SprVoiceAiResult(

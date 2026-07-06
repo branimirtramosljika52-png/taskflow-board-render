@@ -3846,7 +3846,17 @@ private fun JSONArray?.toSprVoiceAiRows(): List<SprVoiceAiRow> {
                 kind.equals("floor", ignoreCase = true) ||
                 item.optBoolean("isSection", false)
             if (place.isBlank() || (!isSection && lampCount.isBlank())) continue
-            add(SprVoiceAiRow(place = place, lampCount = if (isSection) "" else lampCount, kind = if (isSection) "section" else kind))
+            add(
+                SprVoiceAiRow(
+                    place = place,
+                    lampCount = if (isSection) "" else lampCount,
+                    kind = if (isSection) "section" else kind,
+                    protectionType = item.firstClean("protectionType", "protection", "zastita"),
+                    zLpe = item.firstClean("zLpe", "zlpe", "zlp", "ZL-PE", "Z(L-PE)"),
+                    zLn = item.firstClean("zLn", "zln", "ZL-N", "Z(L-N)"),
+                    zLl = item.firstClean("zLl", "zll", "ZL-L", "Z(L-L)"),
+                ),
+            )
         }
     }
 }
