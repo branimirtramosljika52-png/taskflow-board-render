@@ -7986,6 +7986,8 @@ function buildOpenAiLiveContextPayload(body = {}, user = null, selectedModel = "
     language: "hr-HR",
     instruction: [
       "Vrati iskljucivo JSON koji aplikacija moze parsirati. Ne izmisljaj vrijednosti ako nisu vidljive u izvoru. Ako je expectedJsonShape posebno zadan za purpose, postuj taj oblik. Za Excel tablice koristi tocne fieldId i columnId vrijednosti iz measurementColumns. measurementColumns sadrzi samo kolone koje AI smije popuniti.",
+      "Ako u starom SPR zapisniku vidis panik/sigurnosnu rasvjetu, u starom TZIN zapisniku tipkala ili u starom SZOM zapisniku mjerna mjesta sustava zastite od munje, obavezno vrati measurementSuggestions za odgovarajucu Gridline tablicu; sazetak bez redaka nije dovoljan.",
+      "Za SZOM ne popunjavaj kolonu Elektricna povezanost metalnih masa osim ako izvor izricito spominje metalne mase/povezanost masa/izjednacavanje potencijala.",
       ...sourcePolicy.instructions,
     ].filter(Boolean).join(" "),
     purpose: String(body.purpose || "document-template-runtime-ai-prefill").slice(0, 120),
@@ -8356,6 +8358,120 @@ function getOpenAiSprMeasurementTarget(columns = [], searchText = "") {
     .sort((left, right) => right.score - left.score)[0] || null;
 }
 
+function scoreOpenAiTzinMeasurementGroup(group = {}, searchLookup = "") {
+  const groupLookup = getOpenAiMeasurementGroupLookup(group);
+  let score = 0;
+  if (groupLookup.includes("tzin")) score += 8;
+  if (groupLookup.includes("tipkal")) score += 8;
+  if (groupLookup.includes("isklop")) score += 5;
+  if (searchLookup.includes("tipkal") || searchLookup.includes("tzin") || searchLookup.includes("isklop")) {
+    score += 3;
+  }
+  return score;
+}
+
+function getOpenAiTzinMeasurementTarget(columns = [], searchText = "") {
+  const groups = buildOpenAiMeasurementColumnGroups(columns);
+  if (!groups.length) {
+    return null;
+  }
+  const searchLookup = normalizeOpenAiPolicyKey(searchText);
+  const candidates = groups
+    .map((group) => {
+      const placeColumn = findOpenAiMeasurementColumn(group.columns, [
+        "place",
+        "mjestoispitivanja",
+        "mjestotipkala",
+        "lokacija",
+      ]);
+      const buttonColumn = findOpenAiMeasurementColumn(group.columns, [
+        "buttoncount",
+        "brojtipkala",
+        "tipkala",
+        "kolicina",
+        "quantity",
+      ]);
+      const typeColumn = findOpenAiMeasurementColumn(group.columns, [
+        "buttontype",
+        "tiptipkala",
+        "vrstatipkala",
+        "tip",
+      ], [buttonColumn].filter(Boolean));
+      const passColumn = findOpenAiMeasurementColumn(group.columns, [
+        "pass",
+        "zadovoljava",
+        "ocjena",
+        "dane",
+      ]);
+      return {
+        group,
+        placeColumn,
+        buttonColumn,
+        typeColumn,
+        passColumn,
+        score: scoreOpenAiTzinMeasurementGroup(group, searchLookup),
+      };
+    })
+    .filter((candidate) => candidate.placeColumn && (candidate.buttonColumn || candidate.passColumn));
+
+  return candidates
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score)[0] || null;
+}
+
+function scoreOpenAiSzomMeasurementGroup(group = {}, searchLookup = "") {
+  const groupLookup = getOpenAiMeasurementGroupLookup(group);
+  let score = 0;
+  if (groupLookup.includes("szom")) score += 8;
+  if (groupLookup.includes("riz")) score += 5;
+  if (groupLookup.includes("rdop")) score += 5;
+  if (groupLookup.includes("metalnemase") || groupLookup.includes("povezanostmetalnihmasa")) score += 4;
+  if (searchLookup.includes("szom") || searchLookup.includes("zastitaodmunje") || searchLookup.includes("riz")) {
+    score += 3;
+  }
+  return score;
+}
+
+function getOpenAiSzomMeasurementTarget(columns = [], searchText = "") {
+  const groups = buildOpenAiMeasurementColumnGroups(columns);
+  if (!groups.length) {
+    return null;
+  }
+  const searchLookup = normalizeOpenAiPolicyKey(searchText);
+  const candidates = groups
+    .map((group) => {
+      const placeColumn = findOpenAiMeasurementColumn(group.columns, ["place", "mjernomjesto", "mjesto", "odvod", "uzemljivac"]);
+      const rizColumn = findOpenAiMeasurementColumn(group.columns, ["riz", "otporrasprostiranja"]);
+      const rdopColumn = findOpenAiMeasurementColumn(group.columns, ["rdop", "dopusteniotpor"]);
+      const hiddenColumn = findOpenAiMeasurementColumn(group.columns, ["hiddenjoint", "skrivenispojevi", "skrivenispoj"]);
+      const riz2Column = findOpenAiMeasurementColumn(group.columns, ["riz2", "otporskrivenihspojeva"]);
+      const rdop2Column = findOpenAiMeasurementColumn(group.columns, ["rdop2"]);
+      const massColumn = findOpenAiMeasurementColumn(group.columns, ["metalmassbonding", "elektricnapovezanostmetalnihmasa", "povezanostmetalnihmasa", "metalnemase"]);
+      const riz3Column = findOpenAiMeasurementColumn(group.columns, ["riz3", "otpormetalnihmasa"]);
+      const rdop3Column = findOpenAiMeasurementColumn(group.columns, ["rdop3"]);
+      const passColumn = findOpenAiMeasurementColumn(group.columns, ["pass", "zadovoljava", "ocjena"]);
+      return {
+        group,
+        placeColumn,
+        rizColumn,
+        rdopColumn,
+        hiddenColumn,
+        riz2Column,
+        rdop2Column,
+        massColumn,
+        riz3Column,
+        rdop3Column,
+        passColumn,
+        score: scoreOpenAiSzomMeasurementGroup(group, searchLookup),
+      };
+    })
+    .filter((candidate) => candidate.placeColumn || candidate.hiddenColumn || candidate.massColumn);
+
+  return candidates
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score)[0] || null;
+}
+
 function capitalizeOpenAiMeasurementPlace(value = "") {
   const text = normalizeInputValue(value);
   if (!text) {
@@ -8438,6 +8554,111 @@ function extractOpenAiSprPlacesFromText(searchText = "") {
     seen.add(key);
     return true;
   });
+}
+
+function parseOpenAiTzinPlaceEntry(value = "") {
+  let text = normalizeInputValue(value)
+    .replace(/[â€“â€”]/g, "-")
+    .replace(/^(?:i|te|pa|zatim)\s+/i, "")
+    .replace(/\s+/g, " ")
+    .replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, "")
+    .trim();
+  if (!text) {
+    return null;
+  }
+  let buttonCount = "";
+  const countMatch = text.match(/^(.*?)(?:\s*[-:]\s*|\s+)(\d{1,4})\s*(?:kom(?:ada)?|tipkal\w*|gljiv\w*)?$/iu);
+  if (countMatch && normalizeInputValue(countMatch[1])) {
+    text = normalizeInputValue(countMatch[1]);
+    buttonCount = countMatch[2];
+  }
+  const place = capitalizeOpenAiMeasurementPlace(text);
+  return place ? { place, buttonCount: buttonCount || "1" } : null;
+}
+
+function splitOpenAiTzinPlaceList(value = "") {
+  const seen = new Set();
+  return normalizeInputValue(value)
+    .replace(/[()]/g, "")
+    .split(/[;,]/g)
+    .flatMap((part) => {
+      const cleanPart = normalizeInputValue(part);
+      if (!cleanPart) {
+        return [];
+      }
+      if (!/[\/-]/.test(cleanPart) && /\s+i\s+/i.test(cleanPart)) {
+        return cleanPart.split(/\s+i\s+/i);
+      }
+      return [cleanPart];
+    })
+    .map(parseOpenAiTzinPlaceEntry)
+    .filter(Boolean)
+    .filter((entry) => {
+      const key = normalizeOpenAiPolicyKey(entry.place);
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+}
+
+function extractOpenAiTzinPlacesFromText(searchText = "") {
+  const source = String(searchText || "");
+  if (!/(?:tzin|tipkal|isklop)/iu.test(source)) {
+    return [];
+  }
+  const matches = [];
+  const patterns = [
+    /(?:mjerna|mjernih|mjesta)\s+(?:mjesta\s+)?tipkala[^()]{0,180}\(([^)]+)\)/giu,
+    /tipkal\w*[^()]{0,220}\(([^)]+)\)/giu,
+    /tablici\s*1[^()]{0,220}(?:tipkal|isklop)[^()]{0,120}\(([^)]+)\)/giu,
+  ];
+  patterns.forEach((pattern) => {
+    Array.from(source.matchAll(pattern)).forEach((match) => {
+      matches.push(...splitOpenAiTzinPlaceList(match[1]));
+    });
+  });
+  return matches;
+}
+
+function extractOpenAiSzomRowsFromText(searchText = "") {
+  const source = String(searchText || "");
+  if (!/(?:szom|zastit[ae]\s+od\s+djelovanja\s+munje|riz|rdop|metaln\w+\s+mas)/iu.test(source)) {
+    return [];
+  }
+  const rows = [];
+  const seen = new Set();
+  source
+    .split(/\r?\n|[;]+/g)
+    .map((segment) => normalizeInputValue(segment))
+    .filter(Boolean)
+    .forEach((segment, index) => {
+      const lookup = normalizeOpenAiPolicyKey(segment);
+      const hasSzomValue = /\bRiz\d?\b|\bRdop\d?\b|\d{1,3}[,.]\d{1,3}\s*(?:ohm|oma|Ω)?/iu.test(segment);
+      if (!hasSzomValue) {
+        return;
+      }
+      const target = lookup.includes("povezanostmetalnihmasa") || lookup.includes("metalnemase")
+        ? "metalMassBonding"
+        : lookup.includes("skrivenispoj")
+          ? "hiddenJoint"
+          : "grounding";
+      const cleaned = removeMobileSzomVoiceTargetWords(segment)
+        .replace(/\bRiz\d?\b|\bRdop\d?\b/giu, " ")
+        .replace(/[<>=]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      const parsed = parseMobileSzomVoiceValue(cleaned);
+      const place = cleanMobileSzomVoicePlace(parsed.placeText);
+      const key = normalizeOpenAiPolicyKey(`${target} ${place} ${parsed.value} ${index}`);
+      if (!place || !key || seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      rows.push({ place, value: parsed.value, target });
+    });
+  return rows.slice(0, 120);
 }
 
 function cleanOpenAiSprMeasurementValue(value = "") {
@@ -8678,6 +8899,142 @@ function buildOpenAiParserMeasurementRows(target = {}, parsedRows = [], sourceFi
     .filter((row) => Object.keys(row.values).length > 0);
 }
 
+function parseOpenAiTzinMeasurementRowText(value = "") {
+  const tokens = normalizeInputValue(value).split(/\s+/g).filter(Boolean);
+  if (tokens.length < 4 || !/^\d{1,4}$/.test(tokens[0])) {
+    return null;
+  }
+  const passIndex = tokens.findLastIndex((token) => cleanOpenAiSprPassValue(token));
+  if (passIndex < 2) {
+    return null;
+  }
+  const beforePass = tokens.slice(1, passIndex);
+  const countIndex = beforePass.findLastIndex((token) => /^\d{1,4}$/.test(token));
+  if (countIndex <= 0) {
+    return null;
+  }
+  const place = capitalizeOpenAiMeasurementPlace(beforePass.slice(0, countIndex).join(" "));
+  if (!place) {
+    return null;
+  }
+  const type = normalizeInputValue(beforePass.slice(countIndex + 1).join(" ")) || "-";
+  return {
+    rowNumber: tokens[0],
+    place,
+    buttonCount: beforePass[countIndex],
+    buttonType: type,
+    pass: cleanOpenAiSprPassValue(tokens[passIndex]),
+  };
+}
+
+function parseOpenAiTzinMeasurementRowsFromPdfRows(rows = []) {
+  const allText = rows.map((row) => row.text).join("\n");
+  if (!/(?:tzin|tipkal|isklop)/iu.test(allText)) {
+    return [];
+  }
+  const seen = new Set();
+  return rows
+    .map((row) => parseOpenAiTzinMeasurementRowText(row.text))
+    .filter(Boolean)
+    .filter((row) => {
+      const key = normalizeOpenAiPolicyKey(`${row.rowNumber} ${row.place} ${row.buttonCount} ${row.buttonType} ${row.pass}`);
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+}
+
+function buildOpenAiTzinParserMeasurementRows(target = {}, parsedRows = [], sourceFile = "") {
+  return parsedRows
+    .map((row) => {
+      const values = {};
+      if (target.placeColumn) values[target.placeColumn.columnId || target.placeColumn.key] = row.place;
+      if (target.buttonColumn) values[target.buttonColumn.columnId || target.buttonColumn.key] = row.buttonCount || "1";
+      if (target.typeColumn) values[target.typeColumn.columnId || target.typeColumn.key] = row.buttonType || "-";
+      if (target.passColumn) values[target.passColumn.columnId || target.passColumn.key] = row.pass || "DA";
+      return {
+        values,
+        orderedValues: [],
+        confidence: "high",
+        sourceFile,
+      };
+    })
+    .filter((row) => Object.keys(row.values).length > 0);
+}
+
+function parseOpenAiSzomMeasurementRowText(value = "") {
+  const text = normalizeInputValue(value);
+  if (!/^\d{1,4}\s+/.test(text) || !/\d{1,3}[,.]\d{1,3}/.test(text)) {
+    return null;
+  }
+  const target = getMobileSzomVoiceTarget(text);
+  const tokens = text.split(/\s+/g).filter(Boolean);
+  const firstValueIndex = tokens.findIndex((token, index) => index > 0 && /^\d{1,3}[,.]\d{1,3}$/.test(token));
+  if (firstValueIndex <= 1) {
+    return null;
+  }
+  const place = capitalizeOpenAiMeasurementPlace(cleanMobileSzomVoicePlace(tokens.slice(1, firstValueIndex).join(" ")));
+  const valueToken = tokens[firstValueIndex];
+  if (!place || !valueToken) {
+    return null;
+  }
+  return {
+    rowNumber: tokens[0],
+    place,
+    value: valueToken.replace(".", ","),
+    target,
+  };
+}
+
+function parseOpenAiSzomMeasurementRowsFromPdfRows(rows = []) {
+  const allText = rows.map((row) => row.text).join("\n");
+  if (!/(?:szom|zastit[ae]\s+od\s+djelovanja\s+munje|riz|rdop)/iu.test(allText)) {
+    return [];
+  }
+  const seen = new Set();
+  return rows
+    .map((row) => parseOpenAiSzomMeasurementRowText(row.text))
+    .filter(Boolean)
+    .filter((row) => {
+      const key = normalizeOpenAiPolicyKey(`${row.rowNumber} ${row.target} ${row.place} ${row.value}`);
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+}
+
+function buildOpenAiSzomParserMeasurementRows(target = {}, parsedRows = [], sourceFile = "") {
+  return parsedRows
+    .map((row) => {
+      const values = {};
+      if (row.target === "metalMassBonding") {
+        if (target.massColumn) values[target.massColumn.columnId || target.massColumn.key] = row.place;
+        if (target.riz3Column) values[target.riz3Column.columnId || target.riz3Column.key] = row.value;
+        if (target.rdop3Column) values[target.rdop3Column.columnId || target.rdop3Column.key] = "<2";
+      } else if (row.target === "hiddenJoint") {
+        if (target.hiddenColumn) values[target.hiddenColumn.columnId || target.hiddenColumn.key] = row.place;
+        if (target.riz2Column) values[target.riz2Column.columnId || target.riz2Column.key] = row.value;
+        if (target.rdop2Column) values[target.rdop2Column.columnId || target.rdop2Column.key] = "<1";
+      } else {
+        if (target.placeColumn) values[target.placeColumn.columnId || target.placeColumn.key] = row.place;
+        if (target.rizColumn) values[target.rizColumn.columnId || target.rizColumn.key] = row.value;
+        if (target.rdopColumn) values[target.rdopColumn.columnId || target.rdopColumn.key] = "<10";
+      }
+      if (target.passColumn) values[target.passColumn.columnId || target.passColumn.key] = "DA";
+      return {
+        values,
+        orderedValues: [],
+        confidence: "high",
+        sourceFile,
+      };
+    })
+    .filter((row) => Object.keys(row.values).length > 0);
+}
+
 async function buildOpenAiParserPlan(body = {}, user = null) {
   const columns = Array.isArray(body.columns) ? body.columns : [];
   const files = (Array.isArray(body.files) ? body.files : []).filter(isOpenAiPdfFile);
@@ -8687,13 +9044,18 @@ async function buildOpenAiParserPlan(body = {}, user = null) {
 
   const parsedByFile = [];
   for (const file of files.slice(0, OPENAI_MAX_INLINE_FILE_COUNT)) {
-    const rows = await extractOpenAiPdfTextRows(file);
-    const parsedRows = parseOpenAiSprMeasurementRowsFromPdfRows(rows);
-    if (parsedRows.length) {
+    const pdfRows = await extractOpenAiPdfTextRows(file);
+    const searchText = pdfRows.map((row) => row.text).join("\n");
+    const sprRows = parseOpenAiSprMeasurementRowsFromPdfRows(pdfRows);
+    const tzinRows = parseOpenAiTzinMeasurementRowsFromPdfRows(pdfRows);
+    const szomRows = parseOpenAiSzomMeasurementRowsFromPdfRows(pdfRows);
+    if (sprRows.length || tzinRows.length || szomRows.length) {
       parsedByFile.push({
         fileName: normalizeInputValue(file?.name || file?.fileName || "zapisnik.pdf"),
-        parsedRows,
-        searchText: rows.map((row) => row.text).join("\n"),
+        sprRows,
+        tzinRows,
+        szomRows,
+        searchText,
       });
     }
   }
@@ -8703,14 +9065,23 @@ async function buildOpenAiParserPlan(body = {}, user = null) {
   }
 
   const searchText = parsedByFile.map((item) => item.searchText).join("\n");
-  const target = getOpenAiSprMeasurementTarget(columns, searchText);
-  if (!target) {
-    return null;
-  }
-
   const sourceFile = parsedByFile.map((item) => item.fileName).filter(Boolean).join(", ").slice(0, 240);
-  const parsedRows = parsedByFile.flatMap((item) => item.parsedRows);
-  const rows = buildOpenAiParserMeasurementRows(target, parsedRows, sourceFile);
+  let target = getOpenAiSprMeasurementTarget(columns, searchText);
+  let profile = "SPR";
+  let parsedRows = target ? parsedByFile.flatMap((item) => item.sprRows) : [];
+  let rows = target ? buildOpenAiParserMeasurementRows(target, parsedRows, sourceFile) : [];
+  if (!rows.length) {
+    target = getOpenAiTzinMeasurementTarget(columns, searchText);
+    profile = "TZIN";
+    parsedRows = target ? parsedByFile.flatMap((item) => item.tzinRows) : [];
+    rows = target ? buildOpenAiTzinParserMeasurementRows(target, parsedRows, sourceFile) : [];
+  }
+  if (!rows.length) {
+    target = getOpenAiSzomMeasurementTarget(columns, searchText);
+    profile = "SZOM";
+    parsedRows = target ? parsedByFile.flatMap((item) => item.szomRows) : [];
+    rows = target ? buildOpenAiSzomParserMeasurementRows(target, parsedRows, sourceFile) : [];
+  }
   if (!rows.length) {
     return null;
   }
@@ -8728,9 +9099,9 @@ async function buildOpenAiParserPlan(body = {}, user = null) {
       },
     ],
     warnings: [
-      `PDF parser je pronasao ${rows.length} SPR redaka. Provjeri preview prije upisa u Gridline.`,
+      `PDF parser je pronasao ${rows.length} ${profile} redaka. Provjeri preview prije upisa u Gridline.`,
     ],
-    summary: `Parser je pripremio ${rows.length} redaka iz stare SPR PDF tablice.`,
+    summary: `Parser je pripremio ${rows.length} redaka iz stare ${profile} PDF tablice.`,
   };
 
   return {
@@ -8755,7 +9126,7 @@ async function buildOpenAiParserPlan(body = {}, user = null) {
     },
     result,
     outputText: JSON.stringify(result),
-    nextStep: "Parser je nasao SPR tablicu. Prikazi preview i potvrdi upis u Gridline.",
+    nextStep: `Parser je nasao ${profile} tablicu. Prikazi preview i potvrdi upis u Gridline.`,
   };
 }
 
@@ -8773,41 +9144,97 @@ function augmentOpenAiDocumentMeasurementSuggestions(result = null, body = {}, o
     return baseResult;
   }
 
-  const target = getOpenAiSprMeasurementTarget(columns, searchText);
-  const places = extractOpenAiSprPlacesFromText(searchText);
-  if (!target || !places.length) {
-    return baseResult;
-  }
-
-  const globalValues = extractOpenAiSprGlobalValues(searchText);
   const sourceFile = (Array.isArray(body.files) ? body.files : [])
     .map((file) => normalizeInputValue(file?.name))
     .filter(Boolean)
     .join(", ")
     .slice(0, 240);
-  const rows = places.map((entry) => {
-    const values = {};
-    values[target.placeColumn.columnId || target.placeColumn.key] = entry.place;
-    if (target.lampColumn && entry.lampCount) {
-      values[target.lampColumn.columnId || target.lampColumn.key] = entry.lampCount;
-    }
-    if (target.eiColumn && globalValues.ei) {
-      values[target.eiColumn.columnId || target.eiColumn.key] = globalValues.ei;
-    }
-    if (target.eiminColumn && globalValues.eimin) {
-      values[target.eiminColumn.columnId || target.eiminColumn.key] = globalValues.eimin;
-    }
-    if (target.passColumn && globalValues.pass) {
-      values[target.passColumn.columnId || target.passColumn.key] = globalValues.pass;
-    }
-    return {
-      values,
-      confidence: "medium",
-      sourceFile,
-    };
-  }).filter((row) => Object.keys(row.values).length > 0);
+  let target = getOpenAiSprMeasurementTarget(columns, searchText);
+  let label = "SPR";
+  let rows = [];
+
+  if (target) {
+    const places = extractOpenAiSprPlacesFromText(searchText);
+    const globalValues = extractOpenAiSprGlobalValues(searchText);
+    rows = places.map((entry) => {
+      const values = {};
+      values[target.placeColumn.columnId || target.placeColumn.key] = entry.place;
+      if (target.lampColumn && entry.lampCount) {
+        values[target.lampColumn.columnId || target.lampColumn.key] = entry.lampCount;
+      }
+      if (target.eiColumn && globalValues.ei) {
+        values[target.eiColumn.columnId || target.eiColumn.key] = globalValues.ei;
+      }
+      if (target.eiminColumn && globalValues.eimin) {
+        values[target.eiminColumn.columnId || target.eiminColumn.key] = globalValues.eimin;
+      }
+      if (target.passColumn && globalValues.pass) {
+        values[target.passColumn.columnId || target.passColumn.key] = globalValues.pass;
+      }
+      return {
+        values,
+        confidence: "medium",
+        sourceFile,
+      };
+    }).filter((row) => Object.keys(row.values).length > 0);
+  }
 
   if (!rows.length) {
+    target = getOpenAiTzinMeasurementTarget(columns, searchText);
+    label = "TZIN";
+    const places = target ? extractOpenAiTzinPlacesFromText(searchText) : [];
+    const globalValues = extractOpenAiSprGlobalValues(searchText);
+    rows = places.map((entry) => {
+      const values = {};
+      values[target.placeColumn.columnId || target.placeColumn.key] = entry.place;
+      if (target.buttonColumn && entry.buttonCount) {
+        values[target.buttonColumn.columnId || target.buttonColumn.key] = entry.buttonCount;
+      }
+      if (target.typeColumn) {
+        values[target.typeColumn.columnId || target.typeColumn.key] = "-";
+      }
+      if (target.passColumn) {
+        values[target.passColumn.columnId || target.passColumn.key] = globalValues.pass || "DA";
+      }
+      return {
+        values,
+        confidence: "medium",
+        sourceFile,
+      };
+    }).filter((row) => Object.keys(row.values).length > 0);
+  }
+
+  if (!rows.length) {
+    target = getOpenAiSzomMeasurementTarget(columns, searchText);
+    label = "SZOM";
+    const szomRows = target ? extractOpenAiSzomRowsFromText(searchText) : [];
+    rows = szomRows.map((entry) => {
+      const values = {};
+      if (entry.target === "metalMassBonding") {
+        if (target.massColumn) values[target.massColumn.columnId || target.massColumn.key] = entry.place;
+        if (target.riz3Column && entry.value) values[target.riz3Column.columnId || target.riz3Column.key] = entry.value;
+        if (target.rdop3Column) values[target.rdop3Column.columnId || target.rdop3Column.key] = "<2";
+      } else if (entry.target === "hiddenJoint") {
+        if (target.hiddenColumn) values[target.hiddenColumn.columnId || target.hiddenColumn.key] = entry.place;
+        if (target.riz2Column && entry.value) values[target.riz2Column.columnId || target.riz2Column.key] = entry.value;
+        if (target.rdop2Column) values[target.rdop2Column.columnId || target.rdop2Column.key] = "<1";
+      } else {
+        if (target.placeColumn) values[target.placeColumn.columnId || target.placeColumn.key] = entry.place;
+        if (target.rizColumn && entry.value) values[target.rizColumn.columnId || target.rizColumn.key] = entry.value;
+        if (target.rdopColumn) values[target.rdopColumn.columnId || target.rdopColumn.key] = "<10";
+      }
+      if (target.passColumn) {
+        values[target.passColumn.columnId || target.passColumn.key] = "DA";
+      }
+      return {
+        values,
+        confidence: "medium",
+        sourceFile,
+      };
+    }).filter((row) => Object.keys(row.values).length > 0);
+  }
+
+  if (!target || !rows.length) {
     return baseResult;
   }
 
@@ -8825,10 +9252,10 @@ function augmentOpenAiDocumentMeasurementSuggestions(result = null, body = {}, o
   ];
   baseResult.warnings = Array.from(new Set([
     ...(Array.isArray(baseResult.warnings) ? baseResult.warnings : []),
-    `NexAI je iz sazetka prepoznao ${rows.length} SPR redaka za tablicu; provjeri prijenos iz starog PDF-a.`,
+    `NexAI je iz sazetka prepoznao ${rows.length} ${label} redaka za tablicu; provjeri prijenos iz starog PDF-a.`,
   ].map(normalizeInputValue).filter(Boolean)));
   if (!normalizeInputValue(baseResult.summary)) {
-    baseResult.summary = `NexAI je prepoznao ${rows.length} SPR redaka za Gridline tablicu.`;
+    baseResult.summary = `NexAI je prepoznao ${rows.length} ${label} redaka za Gridline tablicu.`;
   }
   return baseResult;
 }
@@ -8874,6 +9301,8 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
       "Za polje fields[].type === system_description value u fieldSuggestions mora biti objekt oblika { blocks: [{ title, sectionSubtitle, rows: [{ subtitle, description, lineCount }] }] }. Razdvoji vece cjeline u vise blocks s jasnim naslovima. Koristi redove iz fields[].systemRows kada odgovaraju, npr. Proizvodac, Tip, Teh. podaci i opisni red, ali izostavi prazne/neprimjenjive redove. Opci blok smije imati samo opisni red. Nemoj vracati cijeli Opis sustava kao obican string ako su dostupni blokovi.",
       "Za Excel tablice measurementSuggestions.fieldId mora biti tocno jedan fieldId iz measurementColumns, a kljucevi u rows[].values moraju biti tocni columnId ili key iz measurementColumns. Popunjavaj samo kolone navedene u measurementColumns; sve druge kolone, formule i rucni unos ignoriraj. Nemoj vracati genericki kljuc columnKey.",
       "Ako u starom SPR zapisniku vidis tablicu mjernih mjesta sigurnosne/protupanicne rasvjete, obavezno vrati retke u measurementSuggestions; sazetak bez measurementSuggestions nije dovoljan.",
+      "Ako u starom TZIN zapisniku vidis tablicu tipkala za isklop, obavezno vrati mjerna mjesta i broj tipkala u measurementSuggestions za TZIN Gridline tablicu.",
+      "Ako u starom SZOM zapisniku vidis tablicu mjerenja sustava zastite od munje, obavezno vrati retke u measurementSuggestions. Elektricnu povezanost metalnih masa popuni samo kada izvor izricito navodi povezanost masa/metalne mase.",
       ...sourcePolicy.instructions,
       ...buildOpenAiPurposeInstructions(body),
       "Za hrvatske poslovne dokumente koristi hrvatski jezik i zadrzi strucne nazive.",
@@ -25480,6 +25909,22 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         }),
       ]
       : []),
+    ...(preset.serviceCode === "TZIN"
+      ? [
+        buildMobileNativeDocumentationField("tzinVoiceTranscript", "Diktat tipkala", "spr_voice", {
+          defaultValue: "",
+          helpText: "Primjer: Ulaz 1 tipkalo, strojarnica 2. Puni mjesto ispitivanja i broj tipkala, tip ostaje '-' ako nije recen.",
+        }),
+      ]
+      : []),
+    ...(preset.serviceCode === "SZOM"
+      ? [
+        buildMobileNativeDocumentationField("szomVoiceTranscript", "Diktat SZOM mjerenja", "spr_voice", {
+          defaultValue: "",
+          helpText: "Primjer: Odvod 1 2,4. Ako kazes povezanost masa poklopac 0,8, puni samo kolonu povezanosti masa.",
+        }),
+      ]
+      : []),
     ...(preset.serviceCode === "EIZ"
       ? [
         buildMobileNativeDocumentationField("eizZudsVoiceTranscript", "Diktat ZUDS", "spr_voice", {
@@ -25604,6 +26049,24 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         typeLabel: "Glasovni unos",
         summary: "Unesi samo mjesto i broj lampi, npr. Prodajni prostor 7 panika.",
         helpText: "Ako mjesto vec postoji u tablici, mijenja se samo broj lampi. Ako ne postoji, dodaje se novi red.",
+      }));
+    }
+    if (preset.serviceCode === "TZIN" && index === 0) {
+      sectionBlocks.push(buildMobileNativeDocumentationBlock("tzinVoiceTranscript", "Diktat tipkala", "spr_voice", {
+        group: title,
+        editable: true,
+        typeLabel: "Glasovni unos",
+        summary: "Unesi mjesto i broj tipkala, npr. Ulaz 1 tipkalo, strojarnica 2.",
+        helpText: "Tip tipkala ostaje '-' ako ga ne kazes. Dodaj upisuje po redu u TZIN tablicu.",
+      }));
+    }
+    if (preset.serviceCode === "SZOM" && index === 0) {
+      sectionBlocks.push(buildMobileNativeDocumentationBlock("szomVoiceTranscript", "Diktat SZOM mjerenja", "spr_voice", {
+        group: title,
+        editable: true,
+        typeLabel: "Glasovni unos",
+        summary: "Unesi SZOM mjerna mjesta po redu. Posebne dijelove puni samo kad ih izricito kazes.",
+        helpText: "Primjer: Odvod 1 2,4; skriveni spojevi spoj 0,6; povezanost masa poklopac 0,8.",
       }));
     }
     if (preset.serviceCode === "EIZ" && isMobileEizIpkMeasurementTable(table, index)) {
@@ -26747,6 +27210,24 @@ const MOBILE_SPR_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
   "Glasovni unos SPR",
 ]);
 
+const MOBILE_TZIN_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
+  "tzinVoiceTranscript",
+  "TZIN_VOICE_TRANSCRIPT",
+  "Diktat tipkala",
+  "Diktat TZIN",
+  "Diktat mjesta i broj tipkala",
+  "Glasovni unos TZIN",
+]);
+
+const MOBILE_SZOM_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
+  "szomVoiceTranscript",
+  "SZOM_VOICE_TRANSCRIPT",
+  "Diktat SZOM mjerenja",
+  "Diktat SZOM",
+  "Diktat sustava zastite od munje",
+  "Glasovni unos SZOM",
+]);
+
 const MOBILE_EIZ_IPK_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
   "eizIpkVoiceTranscript",
   "EIZ_IPK_VOICE_TRANSCRIPT",
@@ -26843,6 +27324,14 @@ function isMobileSprVoiceUnitToken(value = "") {
   return lookup.startsWith("panik")
     || lookup.startsWith("lamp")
     || lookup.startsWith("svjetilj")
+    || lookup.startsWith("kom");
+}
+
+function isMobileTzinVoiceUnitToken(value = "") {
+  const lookup = normalizeMobileSprLookupText(value);
+  return lookup.startsWith("tipkal")
+    || lookup.startsWith("gljiv")
+    || lookup.startsWith("isklop")
     || lookup.startsWith("kom");
 }
 
@@ -27139,6 +27628,186 @@ function parseMobileSprVoiceRows(transcript = "") {
       });
     });
   return rows.length ? rows : parseMobileSprVoiceLooseRows(source);
+}
+
+function parseMobileTzinVoiceLooseRows(transcript = "") {
+  const tokens = normalizeInputValue(transcript)
+    .replace(/\b(?:i onda|pa onda|zatim|onda)\b/giu, " ")
+    .replace(/[,;:]+/g, " ")
+    .split(/\s+/g)
+    .map((token) => normalizeInputValue(token).replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, ""))
+    .filter(Boolean);
+  if (!tokens.length) {
+    return [];
+  }
+  const rows = [];
+  const seen = new Set();
+  const placeTokens = [];
+  let lastWasCount = false;
+  tokens.forEach((token) => {
+    if (lastWasCount && isMobileTzinVoiceUnitToken(token)) {
+      return;
+    }
+    const buttonCount = parseMobileSprVoiceCount(token);
+    if (buttonCount) {
+      const place = cleanMobileSprVoicePlace(placeTokens.join(" "));
+      const key = normalizeMobileSprLookupText(place);
+      if (place && key) {
+        if (seen.has(key)) {
+          const existing = rows.find((row) => row.key === key);
+          if (existing) {
+            existing.lampCount = buttonCount;
+          }
+        } else {
+          seen.add(key);
+          rows.push({ key, place, lampCount: buttonCount, kind: "measurement" });
+        }
+      }
+      placeTokens.length = 0;
+      lastWasCount = true;
+      return;
+    }
+    if (!isMobileTzinVoiceUnitToken(token)) {
+      placeTokens.push(token);
+      lastWasCount = false;
+    }
+  });
+  return rows;
+}
+
+function parseMobileTzinVoiceRows(transcript = "") {
+  const source = normalizeInputValue(transcript);
+  if (!source) {
+    return [];
+  }
+  const numberWords = Object.keys(MOBILE_SPR_VOICE_NUMBER_WORDS);
+  const numberPattern = [
+    "\\d{1,4}",
+    ...numberWords
+      .sort((left, right) => right.length - left.length)
+      .map(escapeMobileSprRegexValue),
+  ].join("|");
+  const unitPattern = "(?:tipkal\\w*|gljiv\\w*|isklop\\w*|kom\\w*)";
+  const itemPattern = new RegExp(`(.+?)\\s+(${numberPattern})(?:\\s*${unitPattern})?(?=\\s+\\S|$)`, "giu");
+  const rows = [];
+  const seen = new Set();
+  source
+    .replace(/\b(?:i onda|pa onda|zatim|onda)\b/giu, "\n")
+    .replace(/[;,]+/g, "\n")
+    .split(/\r?\n/g)
+    .map((segment) => normalizeInputValue(segment))
+    .filter(Boolean)
+    .forEach((segment) => {
+      Array.from(segment.matchAll(itemPattern)).forEach((match) => {
+        const place = cleanMobileSprVoicePlace(match[1]);
+        const buttonCount = parseMobileSprVoiceCount(match[2]);
+        const key = normalizeMobileSprLookupText(place);
+        if (!place || !buttonCount || !key) {
+          return;
+        }
+        if (seen.has(key)) {
+          const existing = rows.find((row) => row.key === key);
+          if (existing) {
+            existing.lampCount = buttonCount;
+          }
+          return;
+        }
+        seen.add(key);
+        rows.push({ key, place, lampCount: buttonCount, kind: "measurement" });
+      });
+    });
+  return rows.length ? rows : parseMobileTzinVoiceLooseRows(source);
+}
+
+function cleanMobileSzomVoicePlace(value = "") {
+  return cleanMobileSprVoicePlace(value)
+    .replace(/\b(?:riz|rdop|ohm|oma|mjerenje|otpor)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getMobileSzomVoiceTarget(segment = "") {
+  const lookup = normalizeMobileSprLookupText(segment);
+  if (
+    lookup.includes("povezanostmasa")
+    || lookup.includes("metalnemase")
+    || lookup.includes("izjednacavanjepotencijala")
+  ) {
+    return "metalMassBonding";
+  }
+  if (
+    lookup.includes("skrivenispoj")
+    || lookup.includes("skrivenespoj")
+    || lookup.includes("kontrolnispoj")
+    || lookup.includes("mjernispoj")
+  ) {
+    return "hiddenJoint";
+  }
+  return "grounding";
+}
+
+function removeMobileSzomVoiceTargetWords(value = "") {
+  return normalizeInputValue(value)
+    .replace(/\b(?:elektricna|elektri[cč]na)?\s*povezanost\s+(?:metalnih\s+)?masa\b/giu, " ")
+    .replace(/\bmetalne\s+mase\b/giu, " ")
+    .replace(/\bizjedna[cč]avanje\s+potencijala\b/giu, " ")
+    .replace(/\bskriveni\s+spojevi?\b/giu, " ")
+    .replace(/\bkontrolni\s+spojevi?\b/giu, " ")
+    .replace(/\bmjerni\s+spojevi?\b/giu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseMobileSzomVoiceValue(value = "") {
+  const text = normalizeInputValue(value);
+  const matches = Array.from(text.matchAll(/(?:^|\s)(\d{1,3}(?:[,.]\d{1,3})?)(?:\s*(?:ohm|oma|Ω))?(?=\s*$)/giu));
+  const last = matches[matches.length - 1];
+  if (!last) {
+    return { placeText: text, value: "" };
+  }
+  return {
+    placeText: normalizeInputValue(text.slice(0, last.index)).trim(),
+    value: normalizeInputValue(last[1]).replace(".", ","),
+  };
+}
+
+function parseMobileSzomVoiceRows(transcript = "") {
+  const source = normalizeInputValue(transcript);
+  if (!source) {
+    return [];
+  }
+  const rows = [];
+  source
+    .replace(/\b(?:i onda|pa onda|zatim|onda)\b/giu, "\n")
+    .replace(/[;]+/g, "\n")
+    .replace(/(?<!\d),(?!\d)/gu, "\n")
+    .split(/\r?\n/g)
+    .map((segment) => normalizeInputValue(segment))
+    .filter(Boolean)
+    .forEach((segment, index) => {
+      const target = getMobileSzomVoiceTarget(segment);
+      const withoutTarget = removeMobileSzomVoiceTargetWords(segment);
+      const parsed = parseMobileSzomVoiceValue(withoutTarget);
+      const place = cleanMobileSzomVoicePlace(parsed.placeText);
+      const key = normalizeMobileSprLookupText(`${target} ${place} ${parsed.value} ${index + 1}`);
+      if (!place || !key) {
+        return;
+      }
+      rows.push({
+        key,
+        place,
+        value: parsed.value,
+        lampCount: parsed.value,
+        target,
+        partLabel: target === "metalMassBonding"
+          ? "Povezanost masa"
+          : target === "hiddenJoint"
+            ? "Skriveni spojevi"
+            : "Riz",
+        kind: "measurement",
+      });
+    });
+  return rows;
 }
 
 function parseMobileEizIpkVoiceRows(transcript = "") {
@@ -27472,6 +28141,70 @@ function buildMobileSprVoiceLocalPayload(body = {}, message = "") {
   };
 }
 
+function buildMobileTzinVoiceLocalPayload(body = {}, message = "") {
+  const rows = normalizeMobileSprVoiceRows(parseMobileTzinVoiceRows(body?.transcript || body?.text || ""));
+  return {
+    ok: true,
+    provider: "local",
+    rows,
+    message: message || `Lokalni parser je pripremio ${rows.length} TZIN redaka.`,
+  };
+}
+
+function normalizeMobileSzomVoiceRows(rows = []) {
+  const normalizedRows = [];
+  (Array.isArray(rows) ? rows : []).forEach((row, index) => {
+    const rawTarget = normalizeInputValue(row?.target || row?.part || row?.column || "").toLowerCase();
+    const target = rawTarget.includes("masa") || rawTarget.includes("metal")
+      ? "metalMassBonding"
+      : rawTarget.includes("skriven") || rawTarget.includes("spoj")
+        ? "hiddenJoint"
+        : "grounding";
+    const place = cleanMobileSzomVoicePlace(
+      row?.place
+      || row?.mjernoMjesto
+      || row?.location
+      || row?.name
+      || "",
+    );
+    const value = normalizeInputValue(
+      row?.value
+      || row?.riz
+      || row?.resistance
+      || row?.otpor
+      || "",
+    ).replace(".", ",");
+    const key = normalizeMobileSprLookupText(`${target} ${place} ${value} ${index + 1}`);
+    if (!place || !key) {
+      return;
+    }
+    normalizedRows.push({
+      key,
+      place,
+      value,
+      lampCount: value,
+      target,
+      partLabel: target === "metalMassBonding"
+        ? "Povezanost masa"
+        : target === "hiddenJoint"
+          ? "Skriveni spojevi"
+          : "Riz",
+      kind: "measurement",
+    });
+  });
+  return normalizedRows;
+}
+
+function buildMobileSzomVoiceLocalPayload(body = {}, message = "") {
+  const rows = normalizeMobileSzomVoiceRows(parseMobileSzomVoiceRows(body?.transcript || body?.text || ""));
+  return {
+    ok: true,
+    provider: "local",
+    rows,
+    message: message || `Lokalni parser je pripremio ${rows.length} SZOM redaka.`,
+  };
+}
+
 function buildMobileEizIpkVoiceLocalPayload(body = {}, message = "") {
   const rows = normalizeMobileEizIpkVoiceRows(parseMobileEizIpkVoiceRows(body?.transcript || body?.text || ""));
   return {
@@ -27585,12 +28318,58 @@ function isMobileEizIpkVoiceRequest(body = {}) {
   );
 }
 
+function isMobileTzinVoiceRequest(body = {}) {
+  const serviceCode = normalizeInputValue(body?.serviceCode).toUpperCase();
+  const table = body?.measurementTable && typeof body.measurementTable === "object" ? body.measurementTable : {};
+  const tableText = normalizeMobileSprLookupText([
+    table.id,
+    table.key,
+    table.tokenKey,
+    table.label,
+    table.summary,
+    table.sourceSheet,
+    body?.templateTitle,
+  ].join(" "));
+  return serviceCode === "TZIN" && (
+    tableText.includes("tzin")
+    || tableText.includes("tipkal")
+    || tableText.includes("iskljucenje")
+    || tableText.includes("isklop")
+  );
+}
+
+function isMobileSzomVoiceRequest(body = {}) {
+  const serviceCode = normalizeInputValue(body?.serviceCode).toUpperCase();
+  const table = body?.measurementTable && typeof body.measurementTable === "object" ? body.measurementTable : {};
+  const tableText = normalizeMobileSprLookupText([
+    table.id,
+    table.key,
+    table.tokenKey,
+    table.label,
+    table.summary,
+    table.sourceSheet,
+    body?.templateTitle,
+  ].join(" "));
+  return serviceCode === "SZOM" && (
+    tableText.includes("szom")
+    || tableText.includes("zastiteodmunje")
+    || tableText.includes("djelovanjamunje")
+    || tableText.includes("uzemljivac")
+  );
+}
+
 async function buildMobileMeasurementVoiceStructuredRows(body = {}, user = null) {
   if (isMobileEizZudsVoiceRequest(body)) {
     return buildMobileEizZudsVoiceLocalPayload(body);
   }
   if (isMobileEizIpkVoiceRequest(body)) {
     return buildMobileEizIpkVoiceLocalPayload(body);
+  }
+  if (isMobileTzinVoiceRequest(body)) {
+    return buildMobileTzinVoiceLocalPayload(body);
+  }
+  if (isMobileSzomVoiceRequest(body)) {
+    return buildMobileSzomVoiceLocalPayload(body);
   }
   return buildMobileSprVoiceStructuredRows(body, user);
 }
@@ -27683,18 +28462,38 @@ function findMobileSprSheetColumn(sheet = {}, candidates = [], fallbackIndex = -
   return fallbackIndex >= 0 ? columns[fallbackIndex] : null;
 }
 
-function applyMobileSprVoiceRowsToSheet(sheet = null, voiceRows = []) {
+function applyMobileSprVoiceRowsToSheet(sheet = null, voiceRows = [], options = {}) {
   const normalized = normalizeWorkOrderMeasurementSheet(sheet);
   if (!normalized?.columns?.length || !Array.isArray(voiceRows) || voiceRows.length === 0) {
     return normalized || sheet;
   }
   const numberColumn = findMobileSprSheetColumn(normalized, ["r br", "redni broj", "broj", "rb"], 0);
   const placeColumn = findMobileSprSheetColumn(normalized, ["mjesto ispitivanja", "prostorija", "prostor", "lokacija", "opis"], 1);
-  const lampColumn = findMobileSprSheetColumn(normalized, ["broj lampi", "lampi", "svjetiljki", "broj svjetiljki"], 2);
-  const eiColumn = findMobileSprSheetColumn(normalized, ["ei", "izmjereno", "izmjerena vrijednost"], 3);
-  const eiminColumn = findMobileSprSheetColumn(normalized, ["eimin", "emin", "minimalno", "zahtijevano"], 4);
-  const passColumn = findMobileSprSheetColumn(normalized, ["zadovoljava", "ocjena", "ispravno", "pass"], 5);
-  if (!placeColumn?.id || !lampColumn?.id) {
+  const quantityColumn = findMobileSprSheetColumn(
+    normalized,
+    Array.isArray(options.quantityCandidates) && options.quantityCandidates.length
+      ? options.quantityCandidates
+      : ["broj lampi", "lampi", "svjetiljki", "broj svjetiljki"],
+    Number.isInteger(options.quantityFallbackIndex) ? options.quantityFallbackIndex : 2,
+  );
+  const defaultColumnSpecs = Array.isArray(options.defaultColumnSpecs)
+    ? options.defaultColumnSpecs
+    : [
+      { candidates: ["ei", "izmjereno", "izmjerena vrijednost"], fallbackIndex: 3, value: ">2" },
+      { candidates: ["eimin", "emin", "minimalno", "zahtijevano"], fallbackIndex: 4, value: "1" },
+      { candidates: ["zadovoljava", "ocjena", "ispravno", "pass"], fallbackIndex: 5, value: "DA" },
+    ];
+  const defaultColumns = defaultColumnSpecs
+    .map((spec) => ({
+      column: findMobileSprSheetColumn(
+        normalized,
+        Array.isArray(spec.candidates) ? spec.candidates : [],
+        Number.isInteger(spec.fallbackIndex) ? spec.fallbackIndex : -1,
+      ),
+      value: normalizeInputValue(spec.value),
+    }))
+    .filter((entry) => entry.column?.id && entry.value);
+  if (!placeColumn?.id || !quantityColumn?.id) {
     return normalized;
   }
   const rows = (Array.isArray(normalized.rows) ? normalized.rows : []).map((row, index) => ({
@@ -27716,10 +28515,19 @@ function applyMobileSprVoiceRowsToSheet(sheet = null, voiceRows = []) {
       formats: {},
     };
     rows.push(targetRow);
-    if (eiColumn?.id) targetRow.cells[eiColumn.id] = ">2";
-    if (eiminColumn?.id) targetRow.cells[eiminColumn.id] = "1";
-    if (passColumn?.id) targetRow.cells[passColumn.id] = "DA";
+    defaultColumns.forEach((entry) => {
+      if (!normalizeInputValue(targetRow.cells[entry.column.id])) {
+        targetRow.cells[entry.column.id] = entry.value;
+      }
+    });
     return targetRow;
+  };
+  const applyDefaultCells = (row) => {
+    defaultColumns.forEach((entry) => {
+      if (!normalizeInputValue(row.cells[entry.column.id])) {
+        row.cells[entry.column.id] = entry.value;
+      }
+    });
   };
 
   voiceRows.forEach((entry) => {
@@ -27736,7 +28544,7 @@ function applyMobileSprVoiceRowsToSheet(sheet = null, voiceRows = []) {
     if (!targetRow) {
       targetRow = rows.find((row) => (
         !normalizeInputValue(row.cells?.[placeColumn.id])
-        && !normalizeInputValue(row.cells?.[lampColumn.id])
+        && !normalizeInputValue(row.cells?.[quantityColumn.id])
       ));
     }
     if (!targetRow) {
@@ -27745,7 +28553,7 @@ function applyMobileSprVoiceRowsToSheet(sheet = null, voiceRows = []) {
     if (isSection) {
       if (numberColumn?.id) targetRow.cells[numberColumn.id] = "";
       targetRow.cells[placeColumn.id] = entry.place;
-      targetRow.cells[lampColumn.id] = "";
+      targetRow.cells[quantityColumn.id] = "";
       const placeIndex = normalized.columns.findIndex((column) => column.id === placeColumn.id);
       sectionMerges.push({
         rowId: targetRow.id,
@@ -27756,10 +28564,11 @@ function applyMobileSprVoiceRowsToSheet(sheet = null, voiceRows = []) {
       return;
     }
     ensureNumbering(targetRow, rows.indexOf(targetRow));
+    applyDefaultCells(targetRow);
     if (!normalizeInputValue(targetRow.cells[placeColumn.id])) {
       targetRow.cells[placeColumn.id] = entry.place;
     }
-    targetRow.cells[lampColumn.id] = lampCount;
+    targetRow.cells[quantityColumn.id] = lampCount;
   });
 
   return {
@@ -27791,6 +28600,142 @@ function applyMobileSprVoiceTranscriptToMeasurementTables(tables = [], common = 
     return {
       ...table,
       sheet: applyMobileSprVoiceRowsToSheet(table.sheet, voiceRows),
+    };
+  });
+}
+
+function applyMobileTzinVoiceTranscriptToMeasurementTables(tables = [], common = {}, template = {}) {
+  const transcript = getMobileDocumentationTemplateFieldValues(
+    common,
+    template,
+    MOBILE_TZIN_VOICE_TRANSCRIPT_FIELD_KEYS,
+  );
+  const voiceRows = parseMobileTzinVoiceRows(transcript);
+  if (!voiceRows.length) {
+    return tables;
+  }
+  return tables.map((table, index) => {
+    if (index !== 0) {
+      return table;
+    }
+    return {
+      ...table,
+      sheet: applyMobileSprVoiceRowsToSheet(table.sheet, voiceRows, {
+        quantityCandidates: ["broj tipkala", "tipkala", "tipkalo", "button count", "kolicina"],
+        quantityFallbackIndex: 2,
+        defaultColumnSpecs: [
+          { candidates: ["tip tipkala", "tip", "vrsta tipkala"], fallbackIndex: 3, value: "-" },
+          { candidates: ["zadovoljava", "ocjena", "ispravno", "pass"], fallbackIndex: 4, value: "DA" },
+        ],
+      }),
+    };
+  });
+}
+
+function applyMobileSzomVoiceRowsToSheet(sheet = null, voiceRows = []) {
+  const normalized = normalizeWorkOrderMeasurementSheet(sheet);
+  const rowsToApply = normalizeMobileSzomVoiceRows(voiceRows);
+  if (!normalized?.columns?.length || rowsToApply.length === 0) {
+    return normalized || sheet;
+  }
+  const numberColumn = findMobileSprSheetColumn(normalized, ["r br", "rbr", "redni broj", "broj", "rb"], 0);
+  const placeColumn = findMobileSprSheetColumn(normalized, ["mjerno mjesto", "mjesto", "uzemljivac", "odvod"], 1);
+  const rizColumn = findMobileSprSheetColumn(normalized, ["riz", "otpor rasprostiranja"], 2);
+  const rdopColumn = findMobileSprSheetColumn(normalized, ["rdop", "dopusteni otpor"], 3);
+  const hiddenColumn = findMobileSprSheetColumn(normalized, ["skriveni spojevi", "skriveni spoj"], 4);
+  const riz2Column = findMobileSprSheetColumn(normalized, ["riz2", "otpor skrivenih spojeva"], 5);
+  const rdop2Column = findMobileSprSheetColumn(normalized, ["rdop2"], 6);
+  const massColumn = findMobileSprSheetColumn(normalized, ["elektricna povezanost metalnih masa", "povezanost metalnih masa", "metalne mase"], 7);
+  const riz3Column = findMobileSprSheetColumn(normalized, ["riz3", "otpor metalnih masa"], 8);
+  const rdop3Column = findMobileSprSheetColumn(normalized, ["rdop3"], 9);
+  const passColumn = findMobileSprSheetColumn(normalized, ["zadovoljava", "ocjena", "pass"], 10);
+  if (!placeColumn?.id && !hiddenColumn?.id && !massColumn?.id) {
+    return normalized;
+  }
+  const rows = (Array.isArray(normalized.rows) ? normalized.rows : []).map((row, index) => ({
+    id: normalizeInputValue(row?.id) || `measurement-row-${index + 1}`,
+    cells: { ...(row?.cells || {}) },
+    formats: { ...(row?.formats || {}) },
+  }));
+  const createRow = () => {
+    const targetRow = {
+      id: `measurement-row-${rows.length + 1}`,
+      cells: Object.fromEntries(normalized.columns.map((column) => [column.id, ""])),
+      formats: {},
+    };
+    rows.push(targetRow);
+    return targetRow;
+  };
+  let cursor = 0;
+  const getNextSequentialRow = () => {
+    const targetRow = rows[cursor] || createRow();
+    cursor += 1;
+    return targetRow;
+  };
+  const ensureNumbering = () => {
+    if (!numberColumn?.id) {
+      return;
+    }
+    let counter = 1;
+    rows.forEach((row) => {
+      const hasAnyValue = normalized.columns.some((column) => (
+        column.id !== numberColumn.id && normalizeInputValue(row.cells?.[column.id])
+      ));
+      if (hasAnyValue && !normalizeInputValue(row.cells?.[numberColumn.id])) {
+        row.cells[numberColumn.id] = String(counter);
+      }
+      if (hasAnyValue) {
+        counter += 1;
+      }
+    });
+  };
+  rowsToApply.forEach((entry) => {
+    const target = normalizeInputValue(entry?.target);
+    const value = normalizeInputValue(entry?.value);
+    const targetRow = getNextSequentialRow();
+    if (target === "metalMassBonding") {
+      if (massColumn?.id) targetRow.cells[massColumn.id] = entry.place;
+      if (riz3Column?.id && value) targetRow.cells[riz3Column.id] = value;
+      if (rdop3Column?.id && !normalizeInputValue(targetRow.cells[rdop3Column.id])) targetRow.cells[rdop3Column.id] = "<2";
+      if (passColumn?.id && !normalizeInputValue(targetRow.cells[passColumn.id])) targetRow.cells[passColumn.id] = "DA";
+      return;
+    }
+    if (target === "hiddenJoint") {
+      if (hiddenColumn?.id) targetRow.cells[hiddenColumn.id] = entry.place;
+      if (riz2Column?.id && value) targetRow.cells[riz2Column.id] = value;
+      if (rdop2Column?.id && !normalizeInputValue(targetRow.cells[rdop2Column.id])) targetRow.cells[rdop2Column.id] = "<1";
+      if (passColumn?.id && !normalizeInputValue(targetRow.cells[passColumn.id])) targetRow.cells[passColumn.id] = "DA";
+      return;
+    }
+    if (placeColumn?.id) targetRow.cells[placeColumn.id] = entry.place;
+    if (rizColumn?.id && value) targetRow.cells[rizColumn.id] = value;
+    if (rdopColumn?.id && !normalizeInputValue(targetRow.cells[rdopColumn.id])) targetRow.cells[rdopColumn.id] = "<10";
+    if (passColumn?.id && !normalizeInputValue(targetRow.cells[passColumn.id])) targetRow.cells[passColumn.id] = "DA";
+  });
+  ensureNumbering();
+  return {
+    ...normalized,
+    rows,
+  };
+}
+
+function applyMobileSzomVoiceTranscriptToMeasurementTables(tables = [], common = {}, template = {}) {
+  const transcript = getMobileDocumentationTemplateFieldValues(
+    common,
+    template,
+    MOBILE_SZOM_VOICE_TRANSCRIPT_FIELD_KEYS,
+  );
+  const voiceRows = parseMobileSzomVoiceRows(transcript);
+  if (!voiceRows.length) {
+    return tables;
+  }
+  return tables.map((table, index) => {
+    if (index !== 0) {
+      return table;
+    }
+    return {
+      ...table,
+      sheet: applyMobileSzomVoiceRowsToSheet(table.sheet, voiceRows),
     };
   });
 }
@@ -28437,6 +29382,12 @@ function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, co
   const normalizedServiceCode = normalizeInputValue(serviceCode).toUpperCase();
   if (normalizedServiceCode === "SPR") {
     return applyMobileSprVoiceTranscriptToMeasurementTables(tables, common, template);
+  }
+  if (normalizedServiceCode === "TZIN") {
+    return applyMobileTzinVoiceTranscriptToMeasurementTables(tables, common, template);
+  }
+  if (normalizedServiceCode === "SZOM") {
+    return applyMobileSzomVoiceTranscriptToMeasurementTables(tables, common, template);
   }
   if (normalizedServiceCode === "EIZ") {
     return applyMobileEizIpkVoiceTranscriptToMeasurementTables(
