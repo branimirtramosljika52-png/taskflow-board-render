@@ -5609,9 +5609,33 @@ private fun DocumentationSprVoiceField(
             label.contains("uti", ignoreCase = true)
     }
     val exampleText = if (isEizIpkVoice) {
-        "Prodajni prostor 7 utičnica 230 V"
+        "Prostorija skladište 7 utičnica, C16, ZLP 0,37"
     } else {
         "Prodajni prostor 7 panika, skladište 6"
+    }
+    fun cleanPreviewSectionTitle(raw: String): String {
+        if (!isEizIpkVoice) return raw
+        return cleanEizIpkSectionTitle(raw)
+            .replace(
+                Regex(
+                    "^Etaža\\s+(?!(?:-?\\d+\\.?\\s*)?(?:kat|katu)|prizemlje|podrum|suteren|galerija|prvi|drugi|tre[cć]i|[cč]etvrti|peti|[sš]esti|sedmi|osmi|deveti|deseti)",
+                    RegexOption.IGNORE_CASE,
+                ),
+                "",
+            )
+            .trim()
+    }
+    fun previewRowDetails(row: SprVoiceAiRow): String {
+        if (!isEizIpkVoice) return ""
+        return listOfNotNull(
+            "Zaštita: ${row.protectionType.ifBlank { "RCD 40/0,03" }}",
+            "IΔn: 0,03",
+            "td: 0,4",
+            row.zLpe.takeIf { it.isNotBlank() }?.let { "Z(L-PE): $it" },
+            row.zLn.takeIf { it.isNotBlank() }?.let { "Z(L-N): $it" },
+            row.zLl.takeIf { it.isNotBlank() }?.let { "Z(L-L): $it" },
+            "Ocjena: DA",
+        ).joinToString("  •  ")
     }
     var message by remember { mutableStateOf("") }
     var pendingSpoken by remember { mutableStateOf("") }
@@ -5711,11 +5735,12 @@ private fun DocumentationSprVoiceField(
                                         textAlign = TextAlign.End,
                                     )
                                 }
-                                dialogPreviewRows.forEachIndexed { index, row ->
+                                var previewMeasurementIndex = 0
+                                dialogPreviewRows.forEach { row ->
                                     val isSection = row.kind.equals("section", ignoreCase = true) || row.lampCount.isBlank()
                                     if (isSection) {
                                         Text(
-                                            row.place,
+                                            if (isEizIpkVoice) "Blok: ${cleanPreviewSectionTitle(row.place)}" else row.place,
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clip(RoundedCornerShape(11.dp))
@@ -5726,29 +5751,43 @@ private fun DocumentationSprVoiceField(
                                             color = MaterialTheme.colorScheme.primary,
                                         )
                                     } else {
-                                        Row(
+                                        previewMeasurementIndex += 1
+                                        Column(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clip(RoundedCornerShape(11.dp))
                                                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f))
                                                 .padding(horizontal = 8.dp, vertical = 7.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
+                                            verticalArrangement = Arrangement.spacedBy(4.dp),
                                         ) {
-                                            Text(
-                                                "${index + 1}. ${row.place}",
-                                                modifier = Modifier.weight(1f),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                fontWeight = FontWeight.SemiBold,
-                                            )
-                                            Text(
-                                                row.lampCount,
-                                                modifier = Modifier.width(70.dp),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                fontWeight = FontWeight.Black,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                textAlign = TextAlign.End,
-                                            )
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                Text(
+                                                    "$previewMeasurementIndex. ${row.place}",
+                                                    modifier = Modifier.weight(1f),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                )
+                                                Text(
+                                                    row.lampCount,
+                                                    modifier = Modifier.width(70.dp),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    textAlign = TextAlign.End,
+                                                )
+                                            }
+                                            val details = previewRowDetails(row)
+                                            if (details.isNotBlank()) {
+                                                Text(
+                                                    details,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -29962,7 +30001,11 @@ private fun WorkOrderDocumentationWizardDialog(
                             if (field.type.equals("spr_voice", ignoreCase = true)) {
                                 val action = decodeSprVoiceAction(value, replaceExisting)
                                 templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to action.transcript)
-                                val rows = parseSprVoiceTranscriptToAiRows(action.transcript).ifEmpty { sprVoicePreviewRows }
+                                val rows = if (template.serviceCode.equals("EIZ", ignoreCase = true)) {
+                                    parseEizIpkVoiceTranscriptToAiRows(action.transcript).ifEmpty { sprVoicePreviewRows }
+                                } else {
+                                    parseSprVoiceTranscriptToAiRows(action.transcript).ifEmpty { sprVoicePreviewRows }
+                                }
                                 if (rows.isNotEmpty()) {
                                     measurementSheets = applySprVoiceAiRowsToMeasurementSheets(template, measurementSheets, rows, action.replaceExisting)
                                     sprVoiceAiMessage = if (action.replaceExisting) {
