@@ -4288,7 +4288,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     coverSubtitle: "O ISPITIVANJU ELEKTRIČNIH INSTALACIJA",
     measurementTableTitle: "Tablica 1. - vizualni pregled električne instalacije",
     resultsText: [
-      "Ispitivanje električne instalacije obuhvaća vizualni pregled, ispitivanje zaštitnog uređaja diferencijalne struje, impedanciju petlje kvara, otpor izolacije i kontinuitet zaštitnog vodiča.",
+      "Ispitivanje električne instalacije obuhvaća vizualni pregled električne instalacije, ispitivanje zaštitnih uređaja diferencijalne struje, mjerenje impedancije petlje kvara, mjerenje otpora izolacije vodiča i provjeru kontinuiteta zaštitnog vodiča.",
       "Rezultati ispitivanja prikazuju se u zasebnim ispitnim listovima EIZ.V, EIZ.ZUDS, EIZ.IPK, EIZ.OI i EIZ.K.",
     ].join("\n\n"),
     notes: [

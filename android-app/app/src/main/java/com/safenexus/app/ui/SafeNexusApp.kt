@@ -133,6 +133,7 @@ import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PictureAsPdf
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.Work
@@ -194,6 +195,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -5579,6 +5581,7 @@ private fun DocumentationMobileFieldShell(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     minHeight: Dp = 76.dp,
+    labelMaxLines: Int = 2,
     onClick: (() -> Unit)? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
@@ -5616,7 +5619,7 @@ private fun DocumentationMobileFieldShell(
                     label,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                    maxLines = 1,
+                    maxLines = labelMaxLines.coerceAtLeast(1),
                     overflow = TextOverflow.Ellipsis,
                 )
                 content()
@@ -6482,12 +6485,15 @@ private fun DocumentationMobileSelectField(
     enabled: Boolean,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
+    labelMaxLines: Int = 3,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box(modifier = modifier.fillMaxWidth()) {
         DocumentationMobileFieldShell(
             label = label,
             enabled = enabled && options.isNotEmpty(),
+            minHeight = if (labelMaxLines > 1) 88.dp else 76.dp,
+            labelMaxLines = labelMaxLines,
             onClick = { expanded = true },
             trailing = {
                 Icon(
@@ -6594,6 +6600,7 @@ private fun WorkOrderSelectField(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    labelMaxLines: Int = if (compact) 1 else 2,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box(modifier = modifier) {
@@ -6612,7 +6619,7 @@ private fun WorkOrderSelectField(
                     label,
                     style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                    maxLines = 1,
+                    maxLines = labelMaxLines.coerceAtLeast(1),
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
@@ -34214,6 +34221,63 @@ private data class MeasurementCellSelection(
     val columnIndex: Int,
 )
 
+private enum class MeasurementCellFillMode {
+    Copy,
+    Series,
+}
+
+private data class MeasurementCellFillRequest(
+    val selection: MeasurementCellSelection,
+    val targetRowIndex: Int,
+)
+
+private const val MEASUREMENT_GRID_MIN_ZOOM = 0.72f
+private const val MEASUREMENT_GRID_MAX_ZOOM = 1.9f
+
+private fun normalizeMeasurementGridZoom(value: Float): Float =
+    value.coerceIn(MEASUREMENT_GRID_MIN_ZOOM, MEASUREMENT_GRID_MAX_ZOOM)
+
+private fun measurementZoomedWidth(width: Int, zoomScale: Float): Int =
+    kotlin.math.round(width.coerceIn(46, 260) * normalizeMeasurementGridZoom(zoomScale)).toInt()
+        .coerceIn(42, 420)
+
+private fun measurementZoomedDp(value: Dp, zoomScale: Float): Dp =
+    (value.value * normalizeMeasurementGridZoom(zoomScale)).dp
+
+private fun Modifier.measurementPinchZoom(
+    enabled: Boolean,
+    onZoom: (Float) -> Unit,
+): Modifier {
+    if (!enabled) return this
+    return pointerInput(Unit) {
+        awaitPointerEventScope {
+            var previousDistance = 0f
+            while (true) {
+                val event = awaitPointerEvent()
+                val pressed = event.changes.filter { it.pressed }
+                if (pressed.size >= 2) {
+                    val first = pressed[0].position
+                    val second = pressed[1].position
+                    val distance = kotlin.math.hypot(
+                        (first.x - second.x).toDouble(),
+                        (first.y - second.y).toDouble(),
+                    ).toFloat()
+                    if (previousDistance > 0f && distance > 0f) {
+                        val zoomDelta = (distance / previousDistance).coerceIn(0.88f, 1.14f)
+                        if (zoomDelta.isFinite()) {
+                            onZoom(zoomDelta)
+                        }
+                    }
+                    previousDistance = distance
+                    pressed.forEach { change -> change.consume() }
+                } else {
+                    previousDistance = 0f
+                }
+            }
+        }
+    }
+}
+
 private fun WorkOrderMeasurementColumn.isEditableMeasurementColumn(): Boolean =
     computed.isBlank() && !readonly
 
@@ -34420,6 +34484,23 @@ private fun fillMeasurementCellDown(
     val lastTargetIndex = sheet.lastMeaningfulMeasurementRowIndex()
         .coerceAtLeast(selection.rowIndex + 1)
         .coerceAtMost(sheet.rows.lastIndex)
+    return fillMeasurementCellRangeDown(sheet, selection, lastTargetIndex, MeasurementCellFillMode.Copy)
+}
+
+private fun fillMeasurementCellRangeDown(
+    sheet: WorkOrderMeasurementSheet,
+    selection: MeasurementCellSelection,
+    targetRowIndex: Int,
+    mode: MeasurementCellFillMode,
+): WorkOrderMeasurementSheet {
+    val sourceRow = sheet.rows.getOrNull(selection.rowIndex) ?: return sheet
+    val column = sheet.columns.getOrNull(selection.columnIndex) ?: return sheet
+    if (!column.isEditableMeasurementColumn()) return sheet
+    val sourceValue = sourceRow.cells[column.id].orEmpty()
+    if (sourceValue.isBlank()) return sheet
+    val lastTargetIndex = targetRowIndex
+        .coerceAtLeast(selection.rowIndex + 1)
+        .coerceAtMost(sheet.rows.lastIndex)
     if (lastTargetIndex <= selection.rowIndex) return sheet
     val nextRows = sheet.rows.mapIndexed { rowIndex, row ->
         if (
@@ -34430,11 +34511,33 @@ private fun fillMeasurementCellDown(
         ) {
             row
         } else {
-            val nextValue = shiftMeasurementFormulaReferencesMobile(sourceValue, rowIndex - selection.rowIndex)
+            val offset = rowIndex - selection.rowIndex
+            val nextValue = when (mode) {
+                MeasurementCellFillMode.Copy -> shiftMeasurementFormulaReferencesMobile(sourceValue, offset)
+                MeasurementCellFillMode.Series -> buildMeasurementSeriesCellValue(sourceValue, offset)
+            }
             row.copy(cells = row.cells + (column.id to nextValue))
         }
     }
     return sheet.copy(rows = nextRows)
+}
+
+private fun buildMeasurementSeriesCellValue(sourceValue: String, rowOffset: Int): String {
+    if (rowOffset <= 0) return sourceValue
+    if (sourceValue.trim().startsWith("=")) {
+        return shiftMeasurementFormulaReferencesMobile(sourceValue, rowOffset)
+    }
+    val tokenRegex = Regex("(?<![A-Za-z0-9])(\\d+)(?![A-Za-z0-9])")
+    val match = tokenRegex.find(sourceValue) ?: return sourceValue
+    val numberGroup = match.groups[1] ?: return sourceValue
+    val current = numberGroup.value.toIntOrNull() ?: return sourceValue
+    val next = (current + rowOffset).coerceAtLeast(0).toString()
+    val replacement = if (numberGroup.value.length > 1 && numberGroup.value.startsWith("0")) {
+        next.padStart(numberGroup.value.length, '0')
+    } else {
+        next
+    }
+    return sourceValue.replaceRange(numberGroup.range, replacement)
 }
 
 private fun normalizeMeasurementQuickLookup(value: String): String =
@@ -34785,9 +34888,15 @@ private fun measurementFormatFontFamily(format: JSONObject?): FontFamily =
         else -> FontFamily.SansSerif
     }
 
-private fun measurementFormatFontSizeSp(format: JSONObject?, expanded: Boolean): androidx.compose.ui.unit.TextUnit {
+private fun measurementFormatFontSizeSp(
+    format: JSONObject?,
+    expanded: Boolean,
+    zoomScale: Float = 1f,
+): androidx.compose.ui.unit.TextUnit {
     val fallback = if (expanded) 14 else 12
-    return format.measurementFormatInt("fontSize", fallback).coerceIn(8, 40).sp
+    return (format.measurementFormatInt("fontSize", fallback) * normalizeMeasurementGridZoom(zoomScale))
+        .coerceIn(8f, 44f)
+        .sp
 }
 
 private fun measurementColumnLabel(index: Int): String {
@@ -36169,7 +36278,9 @@ private fun DocumentationMeasurementLaunchCard(
                 )
             }
             Button(onClick = onOpen, enabled = enabled, shape = RoundedCornerShape(14.dp)) {
-                Text("Prikaži mjerenja", fontWeight = FontWeight.Black)
+                Icon(Icons.Rounded.ScreenRotation, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Tablica", fontWeight = FontWeight.Black)
             }
         }
     }
@@ -36190,31 +36301,65 @@ private fun DocumentationMeasurementPreviewContent(
             template.measurementTables.map { table -> template to table }
         }
     }
-    LazyColumn(
+    val zoomSignature = remember(tables) { tables.joinToString("|") { (template, table) -> "${template.id}:${table.key}:${table.id}" } }
+    var zoomScale by remember(fullscreen, zoomSignature) { mutableStateOf(1f) }
+    val safeZoomScale = if (fullscreen) normalizeMeasurementGridZoom(zoomScale) else 1f
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .fillMaxHeight(if (fullscreen) 1f else 0.82f),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(bottom = 8.dp),
+            .fillMaxHeight(if (fullscreen) 1f else 0.82f)
+            .measurementPinchZoom(fullscreen) { zoomDelta ->
+                zoomScale = normalizeMeasurementGridZoom(zoomScale * zoomDelta)
+            },
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(
-            items = tables,
-            key = { (template, table) -> "${template.id}:${table.key}:${table.id}" },
-        ) { (template, table) ->
-            val stateKey = measurementSheetStateKey(template, table)
-            val usageKey = measurementTablePrimaryUsageKey(template, table)
-            MeasurementTableEditor(
-                template = template,
-                table = table,
-                sheet = measurementSheets[stateKey] ?: table.sheet,
-                tableIncluded = usageKey in includedMeasurementTableKeys,
-                enabled = enabled,
-                expanded = true,
-                tableOnly = true,
-                measurementSheets = measurementSheets,
-                onSheetChange = { nextSheet -> onSheetChange(stateKey, nextSheet) },
-                onTableIncludedChange = { included -> onTableIncludedChange(usageKey, included) },
-            )
+        if (fullscreen) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                AssistChip(
+                    onClick = { zoomScale = 1f },
+                    label = { Text("${kotlin.math.round(safeZoomScale * 100).toInt()}%") },
+                )
+                AssistChip(
+                    onClick = { zoomScale = normalizeMeasurementGridZoom(zoomScale * 0.88f) },
+                    label = { Text("-") },
+                )
+                AssistChip(
+                    onClick = { zoomScale = normalizeMeasurementGridZoom(zoomScale * 1.14f) },
+                    label = { Text("+") },
+                )
+            }
+        }
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(bottom = 8.dp),
+        ) {
+            items(
+                items = tables,
+                key = { (template, table) -> "${template.id}:${table.key}:${table.id}" },
+            ) { (template, table) ->
+                val stateKey = measurementSheetStateKey(template, table)
+                val usageKey = measurementTablePrimaryUsageKey(template, table)
+                MeasurementTableEditor(
+                    template = template,
+                    table = table,
+                    sheet = measurementSheets[stateKey] ?: table.sheet,
+                    tableIncluded = usageKey in includedMeasurementTableKeys,
+                    enabled = enabled,
+                    expanded = true,
+                    tableOnly = true,
+                    zoomScale = safeZoomScale,
+                    measurementSheets = measurementSheets,
+                    onSheetChange = { nextSheet -> onSheetChange(stateKey, nextSheet) },
+                    onTableIncludedChange = { included -> onTableIncludedChange(usageKey, included) },
+                )
+            }
         }
     }
 }
@@ -36470,11 +36615,13 @@ private fun MeasurementTableEditor(
     expanded: Boolean = false,
     tableOnly: Boolean = false,
     showIncludedToggle: Boolean = true,
+    zoomScale: Float = 1f,
     measurementSheets: Map<String, WorkOrderMeasurementSheet> = emptyMap(),
     onSheetChange: (WorkOrderMeasurementSheet) -> Unit,
     onTableIncludedChange: (Boolean) -> Unit = {},
 ) {
     val historyLimit = 24
+    val safeZoomScale = normalizeMeasurementGridZoom(zoomScale)
     val columnWindowSize = if (tableOnly || expanded) sheet.columns.size.coerceAtLeast(1) else 10
     var columnWindowStart by remember(table.key, table.id) { mutableStateOf(0) }
     var undoStack by remember(table.key, table.id) { mutableStateOf(emptyList<WorkOrderMeasurementSheet>()) }
@@ -36511,6 +36658,7 @@ private fun MeasurementTableEditor(
     }
     var extraRowWindow by remember(table.key, table.id) { mutableStateOf(0) }
     var quickFillOpen by remember(table.key, table.id) { mutableStateOf(false) }
+    var fillRequest by remember(table.key, table.id) { mutableStateOf<MeasurementCellFillRequest?>(null) }
     var lastQuickFillDraft by remember(table.key, table.id) { mutableStateOf<MeasurementQuickFillDraft?>(null) }
     val rowLoadPageSize = if (tableOnly) 24 else 20
     val baseVisibleRowCount = remember(sheet.rows.size, lastMeaningfulRowIndex, tableOnly) {
@@ -36615,9 +36763,9 @@ private fun MeasurementTableEditor(
         commitSheetChange(updateMeasurementCellFormat(sheetWithPendingCellValue(sheet), row.id, column.id, patch))
     }
     val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
-    val rowHeaderWidth = if (tableOnly) 46.dp else if (expanded) 54.dp else 46.dp
-    val rowHeight = if (tableOnly) 42.dp else if (expanded) 52.dp else 44.dp
-    val columnHeaderHeight = if (tableOnly) 34.dp else if (expanded) 40.dp else 34.dp
+    val rowHeaderWidth = measurementZoomedDp(if (tableOnly) 46.dp else if (expanded) 54.dp else 46.dp, safeZoomScale)
+    val rowHeight = measurementZoomedDp(if (tableOnly) 42.dp else if (expanded) 52.dp else 44.dp, safeZoomScale)
+    val columnHeaderHeight = measurementZoomedDp(if (tableOnly) 34.dp else if (expanded) 40.dp else 34.dp, safeZoomScale)
     val showColumnLabelRow = remember(sheet.columns) { sheet.hasMeaningfulMeasurementColumnLabels() }
     LaunchedEffect(selectedRow?.id.orEmpty(), selectedColumn?.id.orEmpty()) {
         val nextSheet = sheetWithPendingCellValue(sheet)
@@ -36648,6 +36796,70 @@ private fun MeasurementTableEditor(
                 commitSheetChange(applyMeasurementQuickFill(sheetWithPendingCellValue(sheet), draft))
                 extraRowWindow = extraRowWindow.coerceAtLeast(rowLoadPageSize)
                 quickFillOpen = false
+            },
+        )
+    }
+    fillRequest?.let { request ->
+        val fromCell = measurementCellReference(request.selection.rowIndex, request.selection.columnIndex)
+        val toCell = measurementCellReference(request.targetRowIndex, request.selection.columnIndex)
+        AlertDialog(
+            onDismissRequest = { fillRequest = null },
+            title = { Text("Popuni Gridline ćelije", fontWeight = FontWeight.Black) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Raspon $fromCell:$toCell. Odaberi želiš li kopirati istu vrijednost ili napraviti seriju.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        "Fill series povećava prvi samostalni broj u tekstu, npr. Agregat 1, Agregat 2, Agregat 3.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        commitSheetChange(
+                            fillMeasurementCellRangeDown(
+                                sheetWithPendingCellValue(sheet),
+                                request.selection,
+                                request.targetRowIndex,
+                                MeasurementCellFillMode.Series,
+                            ),
+                        )
+                        fillRequest = null
+                    },
+                    enabled = enabled,
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text("Fill series", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { fillRequest = null }) {
+                        Text("Odustani")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            commitSheetChange(
+                                fillMeasurementCellRangeDown(
+                                    sheetWithPendingCellValue(sheet),
+                                    request.selection,
+                                    request.targetRowIndex,
+                                    MeasurementCellFillMode.Copy,
+                                ),
+                            )
+                            fillRequest = null
+                        },
+                        enabled = enabled,
+                        shape = RoundedCornerShape(14.dp),
+                    ) {
+                        Text("Kopiraj", fontWeight = FontWeight.Bold)
+                    }
+                }
             },
         )
     }
@@ -37002,7 +37214,7 @@ private fun MeasurementTableEditor(
                     modifier = gridModifier,
                 ) {
                     Column {
-                        MeasurementHeaderCell("", rowHeaderWidth.value.toInt(), height = columnHeaderHeight, subtle = true)
+                        MeasurementHeaderCell("", rowHeaderWidth.value.toInt(), height = columnHeaderHeight, subtle = true, zoomScale = safeZoomScale)
                         if (showColumnLabelRow) {
                             Surface(
                                 modifier = Modifier
@@ -37043,13 +37255,18 @@ private fun MeasurementTableEditor(
                             visibleColumns.forEachIndexed { columnIndex, column ->
                                 val absoluteColumnIndex = sheet.columns.indexOfFirst { it.id == column.id }.takeIf { it >= 0 }
                                     ?: (columnWindowStart + columnIndex)
-                                MeasurementHeaderCell(measurementColumnLabel(absoluteColumnIndex), column.width, height = columnHeaderHeight)
+                                MeasurementHeaderCell(
+                                    measurementColumnLabel(absoluteColumnIndex),
+                                    measurementZoomedWidth(column.width, safeZoomScale),
+                                    height = columnHeaderHeight,
+                                    zoomScale = safeZoomScale,
+                                )
                             }
                         }
                         if (showColumnLabelRow) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 visibleColumns.forEach { column ->
-                                    MeasurementColumnLabelCell(column = column, rowHeight = rowHeight)
+                                    MeasurementColumnLabelCell(column = column, rowHeight = rowHeight, zoomScale = safeZoomScale)
                                 }
                             }
                         }
@@ -37078,6 +37295,17 @@ private fun MeasurementTableEditor(
                                         onClick = {
                                             selectMeasurementCell(rowIndex, absoluteColumnIndex)
                                         },
+                                        onFillDrag = { rowDelta ->
+                                            val targetRowIndex = (rowIndex + rowDelta).coerceAtMost(sheet.rows.lastIndex)
+                                            if (targetRowIndex > rowIndex) {
+                                                flushPendingCellValue()
+                                                selectedCell = MeasurementCellSelection(rowIndex, absoluteColumnIndex)
+                                                fillRequest = MeasurementCellFillRequest(
+                                                    selection = MeasurementCellSelection(rowIndex, absoluteColumnIndex),
+                                                    targetRowIndex = targetRowIndex,
+                                                )
+                                            }
+                                        },
                                         onChange = { value ->
                                             if (!(requireSpaceSelection && column.isPhysicalFactorsSpaceSelectorColumn())) {
                                                 editingValue = value
@@ -37085,6 +37313,7 @@ private fun MeasurementTableEditor(
                                         },
                                         rowHeight = rowHeight,
                                         expanded = expanded,
+                                        zoomScale = safeZoomScale,
                                         directEditable = !(requireSpaceSelection && column.isPhysicalFactorsSpaceSelectorColumn()),
                                     )
                                 }
@@ -37355,11 +37584,17 @@ private fun WorkOrderMeasurementSheet.hasMeaningfulMeasurementColumnLabels(): Bo
     }
 
 @Composable
-private fun MeasurementHeaderCell(label: String, width: Int, height: Dp = 34.dp, subtle: Boolean = false) {
+private fun MeasurementHeaderCell(
+    label: String,
+    width: Int,
+    height: Dp = 34.dp,
+    subtle: Boolean = false,
+    zoomScale: Float = 1f,
+) {
     val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
     Box(
         modifier = Modifier
-            .width(width.coerceIn(46, 260).dp)
+            .width(width.coerceIn(42, 420).dp)
             .height(height)
             .border(0.6.dp, gridLine)
             .background(
@@ -37372,7 +37607,14 @@ private fun MeasurementHeaderCell(label: String, width: Int, height: Dp = 34.dp,
             .padding(horizontal = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Black, maxLines = 1)
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontSize = (12f * normalizeMeasurementGridZoom(zoomScale)).coerceIn(9f, 22f).sp,
+            ),
+            fontWeight = FontWeight.Black,
+            maxLines = 1,
+        )
     }
 }
 
@@ -37380,12 +37622,14 @@ private fun MeasurementHeaderCell(label: String, width: Int, height: Dp = 34.dp,
 private fun MeasurementColumnLabelCell(
     column: WorkOrderMeasurementColumn,
     rowHeight: Dp,
+    zoomScale: Float = 1f,
 ) {
     val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
     val label = column.label.ifBlank { column.id }
+    val safeZoomScale = normalizeMeasurementGridZoom(zoomScale)
     Box(
         modifier = Modifier
-            .width(column.width.coerceIn(46, 260).dp)
+            .width(measurementZoomedWidth(column.width, safeZoomScale).dp)
             .height(rowHeight)
             .border(0.6.dp, gridLine)
             .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.24f))
@@ -37397,6 +37641,7 @@ private fun MeasurementColumnLabelCell(
                 label,
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Black,
+                fontSize = (11f * safeZoomScale).coerceIn(9f, 20f).sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -37404,6 +37649,7 @@ private fun MeasurementColumnLabelCell(
                 Text(
                     column.placeholder,
                     style = MaterialTheme.typography.labelSmall,
+                    fontSize = (10f * safeZoomScale).coerceIn(8f, 18f).sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -37423,11 +37669,14 @@ private fun MeasurementGridCell(
     selected: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
+    onFillDrag: (Int) -> Unit = {},
     onChange: (String) -> Unit,
     rowHeight: Dp = 44.dp,
     expanded: Boolean = false,
+    zoomScale: Float = 1f,
     directEditable: Boolean = true,
 ) {
+    val safeZoomScale = normalizeMeasurementGridZoom(zoomScale)
     val editable = column.isEditableMeasurementColumn()
     val isFormula = rawValue.trim().startsWith("=")
     val value = formatMeasurementCellDisplayMobile(
@@ -37437,12 +37686,12 @@ private fun MeasurementGridCell(
     )
     val hasError = value == "#ERROR"
     val gridLine = MaterialTheme.colorScheme.outline.copy(alpha = 0.34f)
-    val cellWidth = column.width.coerceIn(46, 260).dp
+    val cellWidth = measurementZoomedWidth(column.width, safeZoomScale).dp
     val fillColor = measurementFormatFillColor(cellFormat, value)
     val textColor = measurementFormatTextColor(cellFormat)
     val textAlign = measurementFormatTextAlign(cellFormat)
     val contentAlignment = measurementFormatContentAlignment(cellFormat)
-    val fontSize = measurementFormatFontSizeSp(cellFormat, expanded)
+    val fontSize = measurementFormatFontSizeSp(cellFormat, expanded, safeZoomScale)
     val fontFamily = measurementFormatFontFamily(cellFormat)
     val bold = headerRow || measurementFormatBold(cellFormat, value)
     val italic = measurementFormatItalic(cellFormat)
@@ -37468,26 +37717,36 @@ private fun MeasurementGridCell(
         else -> Modifier.padding(horizontal = 8.dp)
     }
     if (selected && editable && directEditable) {
-        OutlinedTextField(
-            value = rawValue,
-            onValueChange = onChange,
+        Box(
             modifier = Modifier
                 .width(cellWidth)
                 .height(rowHeight),
-            singleLine = true,
-            enabled = enabled,
-            textStyle = (if (expanded) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall).copy(
-                color = textColor ?: MaterialTheme.colorScheme.onSurface,
-                fontFamily = fontFamily,
-                fontSize = fontSize,
-                fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
-                fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
-                textDecoration = if (underline) TextDecoration.Underline else TextDecoration.None,
-                textAlign = textAlign,
-            ),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            shape = RoundedCornerShape(2.dp),
-        )
+        ) {
+            OutlinedTextField(
+                value = rawValue,
+                onValueChange = onChange,
+                modifier = Modifier.fillMaxSize(),
+                singleLine = true,
+                enabled = enabled,
+                textStyle = (if (expanded) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall).copy(
+                    color = textColor ?: MaterialTheme.colorScheme.onSurface,
+                    fontFamily = fontFamily,
+                    fontSize = fontSize,
+                    fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+                    fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
+                    textDecoration = if (underline) TextDecoration.Underline else TextDecoration.None,
+                    textAlign = textAlign,
+                ),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                shape = RoundedCornerShape(2.dp),
+            )
+            MeasurementCellFillHandle(
+                modifier = Modifier.align(Alignment.BottomEnd),
+                enabled = enabled,
+                rowHeight = rowHeight,
+                onFillDrag = onFillDrag,
+            )
+        }
         return
     }
     Box(
@@ -37528,7 +37787,54 @@ private fun MeasurementGridCell(
                 else -> MaterialTheme.colorScheme.onSurface
             },
         )
+        if (selected && editable) {
+            MeasurementCellFillHandle(
+                modifier = Modifier.align(Alignment.BottomEnd),
+                enabled = enabled,
+                rowHeight = rowHeight,
+                onFillDrag = onFillDrag,
+            )
+        }
     }
+}
+
+@Composable
+private fun MeasurementCellFillHandle(
+    modifier: Modifier = Modifier,
+    enabled: Boolean,
+    rowHeight: Dp,
+    onFillDrag: (Int) -> Unit,
+) {
+    val density = LocalDensity.current
+    val rowHeightPx = remember(rowHeight, density) {
+        with(density) { rowHeight.toPx().coerceAtLeast(1f) }
+    }
+    var dragY by remember { mutableStateOf(0f) }
+    Box(
+        modifier = modifier
+            .padding(2.dp)
+            .size(13.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(MaterialTheme.colorScheme.primary)
+            .pointerInput(enabled, rowHeightPx) {
+                if (!enabled) return@pointerInput
+                detectDragGestures(
+                    onDragStart = { dragY = 0f },
+                    onDragCancel = { dragY = 0f },
+                    onDragEnd = {
+                        val rows = kotlin.math.round((dragY / rowHeightPx).toDouble()).toInt()
+                        if (rows > 0) {
+                            onFillDrag(rows)
+                        }
+                        dragY = 0f
+                    },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        dragY += dragAmount.y
+                    },
+                )
+            },
+    )
 }
 
 @Composable
@@ -38145,7 +38451,9 @@ private fun DocumentationSprGridlineInlineCard(
                 enabled = enabled && tableCount > 0,
                 shape = RoundedCornerShape(13.dp),
             ) {
-                Text("Otvori", fontWeight = FontWeight.Bold)
+                Icon(Icons.Rounded.ScreenRotation, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(7.dp))
+                Text("Tablica", fontWeight = FontWeight.Bold)
             }
         }
     }
