@@ -62780,6 +62780,14 @@ function syncDocumentationSprAiSourcesVisibility() {
   }
 }
 
+function getDocumentationSprAiSourceEmptyStatusText() {
+  const serviceCode = getDocumentationSprServiceCode(documentationSprModel);
+  if (serviceCode === "EXSE") {
+    return "Dodaj stari ExSe zapisnik ili slike agregata/cijevi; NexAI popunjava ExSe1.2 uzemljenje i ExSe1.3 otpor cijevi bez miješanja kolona.";
+  }
+  return "Stari zapisnik, projekt, jednopolna shema ili slike ormara koriste se za AI polja i Gridline kolone.";
+}
+
 function renderDocumentationSprAiSourceList() {
   if (!documentationSprModel) {
     syncDocumentationSprAiSourcesVisibility();
@@ -62791,7 +62799,7 @@ function renderDocumentationSprAiSourceList() {
   if (documentationSprAiSourceStatus) {
     documentationSprAiSourceStatus.textContent = sources.length
       ? `${sources.length} ${sources.length === 1 ? "izvor učitan" : "izvora učitano"} za NexAI polja i Gridline kolone.`
-      : "Stari zapisnik, projekt, jednopolna shema ili slike ormara koriste se za AI polja i Gridline kolone.";
+      : getDocumentationSprAiSourceEmptyStatusText();
   }
   if (documentationSprAiSourceClearButton instanceof HTMLButtonElement) {
     documentationSprAiSourceClearButton.hidden = sources.length === 0;
@@ -63812,8 +63820,52 @@ function renderDocumentationSprChecklistsEditor() {
   void checklists;
 }
 
+function isDocumentationSprExseNativeTable(table = {}, tableIndex = 0) {
+  if (getDocumentationSprServiceCode(documentationSprModel) !== "EXSE") {
+    return false;
+  }
+  const lookup = normalizeLooseName([
+    table.id,
+    table.key,
+    table.tokenKey,
+    table.label,
+    table.summary,
+    table.chapterTitle,
+    table.sourceSheet,
+    tableIndex,
+  ].join(" "));
+  return lookup.includes("exse")
+    || lookup.includes("uzemljen")
+    || lookup.includes("otporcijevi")
+    || lookup.includes("savitljiv")
+    || lookup.includes("statick");
+}
+
+function getDocumentationSprExseTableKind(table = {}, tableIndex = 0) {
+  const lookup = normalizeLooseName([
+    table.id,
+    table.key,
+    table.tokenKey,
+    table.label,
+    table.summary,
+    table.chapterTitle,
+    table.sourceSheet,
+    tableIndex === 1 ? "static" : "",
+  ].join(" "));
+  return lookup.includes("exse13")
+    || lookup.includes("otporcijevi")
+    || lookup.includes("savitljiv")
+    || lookup.includes("statick")
+    || lookup.includes("static")
+    ? "static"
+    : "earthing";
+}
+
 function createDocumentationSprNativeMeasurementShell(table = {}, tableIndex = 0) {
   const shell = document.createElement("div");
+  const exseVoiceButton = isDocumentationSprExseNativeTable(table, tableIndex)
+    ? `<button type="button" class="ghost-button documentation-spr-exse-voice-button" data-documentation-spr-exse-voice="${tableIndex}" title="Diktiraj ExSe redove">Diktiraj</button>`
+    : "";
   shell.className = "documentation-gridline-module documentation-spr-native-gridline";
   shell.dataset.gridlineInstance = `documentation-native-${table.id || tableIndex}`;
   shell.innerHTML = `
@@ -63891,6 +63943,7 @@ function createDocumentationSprNativeMeasurementShell(table = {}, tableIndex = 0
           <option value="6">6</option>
         </select>
         <button type="button" class="ghost-button" data-gridline-action="quick-fill">Brzi unos</button>
+        ${exseVoiceButton}
         <select class="gridline-zoom-select" data-gridline-action="zoom" title="Zoom">
           <option value="fit" selected>Fit</option>
           <option value="75">75%</option>
@@ -63968,6 +64021,257 @@ function mountDocumentationSprNativeMeasurementGridline(shell, table = {}, table
     },
   });
   documentationSprNativeMeasurementGridlineApis.set(String(tableIndex), { api, shell });
+}
+
+function getDocumentationSprGridlineCell(model = {}, rowIndex = 0, columnIndex = 0) {
+  return String(model?.data?.[`${rowIndex}:${columnIndex}`] ?? "").trim();
+}
+
+function setDocumentationSprGridlineCell(model = {}, rowIndex = 0, columnIndex = 0, value = "") {
+  const text = String(value ?? "").trim();
+  if (!model.data || typeof model.data !== "object") {
+    model.data = {};
+  }
+  if (text) {
+    model.data[`${rowIndex}:${columnIndex}`] = text;
+  } else {
+    delete model.data[`${rowIndex}:${columnIndex}`];
+  }
+}
+
+function getDocumentationSprExseGridlineColumn(model = {}, table = {}, candidates = [], fallbackIndex = -1) {
+  const normalizedCandidates = (Array.isArray(candidates) ? candidates : [])
+    .map((candidate) => normalizeLooseName(candidate))
+    .filter(Boolean);
+  const fallbackColumnCount = Array.isArray(table?.sheet?.columns) ? table.sheet.columns.length : 0;
+  const columnCount = Math.max(Number(model.columnCount) || 0, fallbackColumnCount);
+  for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
+    const fallbackColumn = table?.sheet?.columns?.[columnIndex] || {};
+    const lookup = normalizeLooseName([
+      fallbackColumn.id,
+      fallbackColumn.key,
+      fallbackColumn.label,
+      fallbackColumn.placeholder,
+      getDocumentationSprGridlineCell(model, 0, columnIndex),
+      getDocumentationSprGridlineCell(model, 1, columnIndex),
+    ].join(" "));
+    if (normalizedCandidates.some((candidate) => lookup === candidate || lookup.includes(candidate))) {
+      return columnIndex;
+    }
+  }
+  return Number.isInteger(fallbackIndex) ? fallbackIndex : -1;
+}
+
+function isDocumentationSprExseVoiceRowForTable(row = {}, tableKind = "earthing") {
+  const target = String(row?.target || "").trim().toLowerCase();
+  if (!target) {
+    return tableKind === "earthing";
+  }
+  return tableKind === "static"
+    ? target === "static" || target === "hose" || target === "pipe"
+    : target === "earthing" || target === "grounding";
+}
+
+function normalizeDocumentationSprExseVoiceRows(rows = [], tableKind = "earthing") {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => row && typeof row === "object")
+    .filter((row) => isDocumentationSprExseVoiceRowForTable(row, tableKind))
+    .map((row) => ({
+      place: String(row.place || row.mjernoMjesto || row.location || "").trim(),
+      earthResistance: String(row.earthResistance || row.otporUzemljenja || row.uzemljenje || "").trim(),
+      pipeResistance: String(row.pipeResistance || row.otporCijevi || row.cijev || "").trim(),
+      electrostaticField: String(row.electrostaticField || row.elektrostatickoPolje || "").trim(),
+      allowedResistance: String(row.allowedResistance || row.dozvoljeniOtpor || "").trim(),
+      pass: String(row.pass || row.ocjena || "").trim().toUpperCase(),
+      note: String(row.note || row.napomena || "").trim(),
+    }))
+    .filter((row) => row.place);
+}
+
+function findDocumentationSprExseTargetGridlineRow(model = {}, row = {}, columns = {}) {
+  const placeColumn = columns.placeColumn;
+  const rowCount = Math.max(2, Number(model.rowCount) || 0);
+  const incomingPlace = normalizeLooseName(row.place);
+  if (placeColumn < 0 || !incomingPlace) {
+    return Math.max(2, rowCount);
+  }
+  for (let rowIndex = 2; rowIndex < rowCount; rowIndex += 1) {
+    const currentPlace = normalizeLooseName(getDocumentationSprGridlineCell(model, rowIndex, placeColumn));
+    if (currentPlace && (currentPlace === incomingPlace || currentPlace.includes(incomingPlace) || incomingPlace.includes(currentPlace))) {
+      return rowIndex;
+    }
+  }
+  for (let rowIndex = 2; rowIndex < rowCount; rowIndex += 1) {
+    if (!getDocumentationSprGridlineCell(model, rowIndex, placeColumn)) {
+      return rowIndex;
+    }
+  }
+  return rowCount;
+}
+
+function applyDocumentationSprExseVoiceRowsToGridlineModel(model = {}, rows = [], table = {}, tableIndex = 0) {
+  const tableKind = getDocumentationSprExseTableKind(table, tableIndex);
+  const normalizedRows = normalizeDocumentationSprExseVoiceRows(rows, tableKind);
+  const nextModel = normalizeDocumentationSprGridlineModel(model);
+  if (!normalizedRows.length) {
+    return { model: nextModel, rowCount: 0 };
+  }
+  const columns = {
+    numberColumn: getDocumentationSprExseGridlineColumn(nextModel, table, ["r br", "redni broj", "broj"], 0),
+    placeColumn: getDocumentationSprExseGridlineColumn(nextModel, table, ["mjerno mjesto", "mjesto", "place"], 1),
+    earthColumn: getDocumentationSprExseGridlineColumn(nextModel, table, ["otpor uzemljenja", "uzemljenje", "earth resistance"], 2),
+    pipeColumn: getDocumentationSprExseGridlineColumn(nextModel, table, ["otpor cijevi", "cijevi", "pipe resistance", "savitljiv"], 3),
+    electrostaticColumn: getDocumentationSprExseGridlineColumn(nextModel, table, ["elektrostaticko polje", "staticko polje", "electrostatic"], 4),
+    allowedColumn: getDocumentationSprExseGridlineColumn(nextModel, table, ["dozvoljeni otpor", "dopusteni otpor", "allowed"], 5),
+    passColumn: getDocumentationSprExseGridlineColumn(nextModel, table, ["ocjena", "zadovoljava", "pass"], 6),
+    noteColumn: getDocumentationSprExseGridlineColumn(nextModel, table, ["napomena", "note"], 7),
+  };
+  const defaultAllowed = tableKind === "static" ? "1" : "10";
+  let appliedCount = 0;
+  normalizedRows.forEach((row) => {
+    const rowIndex = findDocumentationSprExseTargetGridlineRow(nextModel, row, columns);
+    nextModel.rowCount = Math.max(Number(nextModel.rowCount) || 0, rowIndex + 1);
+    if (columns.numberColumn >= 0 && !getDocumentationSprGridlineCell(nextModel, rowIndex, columns.numberColumn)) {
+      setDocumentationSprGridlineCell(nextModel, rowIndex, columns.numberColumn, String(rowIndex - 1));
+    }
+    if (columns.placeColumn >= 0) {
+      setDocumentationSprGridlineCell(nextModel, rowIndex, columns.placeColumn, row.place);
+    }
+    if (columns.earthColumn >= 0 && row.earthResistance) {
+      setDocumentationSprGridlineCell(nextModel, rowIndex, columns.earthColumn, row.earthResistance);
+    }
+    if (columns.pipeColumn >= 0 && row.pipeResistance) {
+      setDocumentationSprGridlineCell(nextModel, rowIndex, columns.pipeColumn, row.pipeResistance);
+    }
+    if (columns.electrostaticColumn >= 0 && row.electrostaticField) {
+      setDocumentationSprGridlineCell(nextModel, rowIndex, columns.electrostaticColumn, row.electrostaticField);
+    } else if (columns.electrostaticColumn >= 0 && !getDocumentationSprGridlineCell(nextModel, rowIndex, columns.electrostaticColumn)) {
+      setDocumentationSprGridlineCell(nextModel, rowIndex, columns.electrostaticColumn, "0");
+    }
+    if (columns.allowedColumn >= 0 && row.allowedResistance) {
+      setDocumentationSprGridlineCell(nextModel, rowIndex, columns.allowedColumn, row.allowedResistance);
+    } else if (columns.allowedColumn >= 0 && !getDocumentationSprGridlineCell(nextModel, rowIndex, columns.allowedColumn)) {
+      setDocumentationSprGridlineCell(nextModel, rowIndex, columns.allowedColumn, defaultAllowed);
+    }
+    if (columns.passColumn >= 0 && row.pass) {
+      setDocumentationSprGridlineCell(nextModel, rowIndex, columns.passColumn, row.pass);
+    } else if (columns.passColumn >= 0 && !getDocumentationSprGridlineCell(nextModel, rowIndex, columns.passColumn)) {
+      setDocumentationSprGridlineCell(nextModel, rowIndex, columns.passColumn, "DA");
+    }
+    if (columns.noteColumn >= 0 && row.note) {
+      setDocumentationSprGridlineCell(nextModel, rowIndex, columns.noteColumn, row.note);
+    } else if (columns.noteColumn >= 0 && !getDocumentationSprGridlineCell(nextModel, rowIndex, columns.noteColumn)) {
+      setDocumentationSprGridlineCell(nextModel, rowIndex, columns.noteColumn, "-");
+    }
+    appliedCount += 1;
+  });
+  return { model: nextModel, rowCount: appliedCount };
+}
+
+async function structureDocumentationSprExseVoiceRows(transcript = "", table = {}, tableIndex = 0) {
+  const activeTemplate = getDocumentationSprTemplateById();
+  const payload = await apiRequest("/mobile/documentation/measurement-voice/structure", {
+    method: "POST",
+    body: {
+      transcript,
+      serviceCode: "EXSE",
+      templateId: activeTemplate?.id || "",
+      templateTitle: activeTemplate?.title || "",
+      workOrderNumber: documentationSprModel?.workOrderNumber || "",
+      measurementTable: table,
+      tableIndex,
+      columns: (Array.isArray(table?.sheet?.columns) ? table.sheet.columns : []).map((column, columnIndex) => ({
+        columnId: column.id || `c${columnIndex + 1}`,
+        key: column.key || column.id || "",
+        label: column.label || "",
+        placeholder: column.placeholder || "",
+        columnIndex,
+      })),
+    },
+  });
+  return Array.isArray(payload?.rows) ? payload.rows : [];
+}
+
+function setDocumentationSprExseVoiceButtonBusy(button = null, busy = false) {
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  button.disabled = busy;
+  button.setAttribute("aria-busy", busy ? "true" : "false");
+  button.textContent = busy ? "Slušam..." : "Diktiraj";
+}
+
+function startDocumentationSprExseVoiceDictation(tableIndex = 0, button = null) {
+  if (!documentationSprModel || getDocumentationSprServiceCode(documentationSprModel) !== "EXSE") {
+    return;
+  }
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) {
+    setDocumentationSprStatus("Govorni unos nije dostupan u ovom pregledniku", "saving");
+    return;
+  }
+  const tables = normalizeDocumentationSprMeasurementTables(documentationSprModel.measurementTables, documentationSprModel);
+  const table = tables[tableIndex];
+  const gridlineEntry = documentationSprNativeMeasurementGridlineApis?.get?.(String(tableIndex));
+  if (!table || !gridlineEntry?.api?.getModel || !gridlineEntry?.api?.setModel) {
+    setDocumentationSprStatus("ExSe tablica nije spremna za diktat", "saving");
+    return;
+  }
+  const recognition = new Recognition();
+  recognition.lang = "hr-HR";
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  setDocumentationSprExseVoiceButtonBusy(button, true);
+  setDocumentationSprStatus("Slušam ExSe diktat", "saving");
+  recognition.addEventListener("result", (event) => {
+    const transcript = Array.from(event.results || [])
+      .map((result) => result?.[0]?.transcript || "")
+      .join(" ")
+      .trim();
+    if (!transcript) {
+      setDocumentationSprStatus("Diktat je prazan", "saving");
+      return;
+    }
+    void structureDocumentationSprExseVoiceRows(transcript, table, tableIndex)
+      .then((rows) => {
+        const applied = applyDocumentationSprExseVoiceRowsToGridlineModel(
+          gridlineEntry.api.getModel(),
+          rows,
+          table,
+          tableIndex,
+        );
+        if (!applied.rowCount) {
+          setDocumentationSprStatus("Nema prepoznatih ExSe redaka iz diktata", "saving");
+          return;
+        }
+        gridlineEntry.api.setModel(applied.model);
+        setDocumentationSprStatus(`ExSe diktat upisao ${applied.rowCount} ${applied.rowCount === 1 ? "redak" : "redaka"}`, "saved");
+      })
+      .catch((error) => {
+        setDocumentationSprStatus(error?.message || "ExSe diktat nije upisan", "saving");
+      });
+  });
+  recognition.addEventListener("error", () => {
+    setDocumentationSprStatus("Ne mogu pokrenuti mikrofon za ExSe", "saving");
+  });
+  recognition.addEventListener("end", () => {
+    setDocumentationSprExseVoiceButtonBusy(button, false);
+  });
+  recognition.start();
+}
+
+function handleDocumentationSprExseVoiceButtonClick(event) {
+  const button = event.target instanceof HTMLElement
+    ? event.target.closest("[data-documentation-spr-exse-voice]")
+    : null;
+  if (!(button instanceof HTMLButtonElement)) {
+    return false;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  const tableIndex = Number(button.getAttribute("data-documentation-spr-exse-voice") || "0");
+  startDocumentationSprExseVoiceDictation(Number.isFinite(tableIndex) ? tableIndex : 0, button);
+  return true;
 }
 
 function renderDocumentationSprNativeMeasurementsEditor() {
@@ -67318,6 +67622,9 @@ function initDocumentationSprWorkbench() {
     });
     documentationWorkbenchModule.addEventListener("click", (event) => {
       if (handleDocumentationSprDatePickerOpen(event)) {
+        return;
+      }
+      if (handleDocumentationSprExseVoiceButtonClick(event)) {
         return;
       }
       const target = event.target instanceof HTMLElement ? event.target : null;

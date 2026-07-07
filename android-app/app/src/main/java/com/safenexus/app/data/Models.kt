@@ -870,6 +870,13 @@ data class SprVoiceAiRow(
     val board: String = "",
     val circuit: String = "",
     val rcdRating: String = "",
+    val target: String = "",
+    val earthResistance: String = "",
+    val pipeResistance: String = "",
+    val electrostaticField: String = "",
+    val allowedResistance: String = "",
+    val pass: String = "",
+    val note: String = "",
 )
 
 data class SprVoiceAiResult(

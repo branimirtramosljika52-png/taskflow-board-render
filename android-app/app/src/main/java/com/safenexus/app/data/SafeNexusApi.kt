@@ -1663,6 +1663,14 @@ class SafeNexusApi(
                     text.contains("utic") ||
                     text.contains("utič")
             }
+            val isExseStaticVoice = voiceFieldText.let { text ->
+                text.contains("exse1.3") ||
+                    text.contains("exse 1.3") ||
+                    text.contains("otpor cijevi") ||
+                    text.contains("cijev") ||
+                    text.contains("savitljiv") ||
+                    text.contains("stati")
+            }
             val table = if (template.serviceCode.equals("EIZ", ignoreCase = true)) {
                 template.measurementTables.firstOrNull { table ->
                     listOf(table.id, table.key, table.tokenKey, table.label, table.summary, table.sourceSheet)
@@ -1685,6 +1693,26 @@ class SafeNexusApi(
                             }
                         }
                 }
+            } else if (template.serviceCode.equals("EXSE", ignoreCase = true)) {
+                template.measurementTables.firstOrNull { table ->
+                    listOf(table.id, table.key, table.tokenKey, table.label, table.summary, table.sourceSheet)
+                        .joinToString(" ")
+                        .lowercase()
+                        .let { text ->
+                            if (isExseStaticVoice) {
+                                text.contains("exse1.3") ||
+                                    text.contains("exse 1.3") ||
+                                    text.contains("otpor cijevi") ||
+                                    text.contains("savitljiv") ||
+                                    text.contains("stati")
+                            } else {
+                                text.contains("exse1.2") ||
+                                    text.contains("exse 1.2") ||
+                                    text.contains("uzemljen") ||
+                                    text.contains("otpor uzemljenja")
+                            }
+                        }
+                } ?: template.measurementTables.getOrNull(if (isExseStaticVoice) 1 else 0)
             } else {
                 null
             } ?: template.measurementTables.firstOrNull()
@@ -1707,6 +1735,7 @@ class SafeNexusApi(
                         .put("id", table?.id.orEmpty())
                         .put("key", table?.key.orEmpty())
                         .put("label", table?.label.orEmpty())
+                        .put("sourceSheet", table?.sourceSheet.orEmpty())
                         .put("summary", table?.summary.orEmpty()),
                 )
                 .put(
@@ -3907,6 +3936,13 @@ private fun JSONArray?.toSprVoiceAiRows(): List<SprVoiceAiRow> {
             val board = item.firstClean("board", "razdjelnik", "razdjelnikOrmar", "ormar", "panel")
             val circuit = item.firstClean("circuit", "strujniKrug", "oznakaStrujnogKruga", "oznaka", "krug")
             val rcdRating = item.firstClean("rcdRating", "rating", "inIdn", "in_idn", "karakteristika", "pid")
+            val target = item.firstClean("target", "table", "tableKind", "measurementTable", "rowTarget")
+            val earthResistance = item.firstClean("earthResistance", "otporUzemljenja", "uzemljenje", "earth")
+            val pipeResistance = item.firstClean("pipeResistance", "otporCijevi", "hoseResistance", "cijev", "pipe")
+            val electrostaticField = item.firstClean("electrostaticField", "elektrostatickoPolje", "electrostatic")
+            val allowedResistance = item.firstClean("allowedResistance", "dozvoljeniOtpor", "dopusteniOtpor", "allowed")
+            val pass = item.firstClean("pass", "ocjena", "zadovoljava", "result")
+            val note = item.firstClean("note", "napomena", "comment")
             val place = item.firstClean("place", "mjesto", "location", "room", "name").ifBlank { board }
             val lampCount = item.firstClean("lampCount", "brojLampi", "count", "value", "quantity").ifBlank { circuit }
             val kind = item.firstClean("kind", "type", "rowType")
@@ -3914,7 +3950,16 @@ private fun JSONArray?.toSprVoiceAiRows(): List<SprVoiceAiRow> {
                 kind.equals("floor", ignoreCase = true) ||
                 item.optBoolean("isSection", false)
             val isZudsRow = board.isNotBlank() || circuit.isNotBlank() || rcdRating.isNotBlank()
-            if (place.isBlank() || (!isSection && !isZudsRow && lampCount.isBlank())) continue
+            val isExseRow = listOf(
+                target,
+                earthResistance,
+                pipeResistance,
+                electrostaticField,
+                allowedResistance,
+                pass,
+                note,
+            ).any { it.isNotBlank() }
+            if (place.isBlank() || (!isSection && !isZudsRow && !isExseRow && lampCount.isBlank())) continue
             add(
                 SprVoiceAiRow(
                     place = place,
@@ -3927,6 +3972,13 @@ private fun JSONArray?.toSprVoiceAiRows(): List<SprVoiceAiRow> {
                     board = board,
                     circuit = circuit,
                     rcdRating = rcdRating,
+                    target = target,
+                    earthResistance = earthResistance,
+                    pipeResistance = pipeResistance,
+                    electrostaticField = electrostaticField,
+                    allowedResistance = allowedResistance,
+                    pass = pass,
+                    note = note,
                 ),
             )
         }

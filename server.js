@@ -7938,6 +7938,14 @@ function buildOpenAiDocumentationServiceInstructions(body = {}) {
   if (serviceCode === "SZOM") {
     base.push("Za SZOM iz starog zapisnika trazi mjerna mjesta sustava zastite od munje. Povezanost metalnih masa popuni samo ako izvor izricito spominje metalne mase, povezanost masa ili izjednacavanje potencijala.");
   }
+  if (serviceCode === "EXSE") {
+    base.push(
+      "Za EXSE trazi iskljucivo ExSe/EXSE zapisnik uzemljenja i statickog elektriciteta. Ne mijesaj ExEi elektro tablice, ExOv odzracne ventile ni opce EIZ/SZOM tablice.",
+      "EXSE ima dvije Gridline tablice. ExSe1.2 / uzemljenje puni kolone: Mjerno mjesto, Otpor uzemljenja [ohm], Elektrostaticko polje [kV/m], Dozvoljeni otpor 10 i Ocjena DA/NE. ExSe1.3 / savitljive cijevi puni: Mjerno mjesto, Otpor cijevi [kohm], Elektrostaticko polje [kV/m], Dozvoljeni otpor 1 i Ocjena DA/NE.",
+      "Stari zapisnik smije popuniti stvarne izmjerene vrijednosti samo kada su vidljive uz isto mjerno mjesto. Ako izvor ima samo opis agregata ili fotografiju, popuni samo Mjerno mjesto i ostavi mjerne vrijednosti prazne.",
+      "Kod slika agregata/istakackih cijevi za tablicu otpora cijevi opisi mjesto u obliku 'Agregat 1 - cijev za istakanje Eurosuper 95' ili slicno prema vidljivoj oznaci goriva. Ne izmisljaj broj agregata, vrstu goriva ni izmjereni otpor ako nisu vidljivi.",
+    );
+  }
   if (serviceCode === "EIZ") {
     base.push(
       "Za EIZ vrijede elektricarska pravila: stari EIZ zapisnik smije popuniti stvarne mjerne vrijednosti, a jednopolna shema/projekt/slika ormara smije popuniti samo strukturu instalacije: razdjelnik, oznaku strujnog kruga, zastitni uredaj, In/Idn, tip 1P/3P i vrstu kabela/vodica.",
@@ -8082,7 +8090,7 @@ function buildOpenAiLiveContextPayload(body = {}, user = null, selectedModel = "
     language: "hr-HR",
     instruction: [
       "Vrati iskljucivo JSON koji aplikacija moze parsirati. Ne izmisljaj vrijednosti ako nisu vidljive u izvoru. Ako je expectedJsonShape posebno zadan za purpose, postuj taj oblik. Za Excel tablice koristi tocne fieldId i columnId vrijednosti iz measurementColumns. measurementColumns sadrzi samo kolone koje AI smije popuniti.",
-      "Ako u starom SPR zapisniku vidis panik/sigurnosnu rasvjetu, u starom TZIN zapisniku tipkala ili u starom SZOM zapisniku mjerna mjesta sustava zastite od munje, obavezno vrati measurementSuggestions za odgovarajucu Gridline tablicu; sazetak bez redaka nije dovoljan.",
+      "Ako u starom SPR zapisniku vidis panik/sigurnosnu rasvjetu, u starom TZIN zapisniku tipkala, u starom SZOM zapisniku mjerna mjesta sustava zastite od munje ili u starom EXSE zapisniku uzemljenje/otpor cijevi, obavezno vrati measurementSuggestions za odgovarajucu Gridline tablicu; sazetak bez redaka nije dovoljan.",
       "Za SZOM ne popunjavaj kolonu Elektricna povezanost metalnih masa osim ako izvor izricito spominje metalne mase/povezanost masa/izjednacavanje potencijala.",
       ...buildOpenAiDocumentationServiceInstructions(body),
       ...sourcePolicy.instructions,
@@ -8619,6 +8627,73 @@ function getOpenAiSzomMeasurementTarget(columns = [], searchText = "") {
       };
     })
     .filter((candidate) => candidate.placeColumn || candidate.hiddenColumn || candidate.massColumn);
+
+  return candidates
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score)[0] || null;
+}
+
+function scoreOpenAiExseMeasurementGroup(group = {}, searchLookup = "", targetKind = "") {
+  const groupLookup = getOpenAiMeasurementGroupLookup(group);
+  const labelLookup = normalizeOpenAiPolicyKey([
+    group.fieldId,
+    group.fieldKey,
+    group.fieldLabel,
+    group.fieldDescription,
+  ].join(" "));
+  let score = 0;
+  if (targetKind === "static" && (
+    labelLookup.includes("exse13")
+    || labelLookup.includes("otporcijevi")
+    || labelLookup.includes("savitljiv")
+    || labelLookup.includes("statick")
+  )) score += 14;
+  if (targetKind === "earthing" && (
+    labelLookup.includes("exse12")
+    || labelLookup.includes("uzemljen")
+  )) score += 14;
+  if (groupLookup.includes("exse")) score += 9;
+  if (groupLookup.includes("uzemljen")) score += targetKind === "static" ? 2 : 7;
+  if (groupLookup.includes("otporcijevi") || groupLookup.includes("savitljiv") || groupLookup.includes("statick")) {
+    score += targetKind === "earthing" ? 2 : 7;
+  }
+  if (groupLookup.includes("exse12")) score += targetKind === "static" ? 1 : 6;
+  if (groupLookup.includes("exse13")) score += targetKind === "earthing" ? 1 : 6;
+  if (searchLookup.includes("exse") || searchLookup.includes("otporuzemljenja") || searchLookup.includes("otporcijevi")) {
+    score += 3;
+  }
+  return score;
+}
+
+function getOpenAiExseMeasurementTarget(columns = [], searchText = "", targetKind = "") {
+  const groups = buildOpenAiMeasurementColumnGroups(columns);
+  if (!groups.length) {
+    return null;
+  }
+  const normalizedKind = normalizeInputValue(targetKind).toLowerCase();
+  const searchLookup = normalizeOpenAiPolicyKey(searchText);
+  const candidates = groups
+    .map((group) => {
+      const placeColumn = findOpenAiMeasurementColumn(group.columns, ["place", "mjernomjesto", "mjesto"]);
+      const earthColumn = findOpenAiMeasurementColumn(group.columns, ["earthresistance", "otporuzemljenja", "uzemljenje"]);
+      const pipeColumn = findOpenAiMeasurementColumn(group.columns, ["piperesistance", "otporcijevi", "cijevi", "savitljiv"]);
+      const electrostaticColumn = findOpenAiMeasurementColumn(group.columns, ["electrostaticfield", "elektrostatickopolje", "statickopolje"]);
+      const allowedColumn = findOpenAiMeasurementColumn(group.columns, ["allowedresistance", "dozvoljeniotpor", "dopusteniotpor"]);
+      const passColumn = findOpenAiMeasurementColumn(group.columns, ["pass", "ocjena", "ocjenaispravnosti", "zadovoljava", "dane"]);
+      const noteColumn = findOpenAiMeasurementColumn(group.columns, ["note", "napomena"]);
+      return {
+        group,
+        placeColumn,
+        earthColumn,
+        pipeColumn,
+        electrostaticColumn,
+        allowedColumn,
+        passColumn,
+        noteColumn,
+        score: scoreOpenAiExseMeasurementGroup(group, searchLookup, normalizedKind),
+      };
+    })
+    .filter((candidate) => candidate.placeColumn && (candidate.earthColumn || candidate.pipeColumn));
 
   return candidates
     .filter((candidate) => candidate.score > 0)
@@ -9188,13 +9263,120 @@ function buildOpenAiSzomParserMeasurementRows(target = {}, parsedRows = [], sour
     .filter((row) => Object.keys(row.values).length > 0);
 }
 
+function cleanOpenAiExseMeasurementValue(value = "") {
+  const text = normalizeOpenAiPdfText(value)
+    .replace(/[=]/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+  if (!text || text === "-") {
+    return "";
+  }
+  return text.replace(".", ",");
+}
+
+function inferOpenAiExseRowKind(row = {}) {
+  const placeLookup = normalizeOpenAiPolicyKey(row.place);
+  const pipeValue = cleanOpenAiExseMeasurementValue(row.pipeResistance);
+  const allowedNumeric = Number.parseFloat(String(row.allowedResistance || "").replace(",", "."));
+  if (
+    pipeValue
+    || placeLookup.includes("agregat")
+    || placeLookup.includes("cijev")
+    || placeLookup.includes("istak")
+    || (Number.isFinite(allowedNumeric) && allowedNumeric <= 1)
+  ) {
+    return "static";
+  }
+  return "earthing";
+}
+
+function parseOpenAiExseMeasurementRowText(row = {}) {
+  const text = normalizeOpenAiPdfText(row.text);
+  if (
+    !/^\d{1,4}\b/.test(text)
+    || /\bR\.?\s*br\b/i.test(text)
+    || /\bMjerno\s+mjesto\b/i.test(text)
+    || /\bOtpor\s+(?:uzemljenja|cijevi)\b/i.test(text)
+  ) {
+    return null;
+  }
+  const tokens = text.split(/\s+/g).filter(Boolean);
+  if (tokens.length < 7 || !/^\d{1,4}$/.test(tokens[0])) {
+    return null;
+  }
+  const passIndex = tokens.findLastIndex((token) => cleanOpenAiSprPassValue(token));
+  if (passIndex < 6) {
+    return null;
+  }
+  const beforePass = tokens.slice(1, passIndex);
+  if (beforePass.length < 5) {
+    return null;
+  }
+  const valueTokens = beforePass.slice(-4);
+  const place = normalizeInputValue(beforePass.slice(0, -4).join(" "));
+  if (!place) {
+    return null;
+  }
+  const parsed = {
+    rowNumber: tokens[0],
+    place: capitalizeOpenAiMeasurementPlace(place),
+    earthResistance: cleanOpenAiExseMeasurementValue(valueTokens[0]),
+    pipeResistance: cleanOpenAiExseMeasurementValue(valueTokens[1]),
+    electrostaticField: cleanOpenAiExseMeasurementValue(valueTokens[2]),
+    allowedResistance: cleanOpenAiExseMeasurementValue(valueTokens[3]),
+    pass: cleanOpenAiSprPassValue(tokens[passIndex]) || "DA",
+  };
+  parsed.target = inferOpenAiExseRowKind(parsed);
+  return parsed;
+}
+
+function parseOpenAiExseMeasurementRowsFromPdfRows(rows = []) {
+  const allText = rows.map((row) => row.text).join("\n");
+  if (!/(?:exse|otpor\s+uzemljenja|otpor\s+cijevi|elektrostatick|elektrostati[cč]k|savitljivih\s+cijevi)/iu.test(allText)) {
+    return [];
+  }
+  const seen = new Set();
+  return rows
+    .map(parseOpenAiExseMeasurementRowText)
+    .filter(Boolean)
+    .filter((row) => {
+      const key = normalizeOpenAiPolicyKey(`${row.target} ${row.rowNumber} ${row.place} ${row.earthResistance} ${row.pipeResistance}`);
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+}
+
+function buildOpenAiExseParserMeasurementRows(target = {}, parsedRows = [], sourceFile = "") {
+  return parsedRows
+    .map((row) => {
+      const values = {};
+      if (target.placeColumn) values[target.placeColumn.columnId || target.placeColumn.key] = row.place;
+      if (target.earthColumn && row.earthResistance) values[target.earthColumn.columnId || target.earthColumn.key] = row.earthResistance;
+      if (target.pipeColumn && row.pipeResistance) values[target.pipeColumn.columnId || target.pipeColumn.key] = row.pipeResistance;
+      if (target.electrostaticColumn && row.electrostaticField) values[target.electrostaticColumn.columnId || target.electrostaticColumn.key] = row.electrostaticField;
+      if (target.allowedColumn) values[target.allowedColumn.columnId || target.allowedColumn.key] = row.allowedResistance || (row.target === "static" ? "1" : "10");
+      if (target.passColumn) values[target.passColumn.columnId || target.passColumn.key] = row.pass || "DA";
+      return {
+        values,
+        orderedValues: [],
+        confidence: "high",
+        sourceFile,
+      };
+    })
+    .filter((row) => Object.keys(row.values).length > 0);
+}
+
 function getOpenAiParserProfilesForService(serviceCode = "") {
   const normalized = normalizeInputValue(serviceCode).toUpperCase();
   if (normalized === "SPR") return ["SPR"];
   if (normalized === "TZIN") return ["TZIN"];
   if (normalized === "SZOM") return ["SZOM"];
+  if (normalized === "EXSE") return ["EXSE_EARTHING", "EXSE_STATIC"];
   if (normalized) return [];
-  return ["SPR", "TZIN", "SZOM"];
+  return ["SPR", "TZIN", "SZOM", "EXSE_EARTHING", "EXSE_STATIC"];
 }
 
 async function buildOpenAiParserPlan(body = {}, user = null) {
@@ -9211,12 +9393,14 @@ async function buildOpenAiParserPlan(body = {}, user = null) {
     const sprRows = parseOpenAiSprMeasurementRowsFromPdfRows(pdfRows);
     const tzinRows = parseOpenAiTzinMeasurementRowsFromPdfRows(pdfRows);
     const szomRows = parseOpenAiSzomMeasurementRowsFromPdfRows(pdfRows);
-    if (sprRows.length || tzinRows.length || szomRows.length) {
+    const exseRows = parseOpenAiExseMeasurementRowsFromPdfRows(pdfRows);
+    if (sprRows.length || tzinRows.length || szomRows.length || exseRows.length) {
       parsedByFile.push({
         fileName: normalizeInputValue(file?.name || file?.fileName || "zapisnik.pdf"),
         sprRows,
         tzinRows,
         szomRows,
+        exseRows,
         searchText,
       });
     }
@@ -9261,6 +9445,34 @@ async function buildOpenAiParserPlan(body = {}, user = null) {
       if (candidateRows.length) {
         target = candidateTarget;
         profile = candidateProfile;
+        rows = candidateRows;
+        break;
+      }
+    }
+    if (candidateProfile === "EXSE_EARTHING" || candidateProfile === "EXSE_STATIC") {
+      const targetKind = candidateProfile === "EXSE_STATIC" ? "static" : "earthing";
+      const candidateTarget = getOpenAiExseMeasurementTarget(columns, searchText, targetKind);
+      const targetLookup = normalizeOpenAiPolicyKey([
+        candidateTarget?.group?.fieldId,
+        candidateTarget?.group?.fieldKey,
+        candidateTarget?.group?.fieldLabel,
+        candidateTarget?.group?.fieldDescription,
+      ].join(" "));
+      const targetLooksStatic = targetLookup.includes("exse13")
+        || targetLookup.includes("otporcijevi")
+        || targetLookup.includes("savitljiv")
+        || targetLookup.includes("statick");
+      const targetLooksEarthing = targetLookup.includes("exse12") || targetLookup.includes("uzemljen");
+      if ((targetKind === "earthing" && targetLooksStatic) || (targetKind === "static" && targetLooksEarthing && !targetLooksStatic)) {
+        continue;
+      }
+      const parsedRows = candidateTarget
+        ? parsedByFile.flatMap((item) => item.exseRows).filter((row) => row.target === targetKind)
+        : [];
+      const candidateRows = candidateTarget ? buildOpenAiExseParserMeasurementRows(candidateTarget, parsedRows, sourceFile) : [];
+      if (candidateRows.length) {
+        target = candidateTarget;
+        profile = targetKind === "static" ? "EXSE otpor cijevi" : "EXSE uzemljenje";
         rows = candidateRows;
         break;
       }
@@ -27666,6 +27878,15 @@ const MOBILE_EIZ_ZUDS_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
   "Glasovni unos EIZ ZUDS",
 ]);
 
+const MOBILE_EXSE_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
+  "exseVoiceTranscript",
+  "EXSE_VOICE_TRANSCRIPT",
+  "Diktat ExSe",
+  "Diktat EXSE",
+  "Diktat uzemljenja i otpora cijevi",
+  "Glasovni unos ExSe",
+]);
+
 const MOBILE_SPR_VOICE_NUMBER_WORDS = Object.freeze({
   jedan: 1,
   jedna: 1,
@@ -28229,6 +28450,162 @@ function parseMobileSzomVoiceRows(transcript = "") {
   return rows;
 }
 
+function parseMobileExseVoiceNumber(value = "") {
+  const text = normalizeInputValue(value)
+    .replace(/[^\d,.-]/g, "")
+    .replace(/\.(?=\d{3}\b)/g, "")
+    .replace(".", ",")
+    .trim();
+  if (!text || text === "-" || text === ",") {
+    return "";
+  }
+  return text;
+}
+
+function extractMobileExseVoiceValue(segment = "", patterns = []) {
+  const source = normalizeInputValue(segment);
+  for (const pattern of patterns) {
+    const match = source.match(pattern);
+    if (match?.[1]) {
+      return parseMobileExseVoiceNumber(match[1]);
+    }
+  }
+  return "";
+}
+
+function normalizeMobileExseFuelLabel(value = "") {
+  const raw = normalizeInputValue(value)
+    .replace(/\b(?:otpor|cijevi?|istakacka|istakacke|istakanje|za)\b/giu, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, "")
+    .trim();
+  const lookup = normalizeMobileSprLookupText(raw);
+  if (!lookup) {
+    return "";
+  }
+  if (lookup.includes("eurosuper") || lookup.includes("euro super") || lookup.includes("es 95")) {
+    return lookup.includes("100") ? "Eurosuper 100" : "Eurosuper 95";
+  }
+  if (lookup.includes("eurodiesel") || lookup.includes("euro diesel") || lookup === "ed" || lookup.includes("ed bs")) {
+    return "Eurodiesel";
+  }
+  if (lookup.includes("lpg") || lookup.includes("unp") || lookup.includes("plin")) {
+    return "LPG";
+  }
+  return raw
+    .replace(/\bes\b/giu, "ES")
+    .replace(/\bed\b/giu, "ED")
+    .replace(/\bbs\b/giu, "BS")
+    .replace(/\blpg\b/giu, "LPG")
+    .replace(/\bunp\b/giu, "UNP");
+}
+
+function cleanMobileExseVoicePlace(segment = "") {
+  let text = normalizeInputValue(segment)
+    .replace(/\botpor\s+uzemljenja\s*[=:]?\s*[<>]?\s*\d{1,4}(?:[,.]\d{1,4})?\s*(?:ohm|oma)?/giu, " ")
+    .replace(/\botpor\s+cijevi\s*[=:]?\s*[<>]?\s*\d{1,4}(?:[,.]\d{1,4})?\s*(?:k\s*ohm|kohm|kilooma)?/giu, " ")
+    .replace(/\belektrostaticko\s+polje\s*[=:]?\s*[<>]?\s*\d{1,4}(?:[,.]\d{1,4})?\s*(?:kv\/m)?/giu, " ")
+    .replace(/\bstaticko\s+polje\s*[=:]?\s*[<>]?\s*\d{1,4}(?:[,.]\d{1,4})?\s*(?:kv\/m)?/giu, " ")
+    .replace(/\bdozvoljeni\s+otpor\s*[=:]?\s*[<>]?\s*\d{1,4}(?:[,.]\d{1,4})?/giu, " ")
+    .replace(/\bdopusteni\s+otpor\s*[=:]?\s*[<>]?\s*\d{1,4}(?:[,.]\d{1,4})?/giu, " ")
+    .replace(/\bocjena\s+(?:da|ne|zadovoljava|ne\s+zadovoljava)\b/giu, " ")
+    .replace(/\b(?:izmjereno|izmjeri|dodaj|unesi|upisi|stavi)\b/giu, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, "")
+    .trim();
+
+  const aggregateMatch = text.match(/\bagregat\s+(\d{1,2})(?:\s*(?:\/|i|-)\s*(\d{1,2}))?/iu);
+  const hasHose = /(?:cijev|crijev|istakanj|istakack)/iu.test(text);
+  if (aggregateMatch && hasHose) {
+    const aggregate = aggregateMatch[2] ? `${aggregateMatch[1]}/${aggregateMatch[2]}` : aggregateMatch[1];
+    const afterHose = text.split(/\b(?:cijev|crijev|istakanje|istakacka|istakacke)\b/iu).pop() || "";
+    const fuel = normalizeMobileExseFuelLabel(afterHose);
+    return `Agregat ${aggregate} - cijev za istakanje${fuel ? ` ${fuel}` : ""}`;
+  }
+
+  return cleanMobileSprVoicePlace(text);
+}
+
+function parseMobileExseVoicePass(segment = "") {
+  const lookup = normalizeMobileSprLookupText(segment);
+  if (lookup.includes("ne zadovoljava") || lookup.includes("neispravno") || lookup.includes("ocjena ne")) {
+    return "NE";
+  }
+  if (lookup.includes("zadovoljava") || lookup.includes("ispravno") || lookup.includes("ocjena da")) {
+    return "DA";
+  }
+  return "";
+}
+
+function inferMobileExseVoiceTarget(segment = "", values = {}) {
+  const lookup = normalizeMobileSprLookupText(segment);
+  if (
+    values.pipeResistance
+    || lookup.includes("otporcijevi")
+    || lookup.includes("cijev")
+    || lookup.includes("crijev")
+    || lookup.includes("agregat")
+    || lookup.includes("istak")
+    || lookup.includes("static")
+    || lookup.includes("statick")
+  ) {
+    return "static";
+  }
+  return "earthing";
+}
+
+function parseMobileExseVoiceRows(transcript = "") {
+  const source = normalizeInputValue(transcript);
+  if (!source) {
+    return [];
+  }
+  const rows = [];
+  const seen = new Set();
+  source
+    .replace(/\b(?:i onda|pa onda|zatim|onda|sljedece|sljedece)\b/giu, "\n")
+    .replace(/[;]+/g, "\n")
+    .replace(/(?<!\d),(?!\d)/gu, "\n")
+    .split(/\r?\n/g)
+    .map((segment) => normalizeInputValue(segment))
+    .filter(Boolean)
+    .forEach((segment, index) => {
+      const values = {
+        earthResistance: extractMobileExseVoiceValue(segment, [
+          /\botpor\s+uzemljenja\s*[=:]?\s*([<>]?\s*\d{1,4}(?:[,.]\d{1,4})?)/iu,
+          /\buzemljenj\w*\s*[=:]?\s*([<>]?\s*\d{1,4}(?:[,.]\d{1,4})?)/iu,
+        ]),
+        pipeResistance: extractMobileExseVoiceValue(segment, [
+          /\botpor\s+cijevi\s*[=:]?\s*([<>]?\s*\d{1,4}(?:[,.]\d{1,4})?)/iu,
+          /\bcijev\w*\s+otpor\s*[=:]?\s*([<>]?\s*\d{1,4}(?:[,.]\d{1,4})?)/iu,
+        ]),
+        electrostaticField: extractMobileExseVoiceValue(segment, [
+          /\belektrostaticko\s+polje\s*[=:]?\s*([<>]?\s*\d{1,4}(?:[,.]\d{1,4})?)/iu,
+          /\bstaticko\s+polje\s*[=:]?\s*([<>]?\s*\d{1,4}(?:[,.]\d{1,4})?)/iu,
+        ]),
+        allowedResistance: extractMobileExseVoiceValue(segment, [
+          /\bdozvoljeni\s+otpor\s*[=:]?\s*([<>]?\s*\d{1,4}(?:[,.]\d{1,4})?)/iu,
+          /\bdopusteni\s+otpor\s*[=:]?\s*([<>]?\s*\d{1,4}(?:[,.]\d{1,4})?)/iu,
+        ]),
+        pass: parseMobileExseVoicePass(segment),
+      };
+      const place = cleanMobileExseVoicePlace(segment);
+      const target = inferMobileExseVoiceTarget(segment, values);
+      const key = normalizeMobileSprLookupText(`${target} ${place} ${index + 1}`);
+      if (!place || !key || seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      rows.push({
+        key,
+        target,
+        place,
+        ...values,
+        kind: "measurement",
+      });
+    });
+  return rows;
+}
+
 function cleanMobileEmmVoicePoint(value = "") {
   return cleanMobileSprVoicePlace(value)
     .replace(/\b(?:ispitno|mjesto|mjerenje|povezanost|kontinuitet|metalnih|masa)\b/gi, " ")
@@ -28756,6 +29133,61 @@ function buildMobileSzomVoiceLocalPayload(body = {}, message = "") {
   };
 }
 
+function normalizeMobileExseVoiceRows(rows = []) {
+  const normalizedRows = [];
+  const seen = new Set();
+  (Array.isArray(rows) ? rows : []).forEach((row, index) => {
+    const values = {
+      earthResistance: parseMobileExseVoiceNumber(row?.earthResistance || row?.otporUzemljenja || row?.uzemljenje || row?.rUz || ""),
+      pipeResistance: parseMobileExseVoiceNumber(row?.pipeResistance || row?.otporCijevi || row?.cijev || row?.hoseResistance || ""),
+      electrostaticField: parseMobileExseVoiceNumber(row?.electrostaticField || row?.elektrostatickoPolje || row?.staticField || ""),
+      allowedResistance: parseMobileExseVoiceNumber(row?.allowedResistance || row?.dozvoljeniOtpor || row?.dopusteniOtpor || ""),
+      pass: parseMobileExseVoicePass(row?.pass || row?.ocjena || row?.result || ""),
+    };
+    const place = cleanMobileExseVoicePlace(
+      row?.place
+      || row?.mjernoMjesto
+      || row?.location
+      || row?.name
+      || "",
+    );
+    const target = inferMobileExseVoiceTarget(
+      [
+        row?.target,
+        row?.table,
+        row?.kind,
+        row?.place,
+        row?.mjernoMjesto,
+      ].map(normalizeInputValue).join(" "),
+      values,
+    );
+    const key = normalizeMobileSprLookupText(`${target} ${place} ${index + 1}`);
+    if (!place || !key || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    normalizedRows.push({
+      key,
+      target,
+      place,
+      ...values,
+      pass: values.pass || "DA",
+      kind: "measurement",
+    });
+  });
+  return normalizedRows;
+}
+
+function buildMobileExseVoiceLocalPayload(body = {}, message = "") {
+  const rows = normalizeMobileExseVoiceRows(parseMobileExseVoiceRows(body?.transcript || body?.text || ""));
+  return {
+    ok: true,
+    provider: "local",
+    rows,
+    message: message || `Lokalni parser je pripremio ${rows.length} EXSE redaka.`,
+  };
+}
+
 function buildMobileEizIpkVoiceLocalPayload(body = {}, message = "") {
   const rows = normalizeMobileEizIpkVoiceRows(parseMobileEizIpkVoiceRows(body?.transcript || body?.text || ""));
   return {
@@ -28919,6 +29351,31 @@ function isMobileSzomVoiceRequest(body = {}) {
   );
 }
 
+function isMobileExseVoiceRequest(body = {}) {
+  const serviceCode = normalizeInputValue(body?.serviceCode).toUpperCase();
+  const table = body?.measurementTable && typeof body.measurementTable === "object" ? body.measurementTable : {};
+  const tableText = normalizeMobileSprLookupText([
+    table.id,
+    table.key,
+    table.tokenKey,
+    table.label,
+    table.summary,
+    table.sourceSheet,
+    body?.templateTitle,
+    body?.voiceFieldId,
+    body?.voiceFieldKey,
+    body?.voiceFieldTokenKey,
+    body?.voiceFieldLabel,
+  ].join(" "));
+  return serviceCode === "EXSE" || (
+    tableText.includes("exse")
+    || tableText.includes("otporcijevi")
+    || tableText.includes("otporuzemljenja")
+    || tableText.includes("savitljivihcijevi")
+    || tableText.includes("statickogelektriciteta")
+  );
+}
+
 function isMobileEmmVoiceRequest(body = {}) {
   const serviceCode = normalizeInputValue(body?.serviceCode).toUpperCase();
   const table = body?.measurementTable && typeof body.measurementTable === "object" ? body.measurementTable : {};
@@ -28951,6 +29408,9 @@ async function buildMobileMeasurementVoiceStructuredRows(body = {}, user = null)
   }
   if (isMobileSzomVoiceRequest(body)) {
     return buildMobileSzomVoiceLocalPayload(body);
+  }
+  if (isMobileExseVoiceRequest(body)) {
+    return buildMobileExseVoiceLocalPayload(body);
   }
   if (isMobileEmmVoiceRequest(body)) {
     return buildMobileEmmVoiceLocalPayload(body);
@@ -29320,6 +29780,142 @@ function applyMobileSzomVoiceTranscriptToMeasurementTables(tables = [], common =
     return {
       ...table,
       sheet: applyMobileSzomVoiceRowsToSheet(table.sheet, voiceRows),
+    };
+  });
+}
+
+function isMobileExseStaticMeasurementTable(table = {}, index = -1) {
+  const lookup = normalizeMobileSprLookupText([
+    table?.id,
+    table?.key,
+    table?.tokenKey,
+    table?.fieldKey,
+    table?.label,
+    table?.summary,
+    table?.chapterTitle,
+    table?.sourceSheet,
+    index === 1 ? "fallback-static" : "",
+  ].join(" "));
+  return lookup.includes("exse13")
+    || lookup.includes("static")
+    || lookup.includes("statick")
+    || lookup.includes("otporcijevi")
+    || lookup.includes("savitljivihcijevi");
+}
+
+function isMobileExseEarthingMeasurementTable(table = {}, index = -1) {
+  const lookup = normalizeMobileSprLookupText([
+    table?.id,
+    table?.key,
+    table?.tokenKey,
+    table?.fieldKey,
+    table?.label,
+    table?.summary,
+    table?.chapterTitle,
+    table?.sourceSheet,
+    index === 0 ? "fallback-earthing" : "",
+  ].join(" "));
+  return lookup.includes("exse12")
+    || lookup.includes("uzemljen")
+    || lookup.includes("otporuzemljenja");
+}
+
+function getMobileExseTableKind(table = {}, index = -1) {
+  return isMobileExseStaticMeasurementTable(table, index) ? "static" : "earthing";
+}
+
+function applyMobileExseVoiceRowsToSheet(sheet = null, voiceRows = [], tableKind = "earthing") {
+  const normalized = normalizeWorkOrderMeasurementSheet(sheet);
+  const rowsToApply = normalizeMobileExseVoiceRows(voiceRows)
+    .filter((row) => String(row.target || "") === tableKind || (!row.target && tableKind === "earthing"));
+  if (!normalized?.columns?.length || rowsToApply.length === 0) {
+    return normalized || sheet;
+  }
+  const numberColumn = findMobileSprSheetColumn(normalized, ["r br", "redni broj", "broj", "rb"], 0);
+  const placeColumn = findMobileSprSheetColumn(normalized, ["mjerno mjesto", "mjesto"], 1);
+  const earthColumn = findMobileSprSheetColumn(normalized, ["otpor uzemljenja", "uzemljenje"], 2);
+  const pipeColumn = findMobileSprSheetColumn(normalized, ["otpor cijevi", "cijevi", "savitljiv"], 3);
+  const electrostaticColumn = findMobileSprSheetColumn(normalized, ["elektrostaticko polje", "staticko polje"], 4);
+  const allowedColumn = findMobileSprSheetColumn(normalized, ["dozvoljeni otpor", "dopusteni otpor"], 5);
+  const passColumn = findMobileSprSheetColumn(normalized, ["ocjena", "zadovoljava", "pass"], 6);
+  const noteColumn = findMobileSprSheetColumn(normalized, ["napomena", "note"], 7);
+  if (!placeColumn?.id) {
+    return normalized;
+  }
+  const rows = (Array.isArray(normalized.rows) ? normalized.rows : []).map((row, index) => ({
+    id: normalizeInputValue(row?.id) || `measurement-row-${index + 1}`,
+    cells: { ...(row?.cells || {}) },
+    formats: { ...(row?.formats || {}) },
+  }));
+  const createRow = () => {
+    const targetRow = {
+      id: `measurement-row-${rows.length + 1}`,
+      cells: Object.fromEntries(normalized.columns.map((column) => [column.id, ""])),
+      formats: {},
+    };
+    rows.push(targetRow);
+    return targetRow;
+  };
+  const rowMatchesPlace = (row, place = "") => {
+    const current = normalizeMobileSprLookupText(row?.cells?.[placeColumn.id]);
+    const incoming = normalizeMobileSprLookupText(place);
+    if (!current || !incoming) {
+      return false;
+    }
+    return current === incoming || current.includes(incoming) || incoming.includes(current);
+  };
+  const findTargetRow = (entry) => rows.find((row) => rowMatchesPlace(row, entry.place))
+    || rows.find((row) => !normalizeInputValue(row?.cells?.[placeColumn.id]))
+    || createRow();
+  const defaultAllowed = tableKind === "static" ? "1" : "10";
+  rowsToApply.forEach((entry) => {
+    const targetRow = findTargetRow(entry);
+    if (numberColumn?.id && !normalizeInputValue(targetRow.cells[numberColumn.id])) {
+      targetRow.cells[numberColumn.id] = String(rows.indexOf(targetRow) + 1);
+    }
+    if (entry.place) targetRow.cells[placeColumn.id] = entry.place;
+    if (earthColumn?.id && entry.earthResistance) targetRow.cells[earthColumn.id] = entry.earthResistance;
+    if (pipeColumn?.id && entry.pipeResistance) targetRow.cells[pipeColumn.id] = entry.pipeResistance;
+    if (electrostaticColumn?.id && !normalizeInputValue(targetRow.cells[electrostaticColumn.id])) {
+      targetRow.cells[electrostaticColumn.id] = entry.electrostaticField || "0";
+    } else if (electrostaticColumn?.id && entry.electrostaticField) {
+      targetRow.cells[electrostaticColumn.id] = entry.electrostaticField;
+    }
+    if (allowedColumn?.id && !normalizeInputValue(targetRow.cells[allowedColumn.id])) {
+      targetRow.cells[allowedColumn.id] = entry.allowedResistance || defaultAllowed;
+    } else if (allowedColumn?.id && entry.allowedResistance) {
+      targetRow.cells[allowedColumn.id] = entry.allowedResistance;
+    }
+    if (passColumn?.id && !normalizeInputValue(targetRow.cells[passColumn.id])) {
+      targetRow.cells[passColumn.id] = entry.pass || "DA";
+    } else if (passColumn?.id && entry.pass) {
+      targetRow.cells[passColumn.id] = entry.pass;
+    }
+    if (noteColumn?.id && !normalizeInputValue(targetRow.cells[noteColumn.id])) {
+      targetRow.cells[noteColumn.id] = "-";
+    }
+  });
+  return {
+    ...normalized,
+    rows,
+  };
+}
+
+function applyMobileExseVoiceTranscriptToMeasurementTables(tables = [], common = {}, template = {}) {
+  const transcript = getMobileDocumentationTemplateFieldValues(
+    common,
+    template,
+    MOBILE_EXSE_VOICE_TRANSCRIPT_FIELD_KEYS,
+  );
+  const voiceRows = parseMobileExseVoiceRows(transcript);
+  if (!voiceRows.length) {
+    return tables;
+  }
+  return tables.map((table, index) => {
+    const tableKind = getMobileExseTableKind(table, index);
+    return {
+      ...table,
+      sheet: applyMobileExseVoiceRowsToSheet(table.sheet, voiceRows, tableKind),
     };
   });
 }
@@ -30050,6 +30646,9 @@ function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, co
   }
   if (normalizedServiceCode === "SZOM") {
     return applyMobileSzomVoiceTranscriptToMeasurementTables(tables, common, template);
+  }
+  if (normalizedServiceCode === "EXSE") {
+    return applyMobileExseVoiceTranscriptToMeasurementTables(tables, common, template);
   }
   if (normalizedServiceCode === "EMM") {
     return applyMobileEmmVoiceTranscriptToMeasurementTables(tables, common, template);
