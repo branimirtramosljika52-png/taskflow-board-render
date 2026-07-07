@@ -7958,6 +7958,7 @@ function buildOpenAiDocumentationServiceInstructions(body = {}) {
       "Za EXEI vrijede Ex elektricarska pravila, ali NexAI ne smije upisivati stvarne mjerne vrijednosti. Stari EXEI/ExEi zapisnik, pomocna jednopolna shema, projekt ili slike ormara smiju sluziti samo za strukturu: redoslijed, razdjelnik, oznaku kruga/opreme, osigurac, zastitni uredjaj, RCD/FID/ZUDS nazivnu vrijednost i tip/karakteristiku.",
       "U shemi i slikama ormara trazi samo Ex relevantne krugove i opremu: agregat, generator, crpka/pumpa, procesor agregata, rasvjeta agregata, UMP, motor, kompresor, istakaliste, pretakaliste, spremnik, Ex zona i slicne tehnoloske cjeline. Ne popunjavaj cijeli EIZ dio niti opce uredske/prodajne krugove ako nisu vezani na Ex prostor.",
       "Ako pomocna shema/slika potvrdi redoslijed, vrati redove u istom redoslijedu kao shema ili stari EXEI zapisnik. Ne dupliraj isti krug/opremu ako se pojavljuje na vise slika; spoji podatke u jedan redak kada imaju isti razdjelnik/oznaku kruga ili isti motor/opremu.",
+      "Ako u EXEI uploadu vidis jednopolnu shemu, GRO/RO razdjelnik ili Ex relevantne agregate/krugove, obavezno vrati measurementSuggestions za dostupne EXEI Gridline tablice. Sazetak bez redaka nije dovoljan.",
       "Za EXEI.ZUDS/FID/RCD nazivnu vrijednost zastitnog uredjaja vrati kao In/Idn, npr. 40/30, gdje je dio prije / nazivna struja u A, a dio nakon / diferencijalna struja u mA. Ne vracaj Iisk, tisk, U0, Z, Riso, Rizm ni DA/NE mjernu ocjenu.",
       "Za EXEI.OI i EXEI.IPK vrati samo oznaku kruga i eventualno tip zastitnog uredjaja/1x/3x ako je to jasno iz sheme. Ne popunjavaj Riso, Z(L-PE), Z(L-N), Z(L-L), kontinuitet, izmjereni otpor ni zakljucak mjerenja.",
     );
@@ -8243,24 +8244,66 @@ function extractOpenAiResponseText(payload = {}) {
 }
 
 function parseOpenAiJsonObject(text = "") {
-  const trimmed = String(text || "").trim();
+  const trimmed = String(text || "").replace(/^\uFEFF/, "").trim();
   if (!trimmed) {
     return null;
   }
 
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      return null;
+  const extractBalancedObject = (value = "") => {
+    const source = String(value || "");
+    let start = -1;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = 0; index < source.length; index += 1) {
+      const character = source[index];
+      if (start < 0) {
+        if (character === "{") {
+          start = index;
+          depth = 1;
+        }
+        continue;
+      }
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (character === "\\") {
+          escaped = true;
+        } else if (character === "\"") {
+          inString = false;
+        }
+        continue;
+      }
+      if (character === "\"") {
+        inString = true;
+        continue;
+      }
+      if (character === "{") {
+        depth += 1;
+      } else if (character === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          return source.slice(start, index + 1);
+        }
+      }
     }
+    return "";
+  };
+
+  const candidates = [
+    trimmed,
+    ...Array.from(trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)).map((match) => String(match[1] || "").trim()),
+    extractBalancedObject(trimmed),
+  ];
+
+  for (const candidate of Array.from(new Set(candidates.map((value) => String(value || "").trim()).filter(Boolean)))) {
     try {
-      return JSON.parse(jsonMatch[0]);
+      return JSON.parse(candidate);
     } catch {
-      return null;
+      // Try the next candidate.
     }
   }
+  return null;
 }
 
 function hasOpenAiMeasurementSuggestionRows(result = {}) {
@@ -8698,6 +8741,412 @@ function getOpenAiExseMeasurementTarget(columns = [], searchText = "", targetKin
   return candidates
     .filter((candidate) => candidate.score > 0)
     .sort((left, right) => right.score - left.score)[0] || null;
+}
+
+function scoreOpenAiExeiMeasurementGroup(group = {}, searchLookup = "", targetKind = "") {
+  const groupLookup = getOpenAiMeasurementGroupLookup(group);
+  const labelLookup = normalizeOpenAiPolicyKey([
+    group.fieldId,
+    group.fieldKey,
+    group.fieldLabel,
+    group.fieldDescription,
+  ].join(" "));
+  const normalizedKind = normalizeInputValue(targetKind).toLowerCase();
+  const kindTerms = {
+    ipk: ["exei12", "zoi1007", "ipk", "impedancijapetlje", "petljekvara"],
+    oi: ["exei13", "zoi1003", "otporizolacije", "oi"],
+    zuds: ["exei14", "zoi1008", "zuds", "fid", "rcd", "diferencijal"],
+    pe: ["exei16", "zoi1005", "kontinuitet", "pevodica", "metalnemase"],
+    motors: ["exei17", "zoi1014", "motor", "namoti", "praznoghoda", "agregat"],
+    overloade: ["exei18", "bimetal", "preopterecenjemotora", "zastitaodpreopterecenjamotora"],
+    overloadd: ["exei19", "exd", "bimetal", "preopterecenjemotora"],
+  }[normalizedKind] || [];
+  let score = 0;
+  if (groupLookup.includes("exei")) score += 6;
+  if (labelLookup.includes("cista")) score += 2;
+  kindTerms.forEach((term) => {
+    if (labelLookup.includes(term)) score += 9;
+    else if (groupLookup.includes(term)) score += 5;
+    else if (searchLookup.includes(term)) score += 1;
+  });
+  if (searchLookup.includes("jednopolnashema") || searchLookup.includes("groshema") || searchLookup.includes("razdjelnik")) {
+    score += 2;
+  }
+  return score;
+}
+
+function getOpenAiExeiMeasurementTarget(columns = [], searchText = "", targetKind = "") {
+  const groups = buildOpenAiMeasurementColumnGroups(columns);
+  if (!groups.length) {
+    return null;
+  }
+  const normalizedKind = normalizeInputValue(targetKind).toLowerCase();
+  const searchLookup = normalizeOpenAiPolicyKey(searchText);
+  const candidates = groups
+    .map((group) => {
+      const circuitColumn = findOpenAiMeasurementColumn(group.columns, [
+        "circuit",
+        "strujnikrug",
+        "oznakastrujnogkruga",
+        "oznakaeluredaja",
+        "eluredaj",
+        "elektricniuredaj",
+      ]);
+      const phaseColumn = findOpenAiMeasurementColumn(group.columns, [
+        "phasecount",
+        "1x3x",
+        "jednofazno",
+        "trofazno",
+      ]);
+      const protectionColumn = findOpenAiMeasurementColumn(group.columns, [
+        "protectiontype",
+        "tipikarakteristika",
+        "karakteristika",
+        "zastitniuredaj",
+        "osigurac",
+        "bimetal",
+      ]);
+      const boardColumn = findOpenAiMeasurementColumn(group.columns, [
+        "board",
+        "razdjelnik",
+        "ormar",
+        "gro",
+      ]);
+      const inColumn = findOpenAiMeasurementColumn(group.columns, [
+        "incurrent",
+        "nazivnastruja",
+      ]);
+      const idnColumn = findOpenAiMeasurementColumn(group.columns, [
+        "idn",
+        "ideltan",
+        "diferencijalnastruja",
+      ]);
+      const testPoint1Column = findOpenAiMeasurementColumn(group.columns, [
+        "testpoint1",
+        "ispitnomjesto1",
+      ]);
+      const testPoint2Column = findOpenAiMeasurementColumn(group.columns, [
+        "testpoint2",
+        "ispitnomjesto2",
+      ]);
+      const deviceColumn = findOpenAiMeasurementColumn(group.columns, [
+        "device",
+        "mjerniuredaj",
+        "agregat",
+        "motor",
+        "tvornickibrojagregata",
+      ]);
+      const manufacturerTypeColumn = findOpenAiMeasurementColumn(group.columns, [
+        "manufacturertype",
+        "proizvodactip",
+        "proizvodac",
+        "tip",
+      ], [deviceColumn].filter(Boolean));
+      const motorSerialColumn = findOpenAiMeasurementColumn(group.columns, [
+        "motorserial",
+        "tvornickibrojmotora",
+        "serijskibroj",
+      ]);
+      const protectionCertificateColumn = findOpenAiMeasurementColumn(group.columns, [
+        "protectioncertificate",
+        "vrstazastite",
+        "certifikat",
+        "atex",
+        "iecex",
+      ]);
+      const score = scoreOpenAiExeiMeasurementGroup(group, searchLookup, normalizedKind);
+      return {
+        group,
+        circuitColumn,
+        phaseColumn,
+        protectionColumn,
+        boardColumn,
+        inColumn,
+        idnColumn,
+        testPoint1Column,
+        testPoint2Column,
+        deviceColumn,
+        manufacturerTypeColumn,
+        motorSerialColumn,
+        protectionCertificateColumn,
+        score,
+      };
+    })
+    .filter((candidate) => {
+      if (normalizedKind === "ipk") return candidate.circuitColumn;
+      if (normalizedKind === "oi") return candidate.circuitColumn;
+      if (normalizedKind === "zuds") return candidate.circuitColumn && (candidate.boardColumn || candidate.inColumn || candidate.idnColumn);
+      if (normalizedKind === "pe") return candidate.testPoint1Column || candidate.testPoint2Column;
+      if (normalizedKind === "motors") return candidate.deviceColumn;
+      if (normalizedKind === "overloade" || normalizedKind === "overloadd") return candidate.circuitColumn || candidate.protectionColumn;
+      return false;
+    });
+
+  return candidates
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score)[0] || null;
+}
+
+function cleanOpenAiExeiTextValue(value = "") {
+  return normalizeInputValue(value)
+    .replace(/[\u2010-\u2015]/g, "-")
+    .replace(/\s+/g, " ")
+    .replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, "")
+    .trim();
+}
+
+function formatOpenAiExeiBoard(value = "") {
+  const text = cleanOpenAiExeiTextValue(value).replace(/\s*-\s*/g, "-");
+  if (!text) {
+    return "";
+  }
+  return text.toUpperCase();
+}
+
+function extractOpenAiExeiBoard(searchText = "") {
+  const source = String(searchText || "");
+  const match = source.match(/\b(?:GRO|RO\s*-\s*[A-Z0-9]+|RO\s+[A-Z0-9]+|UPS)\b/iu);
+  return match ? formatOpenAiExeiBoard(match[0]) : "";
+}
+
+function extractOpenAiExeiWireLabel(segment = "") {
+  const match = String(segment || "").match(/\bW\s*[-]?\s*\d{1,4}(?:\s*[-]?\s*[A-Z0-9]+)?\b/iu);
+  return match ? cleanOpenAiExeiTextValue(match[0]).replace(/\s+/g, "").toUpperCase() : "";
+}
+
+function extractOpenAiExeiCableLabel(segment = "") {
+  const match = String(segment || "").match(/\b(?:NYY|N2XH|PP00\s*-\s*Y|PP\s*-\s*Y|PPY|H07RN)\s*[-A-Z0-9]*\s*\d+\s*x\s*\d+(?:[,.]\d+)?\s*(?:mm2|mm\^2|mm\u00b2)?\b/iu);
+  return match ? cleanOpenAiExeiTextValue(match[0]).replace(/\s*x\s*/i, "x") : "";
+}
+
+function extractOpenAiExeiProtectionType(segment = "") {
+  const text = cleanOpenAiExeiTextValue(segment);
+  const rcdMatch = text.match(/\b(?:FID|FI|RCD|ZUDS|RCBO|RCCB|KZS)\s*[-:]?\s*(\d{1,3})\s*A?\s*[\/\\]\s*(\d{2,4})\s*m?A?\b/iu);
+  if (rcdMatch) {
+    return `${rcdMatch[1]}/${rcdMatch[2]}`;
+  }
+  const breakerMatch = text.match(/\b[BCD]\s*[-]?\s*\d{1,3}\s*A?(?:\s*[\/\\]\s*[1234])?\b/iu);
+  if (breakerMatch) {
+    return breakerMatch[0].replace(/\s+/g, "").toUpperCase();
+  }
+  const fuseMatch = text.match(/\b(?:osigurac|osigura[c\u010d]|sklopka|zastitni\s+uredaj|zastitni\s+ure[d\u0111]aj)\s*[:=-]?\s*([A-Z0-9./ -]{2,24})/iu);
+  return fuseMatch ? cleanOpenAiExeiTextValue(fuseMatch[1]).slice(0, 40) : "";
+}
+
+function extractOpenAiExeiRcdRating(segment = "") {
+  const text = cleanOpenAiExeiTextValue(segment);
+  const match = text.match(/\b(?:FID|FI|RCD|ZUDS|RCBO|RCCB|KZS)?\s*(\d{1,3})\s*A?\s*[\/\\]\s*(\d{2,4})\s*m?A?\b/iu);
+  if (!match) {
+    return { inCurrent: "", idn: "" };
+  }
+  return {
+    inCurrent: match[1],
+    idn: match[2],
+  };
+}
+
+function inferOpenAiExeiPhaseCount(segment = "") {
+  const lookup = normalizeOpenAiPolicyKey(segment);
+  if (/\b(?:3\s*~|3P|3-pol|3pol|tropol|trofaz|400\s*V)\b/iu.test(segment) || /\b(?:4|5)\s*x\s*\d/iu.test(segment) || /\b\/\s*3\b/iu.test(segment)) {
+    return "3x";
+  }
+  if (/\b(?:1\s*~|1P|1-pol|1pol|jednopol|jednofaz|230\s*V)\b/iu.test(segment) || /\b2\s*x\s*\d/iu.test(segment) || lookup.includes("jednofaz")) {
+    return "1x";
+  }
+  return "";
+}
+
+function isOpenAiExeiRelevantLabel(label = "", segment = "") {
+  const lookup = normalizeOpenAiPolicyKey(`${label} ${segment}`);
+  return [
+    "mjerniuredaj",
+    "agregat",
+    "generator",
+    "crpka",
+    "pumpa",
+    "procesoragregata",
+    "rasvjetaagregata",
+    "ump",
+    "motor",
+    "kompresor",
+    "istakaliste",
+    "pretakaliste",
+    "spremnik",
+    "exzona",
+    "rounp",
+    "elektromotornipogon",
+    "displaybrojilo",
+  ].some((term) => lookup.includes(term));
+}
+
+function cleanOpenAiExeiCircuitLabel(value = "") {
+  return cleanOpenAiExeiTextValue(value)
+    .replace(/\bure[d\u0111]aj\b/giu, "uredaj")
+    .replace(/\bRO\s*-\s*UNP\b/giu, "RO-UNP")
+    .replace(/\s+/g, " ")
+    .slice(0, 140)
+    .trim();
+}
+
+function extractOpenAiExeiContextSegment(source = "", index = 0) {
+  const text = String(source || "");
+  const lineStart = Math.max(0, text.lastIndexOf("\n", index) + 1);
+  const nextBreak = text.indexOf("\n", index);
+  const lineEnd = nextBreak >= 0 ? nextBreak : text.length;
+  const line = text.slice(lineStart, lineEnd);
+  if (cleanOpenAiExeiTextValue(line)) {
+    return line;
+  }
+  return text.slice(Math.max(0, index - 180), Math.min(text.length, index + 260));
+}
+
+function buildOpenAiExeiCircuitName(entry = {}) {
+  const parts = [];
+  const labelLookup = normalizeOpenAiPolicyKey(entry.label);
+  if (entry.wire && !labelLookup.includes(normalizeOpenAiPolicyKey(entry.wire))) {
+    parts.push(entry.wire);
+  }
+  if (entry.label) {
+    parts.push(entry.label);
+  }
+  if (entry.cable && !labelLookup.includes(normalizeOpenAiPolicyKey(entry.cable))) {
+    parts.push(entry.cable);
+  }
+  return cleanOpenAiExeiCircuitLabel(parts.join(" - "));
+}
+
+function extractOpenAiExeiEntriesFromText(searchText = "") {
+  const source = String(searchText || "").replace(/\r/g, "\n");
+  if (!source.trim() || !/(?:exei|jednopol|shema|gro|mjerni\s+ure[d\u0111]aj|agregat|pumpa|crpka|ump|motor|ro\s*-\s*unp)/iu.test(source)) {
+    return [];
+  }
+  const board = extractOpenAiExeiBoard(source);
+  const entries = [];
+  const seen = new Set();
+  const pushEntry = (rawLabel = "", segment = "", index = 0) => {
+    const label = cleanOpenAiExeiCircuitLabel(rawLabel);
+    if (!label || label.length < 3 || !isOpenAiExeiRelevantLabel(label, segment)) {
+      return;
+    }
+    const wire = extractOpenAiExeiWireLabel(segment);
+    const cable = extractOpenAiExeiCableLabel(segment);
+    const protectionType = extractOpenAiExeiProtectionType(segment);
+    const rcd = extractOpenAiExeiRcdRating(segment);
+    const phaseCount = inferOpenAiExeiPhaseCount(`${segment} ${cable} ${protectionType}`);
+    const key = normalizeOpenAiPolicyKey(`${board} ${wire} ${label}`);
+    if (!key || seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    entries.push({
+      label,
+      board,
+      wire,
+      cable,
+      circuit: "",
+      protectionType,
+      phaseCount,
+      inCurrent: rcd.inCurrent,
+      idn: rcd.idn,
+      segment: cleanOpenAiExeiTextValue(segment),
+      order: index,
+    });
+  };
+
+  const patterns = [
+    /\bmjerni\s+ure[d\u0111]aj\s+[0-9A-Z./-]+(?:\s*\([^)]+\))?(?:\s+\d{2,8})?/giu,
+    /\b(?:procesor\s+agregata|rasvjeta\s+agregata|elektromotorni\s+pogon|display\s+brojilo|RO\s*-\s*UNP|agregat|generator|crpka|pumpa|UMP|motor|kompresor|istakali[s\u0161]te|pretakali[s\u0161]te|spremnik)[^,;\n.]{0,80}/giu,
+  ];
+  patterns.forEach((pattern) => {
+    Array.from(source.matchAll(pattern)).forEach((match) => {
+      pushEntry(match[0], extractOpenAiExeiContextSegment(source, match.index || 0), match.index || 0);
+    });
+  });
+
+  source
+    .split(/\r?\n|[;]+/g)
+    .map((segment) => cleanOpenAiExeiTextValue(segment))
+    .filter(Boolean)
+    .forEach((segment, index) => {
+      if (!isOpenAiExeiRelevantLabel(segment, segment)) {
+        return;
+      }
+      const labelMatch = segment.match(/\b(?:mjerni\s+ure[d\u0111]aj\s+[0-9A-Z./-]+(?:\s*\([^)]+\))?(?:\s+\d{2,8})?|RO\s*-\s*UNP|agregat\s+\d+|pumpa\s+\d+|crpka\s+\d+|motor\s+\d+)\b/iu);
+      pushEntry(labelMatch ? labelMatch[0] : segment, segment, source.length + index);
+    });
+
+  return entries
+    .sort((left, right) => left.order - right.order)
+    .slice(0, 120)
+    .map((entry) => ({
+      ...entry,
+      circuit: buildOpenAiExeiCircuitName(entry),
+    }))
+    .filter((entry) => entry.circuit || entry.label);
+}
+
+function buildOpenAiExeiRowsForTarget(target = {}, entries = [], targetKind = "", sourceFile = "") {
+  const normalizedKind = normalizeInputValue(targetKind).toLowerCase();
+  return entries
+    .map((entry) => {
+      const values = {};
+      if (normalizedKind === "ipk") {
+        if (target.circuitColumn) values[target.circuitColumn.columnId || target.circuitColumn.key] = entry.circuit || entry.label;
+        if (target.phaseColumn && entry.phaseCount) values[target.phaseColumn.columnId || target.phaseColumn.key] = entry.phaseCount;
+        if (target.protectionColumn && entry.protectionType) values[target.protectionColumn.columnId || target.protectionColumn.key] = entry.protectionType;
+      } else if (normalizedKind === "oi") {
+        if (target.circuitColumn) values[target.circuitColumn.columnId || target.circuitColumn.key] = entry.circuit || entry.label;
+      } else if (normalizedKind === "zuds") {
+        if (!entry.inCurrent && !entry.idn) {
+          return null;
+        }
+        if (target.boardColumn && entry.board) values[target.boardColumn.columnId || target.boardColumn.key] = entry.board;
+        if (target.circuitColumn) values[target.circuitColumn.columnId || target.circuitColumn.key] = entry.circuit || entry.label;
+        if (target.inColumn && entry.inCurrent) values[target.inColumn.columnId || target.inColumn.key] = entry.inCurrent;
+        if (target.idnColumn && entry.idn) values[target.idnColumn.columnId || target.idnColumn.key] = entry.idn;
+      } else if (normalizedKind === "motors") {
+        if (target.deviceColumn) values[target.deviceColumn.columnId || target.deviceColumn.key] = entry.label || entry.circuit;
+      } else if (normalizedKind === "overloade" || normalizedKind === "overloadd") {
+        const lookup = normalizeOpenAiPolicyKey(`${entry.label} ${entry.segment}`);
+        if (!entry.protectionType && !lookup.includes("bimetal") && !lookup.includes("motor")) {
+          return null;
+        }
+        if (target.circuitColumn) values[target.circuitColumn.columnId || target.circuitColumn.key] = entry.circuit || entry.label;
+        if (target.protectionColumn && entry.protectionType) values[target.protectionColumn.columnId || target.protectionColumn.key] = entry.protectionType;
+      }
+      return Object.keys(values).length > 0
+        ? {
+            values,
+            orderedValues: [],
+            confidence: entry.protectionType || entry.phaseCount || entry.inCurrent ? "medium" : "low",
+            sourceFile,
+          }
+        : null;
+    })
+    .filter(Boolean);
+}
+
+function buildOpenAiExeiMeasurementSuggestions(columns = [], searchText = "", sourceFile = "") {
+  const entries = extractOpenAiExeiEntriesFromText(searchText);
+  if (!entries.length) {
+    return [];
+  }
+  return ["ipk", "oi", "zuds", "motors", "overloade", "overloadd"]
+    .map((targetKind) => {
+      const target = getOpenAiExeiMeasurementTarget(columns, searchText, targetKind);
+      const rows = target ? buildOpenAiExeiRowsForTarget(target, entries, targetKind, sourceFile) : [];
+      return target && rows.length
+        ? {
+            fieldId: target.group.fieldId,
+            fieldKey: target.group.fieldKey,
+            fieldLabel: target.group.fieldLabel,
+            rows,
+            confidence: "medium",
+            sourceFile,
+          }
+        : null;
+    })
+    .filter(Boolean);
 }
 
 function capitalizeOpenAiMeasurementPlace(value = "") {
@@ -9375,8 +9824,9 @@ function getOpenAiParserProfilesForService(serviceCode = "") {
   if (normalized === "TZIN") return ["TZIN"];
   if (normalized === "SZOM") return ["SZOM"];
   if (normalized === "EXSE") return ["EXSE_EARTHING", "EXSE_STATIC"];
+  if (normalized === "EXEI") return ["EXEI"];
   if (normalized) return [];
-  return ["SPR", "TZIN", "SZOM", "EXSE_EARTHING", "EXSE_STATIC"];
+  return ["SPR", "TZIN", "SZOM", "EXSE_EARTHING", "EXSE_STATIC", "EXEI"];
 }
 
 async function buildOpenAiParserPlan(body = {}, user = null) {
@@ -9634,6 +10084,25 @@ function augmentOpenAiDocumentMeasurementSuggestions(result = null, body = {}, o
     }).filter((row) => Object.keys(row.values).length > 0);
   }
 
+  if (!rows.length && parserProfiles.includes("EXEI")) {
+    const exeiSuggestions = buildOpenAiExeiMeasurementSuggestions(columns, searchText, sourceFile);
+    if (exeiSuggestions.length) {
+      const rowCount = exeiSuggestions.reduce((total, suggestion) => total + (Array.isArray(suggestion.rows) ? suggestion.rows.length : 0), 0);
+      baseResult.measurementSuggestions = [
+        ...(Array.isArray(baseResult.measurementSuggestions) ? baseResult.measurementSuggestions : []),
+        ...exeiSuggestions,
+      ];
+      baseResult.warnings = Array.from(new Set([
+        ...(Array.isArray(baseResult.warnings) ? baseResult.warnings : []),
+        `NexAI je iz EXEI sheme/opisa prepoznao ${rowCount} strukturnih redaka. Provjeri ih prije upisa jer slike sheme ne popunjavaju mjerne vrijednosti.`,
+      ].map(normalizeInputValue).filter(Boolean)));
+      if (!normalizeInputValue(baseResult.summary)) {
+        baseResult.summary = `NexAI je pripremio EXEI strukturne retke iz sheme/opisa.`;
+      }
+      return baseResult;
+    }
+  }
+
   if (!target || !rows.length) {
     return baseResult;
   }
@@ -9745,11 +10214,10 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
 
   const outputText = extractOpenAiResponseText(payload);
   const parsedResult = parseOpenAiJsonObject(outputText);
-  const augmentedResult = parsedResult
-    ? augmentOpenAiDocumentMeasurementSuggestions(parsedResult, body, outputText)
-    : null;
-  const result = augmentedResult
-    ? sanitizeOpenAiExeiMeasurementSuggestionKeys(augmentedResult, body)
+  const augmentedResult = augmentOpenAiDocumentMeasurementSuggestions(parsedResult, body, outputText);
+  const sanitizedResult = sanitizeOpenAiExeiMeasurementSuggestionKeys(augmentedResult, body);
+  const result = parsedResult || hasOpenAiMeasurementSuggestionRows(sanitizedResult)
+    ? sanitizedResult
     : null;
   const parsedAt = Date.now();
   const fields = Array.isArray(body.fields) ? body.fields : [];
