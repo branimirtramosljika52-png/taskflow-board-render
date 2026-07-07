@@ -5769,6 +5769,44 @@ private fun SprVoicePreviewEditField(
     }
 }
 
+private data class EizIpkPreviewGroup(
+    val sectionIndex: Int?,
+    val title: String,
+    val measurementIndexes: List<Int>,
+)
+
+private fun buildEizIpkPreviewGroups(rows: List<SprVoiceAiRow>): List<EizIpkPreviewGroup> {
+    if (rows.isEmpty()) return emptyList()
+    val groups = mutableListOf<EizIpkPreviewGroup>()
+    var currentSectionIndex: Int? = null
+    var currentTitle = ""
+    var currentMeasurementIndexes = mutableListOf<Int>()
+    fun flush() {
+        if (currentTitle.isNotBlank() || currentMeasurementIndexes.isNotEmpty()) {
+            groups += EizIpkPreviewGroup(
+                sectionIndex = currentSectionIndex,
+                title = currentTitle,
+                measurementIndexes = currentMeasurementIndexes.toList(),
+            )
+        }
+        currentSectionIndex = null
+        currentTitle = ""
+        currentMeasurementIndexes = mutableListOf()
+    }
+    rows.forEachIndexed { index, row ->
+        val isSection = row.kind.equals("section", ignoreCase = true) || row.lampCount.isBlank()
+        if (isSection) {
+            flush()
+            currentSectionIndex = index
+            currentTitle = row.place
+        } else {
+            currentMeasurementIndexes += index
+        }
+    }
+    flush()
+    return groups
+}
+
 @Composable
 private fun DocumentationSprVoiceField(
     label: String,
@@ -5936,6 +5974,61 @@ private fun DocumentationSprVoiceField(
                                     editablePreviewRows = dialogPreviewRows.map { row ->
                                         val isSectionRow = row.kind.equals("section", ignoreCase = true) || row.lampCount.isBlank()
                                         if (isSectionRow) row else transform(row)
+                                    }
+                                }
+                                if (isEizIpkVoice) {
+                                    val groups = buildEizIpkPreviewGroups(dialogPreviewRows)
+                                    if (groups.isNotEmpty()) {
+                                        Surface(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = Color(0xFFEFF6FF),
+                                            border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(10.dp),
+                                                verticalArrangement = Arrangement.spacedBy(7.dp),
+                                            ) {
+                                                Text(
+                                                    "Sažetak upisa",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color(0xFF1D4ED8),
+                                                )
+                                                groups.forEachIndexed { groupIndex, group ->
+                                                    val firstMeasurement = group.measurementIndexes.firstOrNull()?.let { dialogPreviewRows.getOrNull(it) }
+                                                    val details = firstMeasurement?.let(::previewRowDetails).orEmpty()
+                                                    Column(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clip(RoundedCornerShape(12.dp))
+                                                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
+                                                            .padding(horizontal = 9.dp, vertical = 7.dp),
+                                                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                                                    ) {
+                                                        Text(
+                                                            "${groupIndex + 1}. merge red: ${cleanPreviewSectionTitle(group.title).ifBlank { "Bez naziva" }}",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            fontWeight = FontWeight.Black,
+                                                            color = MaterialTheme.colorScheme.onSurface,
+                                                        )
+                                                        Text(
+                                                            "${group.measurementIndexes.size} redaka • ${firstMeasurement?.place.orEmpty().ifBlank { "Mjerno mjesto" }}",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            color = MaterialTheme.colorScheme.primary,
+                                                        )
+                                                        if (details.isNotBlank()) {
+                                                            Text(
+                                                                details,
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                                 var previewMeasurementIndex = 0
@@ -31474,7 +31567,7 @@ private data class EizIpkVoiceProfile(
 
 private fun cleanEizIpkSectionTitle(value: String): String =
     cleanSprVoicePlace(value)
-        .replace(Regex("^(prostorija|prostor|prostorije|lokacija|mjesto)\\s+", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("^(eta[zž][aeu]?|prostorija|prostor|prostorije|lokacija|mjesto|mjerno\\s+mjesto)\\s+", RegexOption.IGNORE_CASE), "")
         .replace(Regex("\\b(uticnica|uticnice|utičnica|utičnice|suko|komada|kom)\\b", RegexOption.IGNORE_CASE), "")
         .replace(Regex("\\s+"), " ")
         .trim()
@@ -31944,20 +32037,21 @@ private fun applyEizIpkVoiceRowsToSheet(
         passColumn?.id?.takeIf { it.isNotBlank() }?.let { row.cells[it] = "DA" }
     }
     val sectionMerges = mutableListOf<WorkOrderMeasurementMerge>()
-    val firstColumn = sheet.columns.firstOrNull() ?: placeColumn
+    val sectionColumn = placeColumn
+    val sectionColumnIndex = sheet.columns.indexOfFirst { it.id == sectionColumn.id }.takeIf { it >= 0 } ?: 0
     fun makeSectionRow(row: EditableSprMeasurementRow, title: String) {
         clearRow(row)
-        row.cells[firstColumn.id] = title
-        row.formats[firstColumn.id] = JSONObject()
+        row.cells[sectionColumn.id] = cleanEizIpkSectionTitle(title).ifBlank { title }
+        row.formats[sectionColumn.id] = JSONObject()
             .put("bold", true)
             .put("fillColor", "#eef7ff")
             .put("align", "left")
             .put("verticalAlign", "middle")
         sectionMerges += WorkOrderMeasurementMerge(
             rowId = row.id,
-            columnId = firstColumn.id,
+            columnId = sectionColumn.id,
             rowSpan = 1,
-            colSpan = sheet.columns.size.coerceAtLeast(1),
+            colSpan = (sheet.columns.size - sectionColumnIndex).coerceAtLeast(1),
         )
     }
     val existingSectionRowIds = sheet.merges
