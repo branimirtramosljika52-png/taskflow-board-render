@@ -7861,6 +7861,9 @@ function isOpenAiStructureOnlyMeasurementColumn(column = {}) {
 function getOpenAiDocumentationServiceCode(body = {}) {
   const inferFromLookup = (lookup = "") => {
     if (!lookup) return "";
+    if (lookup.includes("exei") || lookup.includes("exelektric") || (lookup.includes("ex") && lookup.includes("elektric"))) return "EXEI";
+    if (lookup.includes("exse") || (lookup.includes("ex") && lookup.includes("static"))) return "EXSE";
+    if (lookup.includes("exov") || (lookup.includes("ex") && lookup.includes("odzrac"))) return "EXOV";
     if (lookup.includes("tzin") || lookup.includes("tipkal") || lookup.includes("isklop")) return "TZIN";
     if (lookup.includes("szomv") || (lookup.includes("vizual") && lookup.includes("munj"))) return "SZOMV";
     if (lookup.includes("szom") || lookup.includes("zastitaodmunje") || lookup.includes("djelovanjamunje")) return "SZOM";
@@ -7940,6 +7943,15 @@ function buildOpenAiDocumentationServiceInstructions(body = {}) {
       "Za EIZ vrijede elektricarska pravila: stari EIZ zapisnik smije popuniti stvarne mjerne vrijednosti, a jednopolna shema/projekt/slika ormara smije popuniti samo strukturu instalacije: razdjelnik, oznaku strujnog kruga, zastitni uredaj, In/Idn, tip 1P/3P i vrstu kabela/vodica.",
       "Za EIZ.ZUDS/PID/FID/RCD jednu sklopku vrati kao jednu vrijednost In/Idn, npr. 40/30. Dio prije / je nazivna struja u A, dio nakon / je diferencijalna struja u mA. Ne dupliraj isti uredaj u vise redaka.",
       "Za EIZ.OI iz jednopolne sheme prepoznaj je li krug jednopolni/jednofazni ili tropolni/trofazni. Kod jednopolnog kruga fazno-fazne Riso kolone mogu biti '-' samo kao oznaka neprimjenjivosti; numericke Riso vrijednosti prepisuj samo iz starog EIZ/OI zapisnika ili stvarnog mjerenja.",
+    );
+  }
+  if (serviceCode === "EXEI") {
+    base.push(
+      "Za EXEI vrijede Ex elektricarska pravila: stari EXEI/ExEi zapisnik smije popuniti stvarne mjerne vrijednosti za IPK, OI, ZUDS, PE, Ex motore/opremu i bimetale; pomocna jednopolna shema, projekt ili slike ormara smiju samo provjeriti redoslijed i strukturu Ex krugova.",
+      "U shemi i slikama ormara trazi samo Ex relevantne krugove i opremu: agregat, generator, crpka/pumpa, procesor agregata, rasvjeta agregata, UMP, motor, kompresor, istakaliste, pretakaliste, spremnik, Ex zona i slicne tehnoloske cjeline. Ne popunjavaj cijeli EIZ dio niti opce uredske/prodajne krugove ako nisu vezani na Ex prostor.",
+      "Ako pomocna shema/slika potvrdi redoslijed, vrati redove u istom redoslijedu kao shema ili stari EXEI zapisnik. Ne dupliraj isti krug/opremu ako se pojavljuje na vise slika; spoji podatke u jedan redak kada imaju isti razdjelnik/oznaku kruga ili isti motor/opremu.",
+      "Za EXEI.ZUDS/FID/RCD vrijednost vrati kao In/Idn, npr. 40/30, gdje je dio prije / nazivna struja u A, a dio nakon / diferencijalna struja u mA. Iz strukturnih izvora ne vracaj Iisk/tisk/U0 kao stvarna mjerenja.",
+      "Za EXEI.OI iz sheme prepoznaj 1x/3x. Kod 1x/jednofaznog kruga fazno-fazne Riso kolone smiju biti '-' kao neprimjenjivo; kod 3x/trofaznog kruga popuni L1-L2-L3 strukturu samo ako je jasno. Numericke Riso vrijednosti uzimaj samo iz starog EXEI/OI zapisnika ili stvarnog mjerenja.",
     );
   }
   return base;
@@ -9125,6 +9137,7 @@ function getOpenAiParserProfilesForService(serviceCode = "") {
   if (normalized === "SPR") return ["SPR"];
   if (normalized === "TZIN") return ["TZIN"];
   if (normalized === "SZOM") return ["SZOM"];
+  if (normalized) return [];
   return ["SPR", "TZIN", "SZOM"];
 }
 
@@ -9264,11 +9277,15 @@ function augmentOpenAiDocumentMeasurementSuggestions(result = null, body = {}, o
     .filter(Boolean)
     .join(", ")
     .slice(0, 240);
+  const parserProfiles = getOpenAiParserProfilesForService(getOpenAiDocumentationServiceCode(body));
+  if (!parserProfiles.length && getOpenAiDocumentationServiceCode(body)) {
+    return baseResult;
+  }
   let target = getOpenAiSprMeasurementTarget(columns, searchText);
   let label = "SPR";
   let rows = [];
 
-  if (target) {
+  if (parserProfiles.includes("SPR") && target) {
     const places = extractOpenAiSprPlacesFromText(searchText);
     const globalValues = extractOpenAiSprGlobalValues(searchText);
     rows = places.map((entry) => {
@@ -9294,7 +9311,7 @@ function augmentOpenAiDocumentMeasurementSuggestions(result = null, body = {}, o
     }).filter((row) => Object.keys(row.values).length > 0);
   }
 
-  if (!rows.length) {
+  if (!rows.length && parserProfiles.includes("TZIN")) {
     target = getOpenAiTzinMeasurementTarget(columns, searchText);
     label = "TZIN";
     const places = target ? extractOpenAiTzinPlacesFromText(searchText) : [];
@@ -9319,7 +9336,7 @@ function augmentOpenAiDocumentMeasurementSuggestions(result = null, body = {}, o
     }).filter((row) => Object.keys(row.values).length > 0);
   }
 
-  if (!rows.length) {
+  if (!rows.length && parserProfiles.includes("SZOM")) {
     target = getOpenAiSzomMeasurementTarget(columns, searchText);
     label = "SZOM";
     const szomRows = target ? extractOpenAiSzomRowsFromText(searchText) : [];
