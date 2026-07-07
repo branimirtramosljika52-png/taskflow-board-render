@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.349.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.350.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -8389,10 +8389,139 @@ function hasOpenAiMeasurementSuggestionRows(result = {}) {
     .some((suggestion) => Array.isArray(suggestion?.rows) && suggestion.rows.length > 0);
 }
 
+function buildOpenAiExeiSuggestionSearchText(suggestion = {}) {
+  const parts = [];
+  collectOpenAiStringParts(suggestion, parts);
+  return parts.join(" ");
+}
+
+function inferOpenAiExeiSuggestionTargetKind(suggestion = {}) {
+  const lookup = normalizeOpenAiPolicyKey(buildOpenAiExeiSuggestionSearchText(suggestion));
+  if (lookup.includes("zuds") || lookup.includes("fid") || lookup.includes("rcd") || lookup.includes("diferenc")) return "zuds";
+  if (lookup.includes("otporizolacije") || lookup.includes("izolacijavodova") || lookup.includes("riso")) return "oi";
+  if (lookup.includes("kontinuitet") || lookup.includes("pevodica") || lookup.includes("metalnemase")) return "pe";
+  if (lookup.includes("bimetal") || lookup.includes("preopterecenjemotora") || lookup.includes("overload")) return "overloade";
+  if (lookup.includes("tvornickibroj") || lookup.includes("serijskibrojmotora") || lookup.includes("namotimotora") || lookup.includes("motorioprema")) return "motors";
+  return "ipk";
+}
+
+function getOpenAiExeiSuggestionTarget(columns = [], suggestion = {}) {
+  const searchText = buildOpenAiExeiSuggestionSearchText(suggestion);
+  const preferredKind = inferOpenAiExeiSuggestionTargetKind(suggestion);
+  const kinds = Array.from(new Set([preferredKind, "ipk", "oi", "zuds", "motors", "overloade", "overloadd"]));
+  for (const kind of kinds) {
+    const target = getOpenAiExeiMeasurementTarget(columns, searchText, kind);
+    if (target) {
+      return { target, kind };
+    }
+  }
+  return null;
+}
+
+function getOpenAiExeiTargetColumnByRawKey(target = {}, rawKey = "") {
+  const keyLookup = normalizeOpenAiPolicyKey(rawKey);
+  if (!keyLookup) {
+    return null;
+  }
+  return (Array.isArray(target?.group?.columns) ? target.group.columns : [])
+    .find((column) => {
+      const lookupParts = getOpenAiColumnLookupParts(column);
+      const joined = lookupParts.join(" ");
+      return lookupParts.some((part) => part === keyLookup) || joined.includes(keyLookup);
+    }) || null;
+}
+
+function setOpenAiExeiTargetCell(values = {}, column = null, value = "") {
+  const columnId = String(column?.columnId || column?.key || "").trim();
+  const text = normalizeInputValue(value);
+  const current = normalizeInputValue(values[columnId]);
+  const shouldReplaceNumericPlaceholder = current && /^\d{1,3}$/.test(current) && !/^\d{1,3}$/.test(text);
+  if (columnId && text && (!current || shouldReplaceNumericPlaceholder)) {
+    values[columnId] = text;
+  }
+}
+
+function mapOpenAiExeiRawValueToTarget(target = {}, values = {}, rawKey = "", rawValue = "") {
+  const value = normalizeInputValue(rawValue);
+  if (!value) {
+    return;
+  }
+  const directColumn = getOpenAiExeiTargetColumnByRawKey(target, rawKey);
+  if (directColumn) {
+    setOpenAiExeiTargetCell(values, directColumn, value);
+    return;
+  }
+
+  const keyLookup = normalizeOpenAiPolicyKey(rawKey);
+  const valueLookup = normalizeOpenAiPolicyKey(value);
+  const combinedLookup = normalizeOpenAiPolicyKey(`${rawKey} ${value}`);
+  const looksLikeCircuit = [
+    "oznaka",
+    "oznakastrujnogkruga",
+    "strujnikrug",
+    "circuit",
+    "krug",
+    "potrosac",
+    "oprema",
+    "uredaj",
+    "consumer",
+    "device",
+    "load",
+    "opis",
+  ].some((term) => keyLookup.includes(term))
+    || /\bW\s*-?\s*\d/iu.test(value)
+    || /\b(?:NYY|PP00|PP\s*-\s*Y|H07RN|LIYCY)\b/iu.test(value)
+    || isOpenAiExeiRelevantLabel(value, value);
+  const looksLikeProtection = [
+    "tipikarakteristika",
+    "karakteristika",
+    "osigurac",
+    "zastita",
+    "zastitniuredaj",
+    "breaker",
+    "fuse",
+    "protection",
+    "aut",
+  ].some((term) => combinedLookup.includes(term))
+    || /\b(?:Aut\s*)?[BCD]\s*\d{1,3}\s*A?(?:\s*[\/\\]\s*[1234])?\b/iu.test(value);
+  const looksLikePhase = keyLookup.includes("1x3x")
+    || keyLookup.includes("faza")
+    || keyLookup.includes("phase")
+    || /^(?:1x|3x|1\s*x|3\s*x)$/iu.test(value);
+  const looksLikeBoard = keyLookup.includes("razdjelnik")
+    || keyLookup.includes("ormar")
+    || keyLookup.includes("board")
+    || keyLookup.includes("gro")
+    || keyLookup.includes("ro");
+  const looksLikeIn = keyLookup === "in" || keyLookup.includes("nazivnastruja") || keyLookup.includes("incurrent");
+  const looksLikeIdn = keyLookup.includes("idn") || keyLookup.includes("diferencijalnastruja") || keyLookup.includes("ideltan");
+
+  if (looksLikeProtection && target.protectionColumn) {
+    setOpenAiExeiTargetCell(values, target.protectionColumn, formatOpenAiExeiBreakerType(value));
+  } else if (looksLikePhase && target.phaseColumn) {
+    setOpenAiExeiTargetCell(values, target.phaseColumn, inferOpenAiExeiPhaseCount(value) || value.toLowerCase().replace(/\s+/g, ""));
+  } else if (looksLikeBoard && target.boardColumn) {
+    setOpenAiExeiTargetCell(values, target.boardColumn, formatOpenAiExeiBoard(value));
+  } else if (looksLikeIn && target.inColumn) {
+    setOpenAiExeiTargetCell(values, target.inColumn, value);
+  } else if (looksLikeIdn && target.idnColumn) {
+    setOpenAiExeiTargetCell(values, target.idnColumn, value);
+  } else if (looksLikeCircuit && target.circuitColumn) {
+    setOpenAiExeiTargetCell(values, target.circuitColumn, value);
+  } else if (looksLikeCircuit && target.deviceColumn) {
+    setOpenAiExeiTargetCell(values, target.deviceColumn, value);
+  } else if (target.circuitColumn && !Object.keys(values).length && valueLookup.length > 2) {
+    setOpenAiExeiTargetCell(values, target.circuitColumn, value);
+  } else if (target.deviceColumn && !Object.keys(values).length && valueLookup.length > 2) {
+    setOpenAiExeiTargetCell(values, target.deviceColumn, value);
+  }
+}
+
 function sanitizeOpenAiExeiMeasurementSuggestionKeys(result = null, body = {}) {
   if (!result || typeof result !== "object" || getOpenAiDocumentationServiceCode(body) !== "EXEI") {
     return result;
   }
+  const columns = Array.isArray(body?.columns) ? body.columns : [];
   const allowedKeysByFieldId = new Map();
   (Array.isArray(body?.columns) ? body.columns : []).forEach((column) => {
     const fieldId = String(column?.fieldId || "").trim();
@@ -8421,13 +8550,15 @@ function sanitizeOpenAiExeiMeasurementSuggestionKeys(result = null, body = {}) {
 
   const measurementSuggestions = (Array.isArray(result.measurementSuggestions) ? result.measurementSuggestions : [])
     .map((suggestion) => {
-      const fieldId = String(suggestion?.fieldId || "").trim();
+      const resolvedTarget = getOpenAiExeiSuggestionTarget(columns, suggestion);
+      const target = resolvedTarget?.target || null;
+      const fieldId = String(target?.group?.fieldId || suggestion?.fieldId || "").trim();
       const allowed = allowedKeysByFieldId.get(fieldId);
-      if (!allowed || allowed.size === 0) {
+      if ((!allowed || allowed.size === 0) && !target) {
         return null;
       }
       const circuitLikeKeys = new Set(
-        (Array.isArray(body?.columns) ? body.columns : [])
+        columns
           .filter((column) => String(column?.fieldId || "").trim() === fieldId)
           .filter((column) => {
             const lookup = normalizeOpenAiPolicyKey([
@@ -8449,9 +8580,24 @@ function sanitizeOpenAiExeiMeasurementSuggestionKeys(result = null, body = {}) {
       const rows = (Array.isArray(suggestion?.rows) ? suggestion.rows : [])
         .map((row) => {
           const values = row?.values && typeof row.values === "object" && !Array.isArray(row.values)
-            ? Object.fromEntries(Object.entries(row.values).filter(([key]) => allowed.has(String(key || "").trim())))
+            ? Object.entries(row.values).reduce((nextValues, [key, rawValue]) => {
+                const rawKey = String(key || "").trim();
+                const value = normalizeInputValue(rawValue);
+                if (!value) {
+                  return nextValues;
+                }
+                if (allowed?.has(rawKey)) {
+                  nextValues[rawKey] = value;
+                } else if (target) {
+                  mapOpenAiExeiRawValueToTarget(target, nextValues, rawKey, value);
+                }
+                return nextValues;
+              }, {})
             : {};
-          const { orderedValues, ...rest } = row && typeof row === "object" ? row : {};
+          const { orderedValues, ordered_values, ...rest } = row && typeof row === "object" ? row : {};
+          const normalizedOrderedValues = Array.isArray(orderedValues)
+            ? orderedValues.map(normalizeInputValue).filter(Boolean)
+            : (Array.isArray(ordered_values) ? ordered_values.map(normalizeInputValue).filter(Boolean) : []);
           const hasNumericOnlyCircuit = Array.from(circuitLikeKeys).some((key) => {
             const value = normalizeInputValue(values?.[key]);
             return value && /^\d{1,3}$/.test(value);
@@ -8459,11 +8605,20 @@ function sanitizeOpenAiExeiMeasurementSuggestionKeys(result = null, body = {}) {
           return {
             ...rest,
             values,
+            orderedValues: normalizedOrderedValues,
             confidence: hasNumericOnlyCircuit ? "low" : rest.confidence,
           };
         })
-        .filter((row) => Object.keys(row.values || {}).length > 0);
-      return rows.length ? { ...suggestion, rows } : null;
+        .filter((row) => Object.keys(row.values || {}).length > 0 || (Array.isArray(row.orderedValues) && row.orderedValues.length > 0));
+      return rows.length
+        ? {
+            ...suggestion,
+            fieldId,
+            fieldKey: target?.group?.fieldKey || suggestion.fieldKey,
+            fieldLabel: target?.group?.fieldLabel || suggestion.fieldLabel,
+            rows,
+          }
+        : null;
     })
     .filter(Boolean);
 

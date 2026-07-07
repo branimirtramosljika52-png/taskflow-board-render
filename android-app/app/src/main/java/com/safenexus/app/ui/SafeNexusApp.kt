@@ -33779,12 +33779,52 @@ private fun WorkOrderMeasurementTable.looksLikeSprMeasurementTable(): Boolean {
     return hasPlaceColumn && hasQuantityColumn && looksSpr
 }
 
+private fun inferExeiAiSuggestionKind(suggestion: WorkOrderDocumentationAiMeasurementSuggestion): String {
+    val lookup = normalizeSprVoiceLookup(
+        listOf(
+            suggestion.fieldId,
+            suggestion.fieldKey,
+            suggestion.fieldLabel,
+            suggestion.rows.joinToString(" ") { row ->
+                (row.values.keys + row.values.values + row.orderedValues).joinToString(" ")
+            },
+        ).joinToString(" "),
+    )
+    return when {
+        lookup.contains("zuds") || lookup.contains("fid") || lookup.contains("rcd") || lookup.contains("diferenc") -> "zuds"
+        lookup.contains("otpor izolacije") || lookup.contains("riso") || lookup.contains("izolacija vodova") -> "oi"
+        lookup.contains("kontinuitet") || lookup.contains("pe vod") || lookup.contains("metalne mase") -> "pe"
+        lookup.contains("bimetal") || lookup.contains("preopterecenje") || lookup.contains("preopterećenje") -> "overload"
+        lookup.contains("tvornicki broj") || lookup.contains("tvornički broj") || lookup.contains("serijski broj motora") || lookup.contains("namoti motora") -> "motors"
+        else -> "ipk"
+    }
+}
+
+private fun WorkOrderMeasurementTable.looksLikeExeiMeasurementTable(kind: String): Boolean {
+    val lookup = normalizeSprVoiceLookup(
+        listOf(id, key, tokenKey, label, summary, sourceSheet, sheet.columns.joinToString(" ") { it.label }).joinToString(" "),
+    )
+    return when (kind) {
+        "zuds" -> lookup.contains("zuds") || lookup.contains("fid") || lookup.contains("rcd") || lookup.contains("diferenc")
+        "oi" -> lookup.contains("otpor izolacije") || lookup.contains("izolacija vodova") || lookup.contains("riso")
+        "pe" -> lookup.contains("kontinuitet") || lookup.contains("pe vod") || lookup.contains("metalne mase")
+        "motors" -> lookup.contains("motor") || lookup.contains("agregat") || lookup.contains("oprema")
+        "overload" -> lookup.contains("bimetal") || lookup.contains("preopterecenje") || lookup.contains("preopterećenje")
+        else -> lookup.contains("impedancija") || lookup.contains("petlje kvara") || lookup.contains("ipk")
+    }
+}
+
 private fun WorkOrderDocumentationTemplate.resolveAiMeasurementTable(
     suggestion: WorkOrderDocumentationAiMeasurementSuggestion,
 ): WorkOrderMeasurementTable? {
     measurementTables.firstOrNull { it.matchesAiMeasurementSuggestion(suggestion) }?.let { return it }
     if (serviceCode.equals("SPR", ignoreCase = true)) {
         measurementTables.firstOrNull { it.looksLikeSprMeasurementTable() }?.let { return it }
+    }
+    if (serviceCode.equals("EXEI", ignoreCase = true)) {
+        val kind = inferExeiAiSuggestionKind(suggestion)
+        measurementTables.firstOrNull { it.looksLikeExeiMeasurementTable(kind) }?.let { return it }
+        measurementTables.firstOrNull { it.looksLikeExeiMeasurementTable("ipk") }?.let { return it }
     }
     return measurementTables.singleOrNull()
 }
@@ -33813,6 +33853,59 @@ private fun WorkOrderDocumentationAiMeasurementColumn.matchesColumnKey(key: Stri
     }
 }
 
+private fun WorkOrderMeasurementColumn.matchesDocumentationAiSemanticKey(key: String, value: String): Boolean {
+    val keyLookup = normalizeSprVoiceLookup(key)
+    val valueLookup = normalizeSprVoiceLookup(value)
+    val columnLookup = normalizeSprVoiceLookup(listOf(id, label, placeholder).joinToString(" "))
+    fun columnHas(vararg terms: String): Boolean =
+        terms.map(::normalizeSprVoiceLookup).any { term -> term.isNotBlank() && columnLookup.contains(term) }
+    fun keyHas(vararg terms: String): Boolean =
+        terms.map(::normalizeSprVoiceLookup).any { term -> term.isNotBlank() && (keyLookup.contains(term) || valueLookup.contains(term)) }
+    val valueLooksLikeCableOrCircuit = Regex("\\bW\\s*-?\\s*\\d", RegexOption.IGNORE_CASE).containsMatchIn(value) ||
+        Regex("\\b(NYY|PP00|PP\\s*-\\s*Y|H07RN|LIYCY)", RegexOption.IGNORE_CASE).containsMatchIn(value)
+    val valueLooksLikeProtection = Regex("\\b(?:Aut\\s*)?[BCD]\\s*\\d{1,3}\\s*A?(?:\\s*[\\\\/]\\s*[1234])?", RegexOption.IGNORE_CASE).containsMatchIn(value)
+    val valueLooksLikePhase = value.trim().equals("1x", ignoreCase = true) || value.trim().equals("3x", ignoreCase = true)
+
+    return when {
+        columnHas("oznaka strujnog kruga", "strujni krug", "oznaka el uredaja", "elektricni uredaj", "električni uređaj", "circuit") ->
+            keyHas("oznaka", "strujni krug", "circuit", "krug", "potrosac", "potrošač", "oprema", "uredaj", "uređaj", "opis") || valueLooksLikeCableOrCircuit
+        columnHas("tip i karakteristika", "karakteristika", "osigurac", "osigurač", "zastitni uredaj", "zaštitni uređaj", "bimetal") ->
+            keyHas("tip", "karakteristika", "osigurac", "osigurač", "zastita", "zaštita", "breaker", "fuse", "protection") || valueLooksLikeProtection
+        columnHas("1x/3x", "1x 3x", "faza", "phase") ->
+            keyHas("1x", "3x", "faza", "phase") || valueLooksLikePhase
+        columnHas("razdjelnik", "ormar", "gro", "ro", "board") ->
+            keyHas("razdjelnik", "ormar", "gro", "ro", "board")
+        columnHas("in", "nazivna struja") ->
+            keyLookup == "in" || keyHas("nazivna struja", "in current")
+        columnHas("idn", "i delta", "diferencijalna struja") ->
+            keyHas("idn", "i delta", "diferencijalna struja")
+        else -> false
+    }
+}
+
+private fun findDocumentationAiFallbackColumn(
+    sheet: WorkOrderMeasurementSheet,
+    key: String,
+    value: String,
+    usedColumnIds: Set<String>,
+): WorkOrderMeasurementColumn? =
+    sheet.columns.firstOrNull { column ->
+        column.id !in usedColumnIds &&
+            !column.readonly &&
+            column.computed.isBlank() &&
+            column.matchesDocumentationAiSemanticKey(key, value)
+    }
+
+private fun WorkOrderMeasurementColumn.isDocumentationAiGenericFallbackColumn(): Boolean {
+    val lookup = normalizeSprVoiceLookup(listOf(id, label, placeholder).joinToString(" "))
+    return !readonly &&
+        computed.isBlank() &&
+        !lookup.contains("r br") &&
+        !lookup.contains("redni broj") &&
+        lookup != "rb" &&
+        lookup != "broj"
+}
+
 private fun buildDocumentationAiMeasurementCells(
     sheet: WorkOrderMeasurementSheet,
     aiColumns: List<WorkOrderDocumentationAiMeasurementColumn>,
@@ -33838,7 +33931,12 @@ private fun buildDocumentationAiMeasurementCells(
                 column.computed.isBlank() &&
                 (column.id.equals(key, ignoreCase = true) || normalizeTemplateFieldLookup(column.label) == normalizeTemplateFieldLookup(key))
         }
-        val columnId = aiColumn?.columnId ?: directColumn?.id
+        val fallbackColumn = if (aiColumn == null && directColumn == null) {
+            findDocumentationAiFallbackColumn(sheet, key, trimmedValue, cells.keys)
+        } else {
+            null
+        }
+        val columnId = aiColumn?.columnId ?: directColumn?.id ?: fallbackColumn?.id
         if (!columnId.isNullOrBlank()) {
             cells[columnId] = trimmedValue
         }
@@ -33850,6 +33948,15 @@ private fun buildDocumentationAiMeasurementCells(
         val columnId = writableAiColumns.getOrNull(index)?.columnId.orEmpty()
         if (columnId.isNotBlank() && !cells.containsKey(columnId)) {
             cells[columnId] = trimmedValue
+        }
+    }
+
+    if (cells.isEmpty() && row.values.isNotEmpty()) {
+        val writableColumns = sheet.columns.filter { it.isDocumentationAiGenericFallbackColumn() }
+        row.values.values.map { it.trim() }.filter { it.isNotBlank() }.forEachIndexed { index, value ->
+            writableColumns.getOrNull(index)?.id?.let { columnId ->
+                if (columnId.isNotBlank()) cells[columnId] = value
+            }
         }
     }
 
