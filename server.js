@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.346.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.347.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -1328,7 +1328,10 @@ const OPENAI_MODEL_TIERS = Object.freeze([
   { value: "strong", label: "Jaki", strength: "Precizniji", env: "OPENAI_MODEL_STRONG" },
   { value: "max", label: "Najjači", strength: "Najsporiji / najskuplji", env: "OPENAI_MODEL_MAX" },
 ]);
-const OPENAI_MAX_INLINE_FILE_COUNT = 5;
+const OPENAI_MAX_INLINE_FILE_COUNT = 12;
+const OPENAI_MAX_OUTPUT_TOKENS_DEFAULT = 4800;
+const OPENAI_MAX_OUTPUT_TOKENS_STRONG = 9000;
+const OPENAI_MAX_OUTPUT_TOKENS_EXEI = 12000;
 const OPENAI_MAX_TEXT_FILE_CHARS = 60000;
 const OPENAI_MAX_CONTEXT_JSON_CHARS = 80000;
 const OPENWEATHER_DEFAULT_API_BASE_URL = "https://api.openweathermap.org/data/2.5";
@@ -8083,6 +8086,51 @@ function readOpenAiTextFileContent(file = {}) {
   }
 }
 
+function supportsOpenAiOriginalImageDetail(model = "") {
+  const normalized = normalizeOpenAiModelSlug(model);
+  return /^gpt-5\.(?:[4-9]|\d{2,})(?:-|$)/i.test(normalized);
+}
+
+function getOpenAiImageDetailForRequest(selectedModel = "", sourcePolicy = {}) {
+  return supportsOpenAiOriginalImageDetail(selectedModel) && sourcePolicy?.hasStructureSource
+    ? "original"
+    : "high";
+}
+
+function buildOpenAiImageInstructionForFile(file = {}, index = 0, total = 1, body = {}, imageDetail = "high") {
+  const serviceCode = getOpenAiDocumentationServiceCode(body);
+  const sourceKind = normalizeOpenAiSourceKind(file?.sourceKind);
+  const sourceLabel = normalizeInputValue(file?.sourceKindLabel || sourceKind || "slika");
+  const base = [
+    `Slika ${index + 1}/${total}: ${normalizeInputValue(file?.name || "slika")}.`,
+    `Vrsta izvora: ${sourceLabel}.`,
+    `Obrada slike: detail=${imageDetail}. Citaj stvarni sadrzaj slike, ne samo naziv datoteke. Ako je slika okrenuta ili fotografirana pod kutom, mentalno je poravnaj i zumiraj sitne oznake.`,
+  ];
+  if (serviceCode === "EXEI" && (sourceKind === "single_line_diagram" || sourceKind === "electrical_cabinet_photo" || sourceKind === "project" || String(file?.type || "").toLowerCase().startsWith("image/"))) {
+    base.push(
+      "Za EXEI iz ove slike izvuci samo Ex relevantne strujne krugove. Za svaki relevantan krug procitaj potrosac/opremu, W oznaku voda, tip/presjek kabela, prikljucak/krug i oznaku osiguraca/zastitnog uredjaja.",
+      "U EXEI.IPK oznaka mora biti dvije linije: prva potrosac/oprema, druga 'W oznaka, kabel, oznaka osiguraca/kruga'. Tip/karakteristika mora biti samo npr. 'Aut B16A' ili 'Aut C16/3'.",
+      "Ne vracaj redak ako vidis samo redni broj bez stvarne oznake kruga/opreme.",
+    );
+  }
+  return base.join(" ");
+}
+
+function getOpenAiMaxOutputTokens(modelTier = "standard", serviceCode = "", files = []) {
+  const normalizedTier = normalizeOpenAiModelTier(modelTier);
+  const normalizedServiceCode = normalizeInputValue(serviceCode).toUpperCase();
+  if (normalizedServiceCode === "EXEI") {
+    return OPENAI_MAX_OUTPUT_TOKENS_EXEI;
+  }
+  if (normalizedTier === "strong" || normalizedTier === "max") {
+    return OPENAI_MAX_OUTPUT_TOKENS_STRONG;
+  }
+  if ((Array.isArray(files) ? files : []).length > 5) {
+    return OPENAI_MAX_OUTPUT_TOKENS_STRONG;
+  }
+  return OPENAI_MAX_OUTPUT_TOKENS_DEFAULT;
+}
+
 function buildOpenAiLiveContextPayload(body = {}, user = null, selectedModel = "") {
   const files = Array.isArray(body.files) ? body.files : [];
   const fields = Array.isArray(body.fields) ? body.fields : [];
@@ -8180,8 +8228,9 @@ function buildOpenAiResponseInputContent(body = {}, user = null, selectedModel =
   const files = (Array.isArray(body.files) ? body.files : [])
     .filter((file) => file?.contentDataUrl)
     .slice(0, OPENAI_MAX_INLINE_FILE_COUNT);
+  const imageDetail = getOpenAiImageDetailForRequest(selectedModel, contextPayload.sourcePolicy);
 
-  files.forEach((file) => {
+  files.forEach((file, index) => {
     const mimeType = String(file.type || "").toLowerCase();
     const textContent = readOpenAiTextFileContent(file);
     if (textContent) {
@@ -8194,9 +8243,13 @@ function buildOpenAiResponseInputContent(body = {}, user = null, selectedModel =
 
     if (mimeType.startsWith("image/")) {
       content.push({
+        type: "input_text",
+        text: buildOpenAiImageInstructionForFile(file, index, files.length, body, imageDetail),
+      });
+      content.push({
         type: "input_image",
         image_url: file.contentDataUrl,
-        detail: "high",
+        detail: imageDetail,
       });
       return;
     }
@@ -10285,9 +10338,10 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
   const modelTier = normalizeOpenAiModelTier(body.modelTier || body.modelPreference?.tier);
   const modelTierOption = getOpenAiModelTierOption(modelTier);
   const selectedModel = normalizeOpenAiModelSlug(body.model || body.modelPreference?.model || getOpenAiModelForTier(modelTier, config));
+  const serviceCode = getOpenAiDocumentationServiceCode(body);
   const sourcePolicy = buildOpenAiSourcePolicy(
     Array.isArray(body.files) ? body.files : [],
-    getOpenAiDocumentationServiceCode(body),
+    serviceCode,
   );
   if (!selectedModel) {
     const error = new Error("OpenAI model nije konfiguriran.");
@@ -10320,7 +10374,7 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
         content: buildOpenAiResponseInputContent(body, user, selectedModel),
       },
     ],
-    max_output_tokens: 4800,
+    max_output_tokens: getOpenAiMaxOutputTokens(modelTier, serviceCode, body.files),
   };
 
   const requestStartedAt = Date.now();
