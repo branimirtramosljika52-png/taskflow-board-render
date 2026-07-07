@@ -5273,8 +5273,12 @@ export function createDocumentationNativeAiFieldsForService(serviceCode = "") {
 
 export function createDocumentationNativeAiMeasurementColumnsForService(serviceCode = "") {
   const preset = getDocumentationNativeReportPreset(serviceCode);
-  return preset.tables.flatMap((table) => (
-    table.columns
+  return (Array.isArray(preset.tables) ? preset.tables : []).flatMap((table) => {
+    const columns = Array.isArray(table?.columns) ? table.columns : [];
+    if (!columns.length) {
+      return [];
+    }
+    return columns
       .map((column, columnIndex) => {
         const aiMapping = getDocumentationColumnAiMapping(table.id, column.id)
           || getGenericDocumentationColumnAiMapping(table.id, column);
@@ -5298,16 +5302,19 @@ export function createDocumentationNativeAiMeasurementColumnsForService(serviceC
           aiMapping: { ...aiMapping },
         };
       })
-      .filter(Boolean)
-  ));
+      .filter(Boolean);
+  });
 }
 
 export function createDocumentationGridlineRowsForService(serviceCode = "") {
-  const table = getDocumentationNativeReportPreset(serviceCode).tables[0];
-  const columns = table.columns;
+  const table = (getDocumentationNativeReportPreset(serviceCode).tables || [])[0] || {};
+  const columns = Array.isArray(table.columns) ? table.columns : [];
+  if (!columns.length) {
+    return [];
+  }
   const header = columns.map((column) => column.label);
   const units = columns.map((column) => column.placeholder || "");
-  const rows = table.rows.map((row) => columns.map((column) => row.cells?.[column.id] || ""));
+  const rows = (Array.isArray(table.rows) ? table.rows : []).map((row) => columns.map((column) => row.cells?.[column.id] || ""));
   return [header, units, ...rows];
 }
 
