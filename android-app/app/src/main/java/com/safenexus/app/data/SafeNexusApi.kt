@@ -1631,21 +1631,54 @@ class SafeNexusApi(
         workOrderId: String,
         workOrderNumber: String,
         template: WorkOrderDocumentationTemplate,
+        voiceField: WorkOrderDocumentationField? = null,
         transcript: String,
         modelTier: String = "fast",
     ): Result<SprVoiceAiResult> = withContext(Dispatchers.IO) {
         runCatching {
+            val voiceFieldText = listOfNotNull(
+                voiceField?.id,
+                voiceField?.key,
+                voiceField?.tokenKey,
+                voiceField?.label,
+                voiceField?.helpText,
+            )
+                .joinToString(" ")
+                .lowercase()
+            val isEizZudsVoice = voiceFieldText.let { text ->
+                text.contains("zuds") ||
+                    text.contains("fid") ||
+                    text.contains("rcd") ||
+                    text.contains("pid") ||
+                    text.contains("diferenc")
+            }
+            val isEizIpkVoice = !isEizZudsVoice && voiceFieldText.let { text ->
+                text.contains("ipk") ||
+                    text.contains("impedanc") ||
+                    text.contains("petlje") ||
+                    text.contains("utic") ||
+                    text.contains("utič")
+            }
             val table = if (template.serviceCode.equals("EIZ", ignoreCase = true)) {
                 template.measurementTables.firstOrNull { table ->
                     listOf(table.id, table.key, table.tokenKey, table.label, table.summary, table.sourceSheet)
                         .joinToString(" ")
                         .lowercase()
                         .let { text ->
-                            text.contains("eiz-ipk") ||
-                                text.contains("eiz.ipk") ||
-                                text.contains("eiz1.4") ||
-                                text.contains("impedanc") ||
-                                text.contains("petlje kvara")
+                            if (isEizZudsVoice) {
+                                text.contains("zuds") ||
+                                    text.contains("diferenc") ||
+                                    text.contains("fid") ||
+                                    text.contains("rcd") ||
+                                    text.contains("eiz1.2")
+                            } else {
+                                text.contains("eiz-ipk") ||
+                                    text.contains("eiz.ipk") ||
+                                    text.contains("eiz1.4") ||
+                                    text.contains("impedanc") ||
+                                    text.contains("petlje kvara") ||
+                                    (isEizIpkVoice && text.contains("ipk"))
+                            }
                         }
                 }
             } else {
@@ -1658,6 +1691,10 @@ class SafeNexusApi(
                 .put("templateId", template.id)
                 .put("templateTitle", template.title)
                 .put("serviceCode", template.serviceCode)
+                .put("voiceFieldId", voiceField?.id.orEmpty())
+                .put("voiceFieldKey", voiceField?.key.orEmpty())
+                .put("voiceFieldTokenKey", voiceField?.tokenKey.orEmpty())
+                .put("voiceFieldLabel", voiceField?.label.orEmpty())
                 .put("transcript", transcript.trim())
                 .put("modelTier", modelTier.ifBlank { "fast" })
                 .put(
@@ -3863,13 +3900,17 @@ private fun JSONArray?.toSprVoiceAiRows(): List<SprVoiceAiRow> {
     return buildList {
         for (index in 0 until length()) {
             val item = optJSONObject(index) ?: continue
-            val place = item.firstClean("place", "mjesto", "location", "room", "name")
-            val lampCount = item.firstClean("lampCount", "brojLampi", "count", "value", "quantity")
+            val board = item.firstClean("board", "razdjelnik", "razdjelnikOrmar", "ormar", "panel")
+            val circuit = item.firstClean("circuit", "strujniKrug", "oznakaStrujnogKruga", "oznaka", "krug")
+            val rcdRating = item.firstClean("rcdRating", "rating", "inIdn", "in_idn", "karakteristika", "pid")
+            val place = item.firstClean("place", "mjesto", "location", "room", "name").ifBlank { board }
+            val lampCount = item.firstClean("lampCount", "brojLampi", "count", "value", "quantity").ifBlank { circuit }
             val kind = item.firstClean("kind", "type", "rowType")
             val isSection = kind.equals("section", ignoreCase = true) ||
                 kind.equals("floor", ignoreCase = true) ||
                 item.optBoolean("isSection", false)
-            if (place.isBlank() || (!isSection && lampCount.isBlank())) continue
+            val isZudsRow = board.isNotBlank() || circuit.isNotBlank() || rcdRating.isNotBlank()
+            if (place.isBlank() || (!isSection && !isZudsRow && lampCount.isBlank())) continue
             add(
                 SprVoiceAiRow(
                     place = place,
@@ -3879,6 +3920,9 @@ private fun JSONArray?.toSprVoiceAiRows(): List<SprVoiceAiRow> {
                     zLpe = item.firstClean("zLpe", "zlpe", "zlp", "ZL-PE", "Z(L-PE)"),
                     zLn = item.firstClean("zLn", "zln", "ZL-N", "Z(L-N)"),
                     zLl = item.firstClean("zLl", "zll", "ZL-L", "Z(L-L)"),
+                    board = board,
+                    circuit = circuit,
+                    rcdRating = rcdRating,
                 ),
             )
         }

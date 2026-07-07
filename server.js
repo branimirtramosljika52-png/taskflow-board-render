@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.341.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.342.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -27467,8 +27467,10 @@ const MOBILE_EIZ_ZUDS_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
   "eizZudsVoiceTranscript",
   "EIZ_ZUDS_VOICE_TRANSCRIPT",
   "Diktat ZUDS",
+  "Diktat PID",
   "Diktat FID",
   "Diktat RCD",
+  "Glasovni unos EIZ PID",
   "Glasovni unos EIZ ZUDS",
 ]);
 
@@ -28217,6 +28219,7 @@ function normalizeMobileEizElectricalLabel(value = "") {
 function normalizeMobileEizZudsRating(value = "", idnValue = "") {
   const raw = normalizeInputValue(value)
     .replace(/\\/g, "/")
+    .replace(/\b(?:kroz|slash|kosa\s+crta|crta)\b/giu, "/")
     .replace(/\s+/g, " ")
     .trim();
   const match = raw.match(/(\d{1,3})\s*(?:a)?\s*\/\s*(\d{1,4})\s*(?:m\s*a|ma)?/i);
@@ -28229,14 +28232,21 @@ function normalizeMobileEizZudsRating(value = "", idnValue = "") {
 }
 
 function parseMobileEizZudsVoiceRows(transcript = "") {
-  const source = normalizeInputValue(transcript);
+  const source = normalizeInputValue(transcript)
+    .replace(/\\/g, "/")
+    .replace(/\b(?:kroz|slash|kosa\s+crta|crta)\b/giu, "/")
+    .replace(/\s*\/\s*/g, "/");
   if (!source) {
     return [];
   }
   const rows = [];
   let lastBoard = "";
   const addRow = (prefix = "", rating = "") => {
-    const parts = normalizeInputValue(prefix)
+    const cleanedPrefix = normalizeInputValue(prefix)
+      .replace(/\b(?:razvodni|razdjelnik|razdelnik|ormar|oznaka|strujni|strujnog|krug|kruga|pid|fid|rcd|zuds|sklopka|karakteristika)\b/giu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const parts = cleanedPrefix
       .replace(/\b(?:i onda|pa onda|zatim|onda)\b/giu, " ")
       .split(/[,;]+/g)
       .map((part) => normalizeInputValue(part))
@@ -28247,7 +28257,7 @@ function parseMobileEizZudsVoiceRows(transcript = "") {
       board = parts.slice(0, -1).join(" ");
       circuit = parts[parts.length - 1];
     } else {
-      const tokens = normalizeInputValue(prefix)
+      const tokens = cleanedPrefix
         .replace(/[,;]+/g, " ")
         .split(/\s+/g)
         .map((token) => normalizeInputValue(token))
@@ -28636,14 +28646,20 @@ function isMobileEizZudsVoiceRequest(body = {}) {
     table.summary,
     table.sourceSheet,
     body?.templateTitle,
+    body?.voiceFieldId,
+    body?.voiceFieldKey,
+    body?.voiceFieldTokenKey,
+    body?.voiceFieldLabel,
   ].join(" "));
   return serviceCode === "EIZ" && (
     tableText.includes("eiz zuds")
+    || tableText.includes("eiz1 2")
     || tableText.includes("eiz1 3")
     || tableText.includes("zuds")
     || tableText.includes("diferencijal")
     || tableText.includes("rcd")
     || tableText.includes("fid")
+    || tableText.includes("pid")
   );
 }
 
@@ -28658,6 +28674,10 @@ function isMobileEizIpkVoiceRequest(body = {}) {
     table.summary,
     table.sourceSheet,
     body?.templateTitle,
+    body?.voiceFieldId,
+    body?.voiceFieldKey,
+    body?.voiceFieldTokenKey,
+    body?.voiceFieldLabel,
   ].join(" "));
   return serviceCode === "EIZ" && (
     tableText.includes("eiz ipk")

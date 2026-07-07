@@ -867,6 +867,9 @@ data class SprVoiceAiRow(
     val zLpe: String = "",
     val zLn: String = "",
     val zLl: String = "",
+    val board: String = "",
+    val circuit: String = "",
+    val rcdRating: String = "",
 )
 
 data class SprVoiceAiResult(
