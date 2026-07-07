@@ -3007,6 +3007,8 @@ private fun List<WorkOrderDocumentationAiFile>.toDocumentationAiFilesJsonArray()
                     .put("fileType", file.type)
                     .put("size", file.size)
                     .put("fileSize", file.size)
+                    .put("sourceKind", file.sourceKind)
+                    .put("sourceKindLabel", file.sourceKindLabel)
                     .put("dataUrl", file.contentDataUrl)
                     .put("contentDataUrl", file.contentDataUrl),
             )
@@ -3038,6 +3040,8 @@ private fun JSONArray?.toWorkOrderDocumentationAiFiles(): List<WorkOrderDocument
                     type = item.firstClean("type", "fileType").ifBlank { "application/octet-stream" },
                     size = item.firstLong(0L, "size", "fileSize"),
                     contentDataUrl = contentDataUrl,
+                    sourceKind = item.firstClean("sourceKind"),
+                    sourceKindLabel = item.firstClean("sourceKindLabel"),
                 ),
             )
         }

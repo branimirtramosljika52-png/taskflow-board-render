@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.345.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.346.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -7812,18 +7812,22 @@ function isOpenAiStructureOnlySourceKind(value = "") {
   return OPENAI_STRUCTURE_ONLY_SOURCE_KINDS.has(normalizeOpenAiSourceKind(value));
 }
 
-function buildOpenAiSourcePolicy(files = []) {
+function buildOpenAiSourcePolicy(files = [], serviceCode = "") {
+  const normalizedServiceCode = normalizeInputValue(serviceCode).toUpperCase();
   const normalizedFiles = (Array.isArray(files) ? files : [])
     .map((file) => ({
       name: String(file?.name || "").trim(),
+      type: String(file?.type || file?.fileType || "").trim().toLowerCase(),
       sourceKind: normalizeOpenAiSourceKind(file?.sourceKind),
     }))
     .filter((file) => file.name);
-  const filesWithSourceKind = normalizedFiles.filter((file) => file.sourceKind);
+  const isExeiImageStructureSource = (file = {}) => normalizedServiceCode === "EXEI"
+    && file.type.startsWith("image/")
+    && !file.sourceKind;
+  const isStructureFile = (file = {}) => isOpenAiStructureOnlySourceKind(file.sourceKind) || isExeiImageStructureSource(file);
   const structureOnly = normalizedFiles.length > 0
-    && filesWithSourceKind.length === normalizedFiles.length
-    && normalizedFiles.every((file) => isOpenAiStructureOnlySourceKind(file.sourceKind));
-  const hasStructureSource = filesWithSourceKind.some((file) => isOpenAiStructureOnlySourceKind(file.sourceKind));
+    && normalizedFiles.every(isStructureFile);
+  const hasStructureSource = normalizedFiles.some(isStructureFile);
   return {
     structureOnly,
     hasStructureSource,
@@ -7833,8 +7837,11 @@ function buildOpenAiSourcePolicy(files = []) {
       hasStructureSource
         ? "Datoteke oznacene kao project, single_line_diagram ili electrical_cabinet_photo koriste se samo za strukturu instalacije: razdjelnike, oznake krugova, FID/FI/ZUDS/RCD/RCBO/KZS uredaje, nazivnu struju In i diferencijalnu struju I delta n. Iz tih izvora ne popunjavaj stvarne mjerne rezultate."
         : "",
+      normalizedServiceCode === "EXEI" && normalizedFiles.some(isExeiImageStructureSource)
+        ? "EXEI slike bez oznake vrste izvora tretiraj kao jednopolnu shemu/sliku Ex elektro dokumentacije. Ne vracaj fieldSuggestions za osnovna ili tehnicka polja; vrati samo EXEI measurementSuggestions za Gridline tablice."
+        : "",
       structureOnly
-        ? "Svi uploadani izvori su strukturni izvori. Ne vracaj zakljucak, nedostatke, preporuke ni stvarne mjerne rezultate poput Iisk, tisk, U0, Z(L-PE), Izem, Z(L-N), Z(L-L), kontinuitet, izmjereni otpor ili ZADOVOLJAVA. Kod EIZ.OI smijes vratiti '-' u fazno-faznim Riso kolonama samo kada je iz sheme jasno da je krug jednopolni/jednofazni; numericke Riso vrijednosti popunjava korisnik, stari EIZ zapisnik ili formule."
+        ? "Svi uploadani izvori su strukturni izvori. Ne vracaj fieldSuggestions za obicna/osnovna/tehnicka polja, zakljucak, nedostatke, preporuke ni stvarne mjerne rezultate poput Iisk, tisk, U0, Z(L-PE), Izem, Z(L-N), Z(L-L), kontinuitet, izmjereni otpor ili ZADOVOLJAVA. Kod EIZ.OI smijes vratiti '-' u fazno-faznim Riso kolonama samo kada je iz sheme jasno da je krug jednopolni/jednofazni; numericke Riso vrijednosti popunjava korisnik, stari EIZ zapisnik ili formule."
         : "",
     ].filter(Boolean),
   };
@@ -8080,9 +8087,10 @@ function buildOpenAiLiveContextPayload(body = {}, user = null, selectedModel = "
   const files = Array.isArray(body.files) ? body.files : [];
   const fields = Array.isArray(body.fields) ? body.fields : [];
   const columns = Array.isArray(body.columns) ? body.columns : [];
-  const sourcePolicy = buildOpenAiSourcePolicy(files);
+  const serviceCode = getOpenAiDocumentationServiceCode(body);
+  const sourcePolicy = buildOpenAiSourcePolicy(files, serviceCode);
   const promptFields = sourcePolicy.structureOnly
-    ? fields.filter((field) => !isOpenAiStructureOnlyField(field))
+    ? []
     : fields;
   const promptColumns = sourcePolicy.structureOnly
     ? columns.filter((column) => !isOpenAiStructureOnlyMeasurementColumn(column))
@@ -8128,7 +8136,7 @@ function buildOpenAiLiveContextPayload(body = {}, user = null, selectedModel = "
       aiMapping: column?.aiMapping ?? {},
     })),
     expectedJsonShape: customExpectedJsonShape || {
-      fieldSuggestions: [
+      fieldSuggestions: sourcePolicy.structureOnly ? [] : [
         {
           fieldId: "id polja iz fields",
           fieldKey: "key polja",
@@ -8392,6 +8400,16 @@ function sanitizeOpenAiExeiMeasurementSuggestionKeys(result = null, body = {}) {
   return {
     ...result,
     measurementSuggestions,
+  };
+}
+
+function sanitizeOpenAiSourcePolicySuggestions(result = null, sourcePolicy = {}) {
+  if (!result || typeof result !== "object" || !sourcePolicy?.structureOnly) {
+    return result;
+  }
+  return {
+    ...result,
+    fieldSuggestions: [],
   };
 }
 
@@ -10267,7 +10285,10 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
   const modelTier = normalizeOpenAiModelTier(body.modelTier || body.modelPreference?.tier);
   const modelTierOption = getOpenAiModelTierOption(modelTier);
   const selectedModel = normalizeOpenAiModelSlug(body.model || body.modelPreference?.model || getOpenAiModelForTier(modelTier, config));
-  const sourcePolicy = buildOpenAiSourcePolicy(Array.isArray(body.files) ? body.files : []);
+  const sourcePolicy = buildOpenAiSourcePolicy(
+    Array.isArray(body.files) ? body.files : [],
+    getOpenAiDocumentationServiceCode(body),
+  );
   if (!selectedModel) {
     const error = new Error("OpenAI model nije konfiguriran.");
     error.statusCode = 503;
@@ -10331,7 +10352,10 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
   const outputText = extractOpenAiResponseText(payload);
   const parsedResult = parseOpenAiJsonObject(outputText);
   const augmentedResult = augmentOpenAiDocumentMeasurementSuggestions(parsedResult, body, outputText);
-  const sanitizedResult = sanitizeOpenAiExeiMeasurementSuggestionKeys(augmentedResult, body);
+  const sanitizedResult = sanitizeOpenAiSourcePolicySuggestions(
+    sanitizeOpenAiExeiMeasurementSuggestionKeys(augmentedResult, body),
+    sourcePolicy,
+  );
   const result = parsedResult || hasOpenAiMeasurementSuggestionRows(sanitizedResult)
     ? sanitizedResult
     : null;

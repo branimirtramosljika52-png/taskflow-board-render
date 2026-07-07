@@ -1097,6 +1097,8 @@ data class WorkOrderDocumentationAiFile(
     val type: String,
     val size: Long,
     val contentDataUrl: String,
+    val sourceKind: String = "",
+    val sourceKindLabel: String = "",
 )
 
 data class WorkOrderDocumentationAiResult(

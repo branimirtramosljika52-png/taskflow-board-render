@@ -29265,7 +29265,9 @@ private fun WorkOrderDocumentationWizardDialog(
             measurementSheets = measurementSheets,
         )
     }
-    var aiFiles by remember(workOrder.id, selectedObjectId) { mutableStateOf(emptyList<WorkOrderDocumentationAiFile>()) }
+    var aiFilesByTemplate by remember(workOrder.id, selectedObjectId) {
+        mutableStateOf(emptyMap<String, List<WorkOrderDocumentationAiFile>>())
+    }
     var aiLoading by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
     var aiMessage by remember(workOrder.id, selectedObjectId) { mutableStateOf("") }
     var aiModelTier by remember(workOrder.id, selectedObjectId) { mutableStateOf("standard") }
@@ -29285,6 +29287,11 @@ private fun WorkOrderDocumentationWizardDialog(
     val selectedAiTemplate = remember(aiCapableTemplates, selectedAiTemplateId) {
         aiCapableTemplates.firstOrNull { it.id == selectedAiTemplateId } ?: aiCapableTemplates.firstOrNull()
     }
+    val aiTemplateKey = selectedAiTemplate?.id.orEmpty().ifBlank { selectedAiTemplateId.ifBlank { "default" } }
+    val aiFiles = aiFilesByTemplate[aiTemplateKey].orEmpty()
+    fun setAiFilesForSelectedTemplate(nextFiles: List<WorkOrderDocumentationAiFile>) {
+        aiFilesByTemplate = aiFilesByTemplate + (aiTemplateKey to nextFiles)
+    }
     var aiUploadSourceDialogOpen by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
     fun addAiFiles(
         uris: List<Uri>,
@@ -29295,6 +29302,7 @@ private fun WorkOrderDocumentationWizardDialog(
         coroutineScope.launch {
             aiLoading = true
             aiMessage = ""
+            val (sourceKind, sourceKindLabel) = documentationAiSourceKindForTemplate(selectedAiTemplate, mode)
             runCatching {
                 withContext(Dispatchers.IO) {
                     buildWorkOrderDocumentationAiFiles(
@@ -29302,6 +29310,8 @@ private fun WorkOrderDocumentationWizardDialog(
                         uris = uris,
                         existingCount = aiFiles.size,
                         mode = mode,
+                        sourceKind = sourceKind,
+                        sourceKindLabel = sourceKindLabel,
                     )
                 }
             }
@@ -29309,11 +29319,11 @@ private fun WorkOrderDocumentationWizardDialog(
                     val nextFiles = (aiFiles + files)
                         .distinctBy { it.id }
                         .take(WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILES)
-                    aiFiles = nextFiles
+                    setAiFilesForSelectedTemplate(nextFiles)
                     aiMessage = if (nextFiles.isEmpty()) {
                         "Nije dodana nijedna datoteka."
                     } else {
-                        "${files.size} $successLabel dodano. Ukupno ${nextFiles.size} spremno za NexAI."
+                        "${files.size} $successLabel dodano za ${selectedAiTemplate?.serviceCode.orEmpty().ifBlank { "odabrani zapisnik" }}. Ukupno ${nextFiles.size} spremno za NexAI."
                     }
                 }
                 .onFailure { error ->
@@ -30452,7 +30462,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         onPickFiles = { aiUploadSourceDialogOpen = true },
                         onRemoveFile = { fileId ->
                             val nextFiles = aiFiles.filterNot { it.id == fileId }
-                            aiFiles = nextFiles
+                            setAiFilesForSelectedTemplate(nextFiles)
                             aiMessage = if (nextFiles.isEmpty()) "" else "${nextFiles.size} datoteka spremno za NexAI."
                         },
                         onRun = {
@@ -41876,11 +41886,25 @@ private suspend fun buildVehicleUsageAttachmentUploadFiles(
     }
 }
 
+private fun documentationAiSourceKindForTemplate(
+    template: WorkOrderDocumentationTemplate?,
+    mode: WorkOrderDocumentInputMode,
+): Pair<String, String> {
+    val serviceCode = template?.serviceCode.orEmpty().trim().uppercase(Locale.getDefault())
+    return if (serviceCode == "EXEI" && mode == WorkOrderDocumentInputMode.Photos) {
+        "single_line_diagram" to "Jednopolna shema"
+    } else {
+        "previous_report" to "Stari zapisnik"
+    }
+}
+
 private suspend fun buildWorkOrderDocumentationAiFiles(
     context: Context,
     uris: List<Uri>,
     existingCount: Int,
     mode: WorkOrderDocumentInputMode = WorkOrderDocumentInputMode.File,
+    sourceKind: String = "",
+    sourceKindLabel: String = "",
 ): List<WorkOrderDocumentationAiFile> = withContext(Dispatchers.IO) {
     val availableSlots = (WORK_ORDER_DOCUMENTATION_AI_MAX_INLINE_FILES - existingCount).coerceAtLeast(0)
     if (availableSlots <= 0) {
@@ -41905,6 +41929,8 @@ private suspend fun buildWorkOrderDocumentationAiFiles(
             type = mimeType,
             size = bytes.size.toLong(),
             contentDataUrl = "data:$mimeType;base64,${Base64.getEncoder().encodeToString(bytes)}",
+            sourceKind = sourceKind,
+            sourceKindLabel = sourceKindLabel,
         )
     }
 }
