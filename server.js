@@ -7959,6 +7959,9 @@ function buildOpenAiDocumentationServiceInstructions(body = {}) {
       "U shemi i slikama ormara trazi samo Ex relevantne krugove i opremu: agregat, generator, crpka/pumpa, procesor agregata, rasvjeta agregata, UMP, motor, kompresor, istakaliste, pretakaliste, spremnik, Ex zona i slicne tehnoloske cjeline. Ne popunjavaj cijeli EIZ dio niti opce uredske/prodajne krugove ako nisu vezani na Ex prostor.",
       "Ako pomocna shema/slika potvrdi redoslijed, vrati redove u istom redoslijedu kao shema ili stari EXEI zapisnik. Ne dupliraj isti krug/opremu ako se pojavljuje na vise slika; spoji podatke u jedan redak kada imaju isti razdjelnik/oznaku kruga ili isti motor/opremu.",
       "Ako u EXEI uploadu vidis jednopolnu shemu, GRO/RO razdjelnik ili Ex relevantne agregate/krugove, obavezno vrati measurementSuggestions za dostupne EXEI Gridline tablice. Sazetak bez redaka nije dovoljan.",
+      "Za svaku EXEI jednopolnu shemu procitaj OCR-om bas sitne oznake uz svaku relevantnu vertikalu: oznaku osiguraca ili zastitnog uredjaja (npr. F15, QF1, Q1.3.5), karakteristiku/nazivnu struju (npr. B10A, C16/3, 20A/3, 10kA), oznaku prikljucka/kruga (npr. 2X-UPS/5, X2:05), oznaku voda/kabela (npr. W-2-1, NYY 4x2,5 mm2) i naziv potrosaca u donjem bloku (npr. MJERNI UREDAJ 3/4 (A2) 0359).",
+      "U EXEI.IPK kolonu oznake kruga upisi kombinaciju procitanog broja kruga/voda i potrosaca, a u kolonu tip/karakteristika upisi procitani osigurac zajedno s karakteristikom, npr. 'F15 C16/3'. Ako osigurac ili broj kruga nije citljiv, ne izmisljaj ga; vrati samo citljive dijelove i dodaj warning.",
+      "U EXEI.OI koristi istu procitanu oznaku kruga/opreme kao IPK. U EXEI.ZUDS vrati red samo ako je stvarno vidljiv FID/RCD/ZUDS/RCBO/KZS uredjaj s In/Idn. U EXEI.Motori/oprema vrati vidljivi naziv/tvornicki broj agregata ili motora.",
       "Za EXEI.ZUDS/FID/RCD nazivnu vrijednost zastitnog uredjaja vrati kao In/Idn, npr. 40/30, gdje je dio prije / nazivna struja u A, a dio nakon / diferencijalna struja u mA. Ne vracaj Iisk, tisk, U0, Z, Riso, Rizm ni DA/NE mjernu ocjenu.",
       "Za EXEI.OI i EXEI.IPK vrati samo oznaku kruga i eventualno tip zastitnog uredjaja/1x/3x ako je to jasno iz sheme. Ne popunjavaj Riso, Z(L-PE), Z(L-N), Z(L-L), kontinuitet, izmjereni otpor ni zakljucak mjerenja.",
     );
@@ -8185,6 +8188,7 @@ function buildOpenAiResponseInputContent(body = {}, user = null, selectedModel =
       content.push({
         type: "input_image",
         image_url: file.contentDataUrl,
+        detail: "high",
       });
       return;
     }
@@ -8914,9 +8918,31 @@ function extractOpenAiExeiWireLabel(segment = "") {
   return match ? cleanOpenAiExeiTextValue(match[0]).replace(/\s+/g, "").toUpperCase() : "";
 }
 
+function extractOpenAiExeiCircuitReference(segment = "") {
+  const text = String(segment || "");
+  const patterns = [
+    /\b\d+[A-Z]\s*-\s*[A-Z0-9]+(?:\s*-\s*[A-Z0-9]+)?\s*\/\s*\d+[A-Z]?\b/iu,
+    /\bX\d+\s*[:.-]?\s*\d{1,4}\b/iu,
+    /\b(?:K|F|QF|Q)\s*\d+[A-Z]?(?:[./-]\d+)?\b/iu,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      return cleanOpenAiExeiTextValue(match[0]).replace(/\s*([:./-])\s*/g, "$1").toUpperCase();
+    }
+  }
+  return "";
+}
+
 function extractOpenAiExeiCableLabel(segment = "") {
   const match = String(segment || "").match(/\b(?:NYY|N2XH|PP00\s*-\s*Y|PP\s*-\s*Y|PPY|H07RN)\s*[-A-Z0-9]*\s*\d+\s*x\s*\d+(?:[,.]\d+)?\s*(?:mm2|mm\^2|mm\u00b2)?\b/iu);
   return match ? cleanOpenAiExeiTextValue(match[0]).replace(/\s*x\s*/i, "x") : "";
+}
+
+function extractOpenAiExeiProtectionReference(segment = "") {
+  const text = String(segment || "");
+  const match = text.match(/\b(?:QF|F|Q|K)\s*\d+[A-Z]?(?:[./-]\d+)?\b/iu);
+  return match ? cleanOpenAiExeiTextValue(match[0]).replace(/\s+/g, "").toUpperCase() : "";
 }
 
 function extractOpenAiExeiProtectionType(segment = "") {
@@ -8954,6 +8980,13 @@ function inferOpenAiExeiPhaseCount(segment = "") {
     return "1x";
   }
   return "";
+}
+
+function mergeOpenAiExeiProtectionLabel(reference = "", type = "") {
+  const parts = [reference, type]
+    .map(cleanOpenAiExeiTextValue)
+    .filter(Boolean);
+  return Array.from(new Set(parts.map((part) => part.toUpperCase()))).join(" ");
 }
 
 function isOpenAiExeiRelevantLabel(label = "", segment = "") {
@@ -9003,6 +9036,9 @@ function extractOpenAiExeiContextSegment(source = "", index = 0) {
 function buildOpenAiExeiCircuitName(entry = {}) {
   const parts = [];
   const labelLookup = normalizeOpenAiPolicyKey(entry.label);
+  if (entry.circuitReference && !labelLookup.includes(normalizeOpenAiPolicyKey(entry.circuitReference))) {
+    parts.push(entry.circuitReference);
+  }
   if (entry.wire && !labelLookup.includes(normalizeOpenAiPolicyKey(entry.wire))) {
     parts.push(entry.wire);
   }
@@ -9013,6 +9049,16 @@ function buildOpenAiExeiCircuitName(entry = {}) {
     parts.push(entry.cable);
   }
   return cleanOpenAiExeiCircuitLabel(parts.join(" - "));
+}
+
+function hasOpenAiExeiCircuitEvidence(entry = {}) {
+  return Boolean(
+    entry?.circuitReference
+    || entry?.wire
+    || entry?.cable
+    || entry?.protectionReference
+    || entry?.protectionType
+  );
 }
 
 function extractOpenAiExeiEntriesFromText(searchText = "") {
@@ -9028,9 +9074,11 @@ function extractOpenAiExeiEntriesFromText(searchText = "") {
     if (!label || label.length < 3 || !isOpenAiExeiRelevantLabel(label, segment)) {
       return;
     }
+    const circuitReference = extractOpenAiExeiCircuitReference(segment);
     const wire = extractOpenAiExeiWireLabel(segment);
     const cable = extractOpenAiExeiCableLabel(segment);
-    const protectionType = extractOpenAiExeiProtectionType(segment);
+    const protectionReference = extractOpenAiExeiProtectionReference(segment);
+    const protectionType = mergeOpenAiExeiProtectionLabel(protectionReference, extractOpenAiExeiProtectionType(segment));
     const rcd = extractOpenAiExeiRcdRating(segment);
     const phaseCount = inferOpenAiExeiPhaseCount(`${segment} ${cable} ${protectionType}`);
     const key = normalizeOpenAiPolicyKey(`${board} ${wire} ${label}`);
@@ -9041,8 +9089,10 @@ function extractOpenAiExeiEntriesFromText(searchText = "") {
     entries.push({
       label,
       board,
+      circuitReference,
       wire,
       cable,
+      protectionReference,
       circuit: "",
       protectionType,
       phaseCount,
@@ -9091,10 +9141,16 @@ function buildOpenAiExeiRowsForTarget(target = {}, entries = [], targetKind = ""
     .map((entry) => {
       const values = {};
       if (normalizedKind === "ipk") {
+        if (!hasOpenAiExeiCircuitEvidence(entry)) {
+          return null;
+        }
         if (target.circuitColumn) values[target.circuitColumn.columnId || target.circuitColumn.key] = entry.circuit || entry.label;
         if (target.phaseColumn && entry.phaseCount) values[target.phaseColumn.columnId || target.phaseColumn.key] = entry.phaseCount;
         if (target.protectionColumn && entry.protectionType) values[target.protectionColumn.columnId || target.protectionColumn.key] = entry.protectionType;
       } else if (normalizedKind === "oi") {
+        if (!hasOpenAiExeiCircuitEvidence(entry)) {
+          return null;
+        }
         if (target.circuitColumn) values[target.circuitColumn.columnId || target.circuitColumn.key] = entry.circuit || entry.label;
       } else if (normalizedKind === "zuds") {
         if (!entry.inCurrent && !entry.idn) {
