@@ -7788,9 +7788,6 @@ const OPENAI_STRUCTURE_ONLY_MEASUREMENT_COLUMN_KEYS = new Set([
   "z_l_n",
   "zll",
   "z_l_l",
-  "l123",
-  "l123n",
-  "l123pe",
   "npe",
   "rd",
   "testcurrent",
@@ -7837,7 +7834,7 @@ function buildOpenAiSourcePolicy(files = []) {
         ? "Datoteke oznacene kao project, single_line_diagram ili electrical_cabinet_photo koriste se samo za strukturu instalacije: razdjelnike, oznake krugova, FID/FI/ZUDS/RCD/RCBO/KZS uredaje, nazivnu struju In i diferencijalnu struju I delta n. Iz tih izvora ne popunjavaj stvarne mjerne rezultate."
         : "",
       structureOnly
-        ? "Svi uploadani izvori su strukturni izvori. Ne vracaj zakljucak, nedostatke, preporuke ni mjerne rezultate poput Iisk, tisk, U0, Z(L-PE), Izem, Z(L-N), Z(L-L), Riso, kontinuitet, izmjereni otpor ili ZADOVOLJAVA. Te vrijednosti popunjava korisnik ili formule u Gridline tablici."
+        ? "Svi uploadani izvori su strukturni izvori. Ne vracaj zakljucak, nedostatke, preporuke ni stvarne mjerne rezultate poput Iisk, tisk, U0, Z(L-PE), Izem, Z(L-N), Z(L-L), kontinuitet, izmjereni otpor ili ZADOVOLJAVA. Kod EIZ.OI smijes vratiti '-' u fazno-faznim Riso kolonama samo kada je iz sheme jasno da je krug jednopolni/jednofazni; numericke Riso vrijednosti popunjava korisnik, stari EIZ zapisnik ili formule."
         : "",
     ].filter(Boolean),
   };
@@ -7859,6 +7856,93 @@ function isOpenAiStructureOnlyMeasurementColumn(column = {}) {
     column?.aiMapping?.key,
     column?.aiMapping?.label,
   ].some((value) => OPENAI_STRUCTURE_ONLY_MEASUREMENT_COLUMN_KEYS.has(normalizeOpenAiPolicyKey(value)));
+}
+
+function getOpenAiDocumentationServiceCode(body = {}) {
+  const inferFromLookup = (lookup = "") => {
+    if (!lookup) return "";
+    if (lookup.includes("tzin") || lookup.includes("tipkal") || lookup.includes("isklop")) return "TZIN";
+    if (lookup.includes("szomv") || (lookup.includes("vizual") && lookup.includes("munj"))) return "SZOMV";
+    if (lookup.includes("szom") || lookup.includes("zastitaodmunje") || lookup.includes("djelovanjamunje")) return "SZOM";
+    if (lookup.includes("eiz") || lookup.includes("elektricn")) return "EIZ";
+    if (lookup.includes("spr") || lookup.includes("sigurnosnarasvjet") || lookup.includes("protupanic") || lookup.includes("panikrasvjet")) return "SPR";
+    return "";
+  };
+  const directParts = [
+    body?.serviceCode,
+    body?.templateServiceCode,
+    body?.context?.serviceCode,
+    body?.context?.templateServiceCode,
+    body?.context?.template?.serviceCode,
+    body?.context?.document?.serviceCode,
+    body?.settings?.serviceCode,
+  ];
+  for (const part of directParts) {
+    const directCode = inferFromLookup(normalizeOpenAiPolicyKey(part));
+    if (directCode) return directCode;
+  }
+  const rawParts = [
+    body?.serviceCode,
+    body?.serviceName,
+    body?.templateServiceCode,
+    body?.context?.serviceCode,
+    body?.context?.serviceName,
+    body?.context?.templateServiceCode,
+    body?.templateTitle,
+    body?.context?.templateTitle,
+    body?.context?.template?.serviceCode,
+    body?.context?.template?.serviceName,
+    body?.context?.template?.title,
+    body?.context?.document?.templateCode,
+    body?.context?.document?.serviceCode,
+    body?.context?.document?.serviceName,
+    body?.settings?.serviceCode,
+    body?.settings?.serviceName,
+  ];
+  const appendPromptEntries = (entries = []) => {
+    (Array.isArray(entries) ? entries : []).forEach((entry) => {
+      rawParts.push(
+        entry?.fieldId,
+        entry?.fieldKey,
+        entry?.fieldLabel,
+        entry?.fieldDescription,
+        entry?.key,
+        entry?.label,
+        entry?.title,
+        entry?.serviceCode,
+        entry?.serviceName,
+      );
+    });
+  };
+  appendPromptEntries(body?.fields);
+  appendPromptEntries(body?.columns);
+  const raw = rawParts.map((value) => String(value || "")).join(" ");
+  const lookup = normalizeOpenAiPolicyKey(raw);
+  return inferFromLookup(lookup);
+}
+
+function buildOpenAiDocumentationServiceInstructions(body = {}) {
+  const serviceCode = getOpenAiDocumentationServiceCode(body);
+  const base = serviceCode
+    ? [`Trenutni zapisnik je ${serviceCode}. Koristi podatke samo za tu istu uslugu; ako upload sadrzi druge zapisnike, ne prepisuj njihove tablice u ovaj zapisnik.`]
+    : ["Ako mozes prepoznati sifru usluge iz templatea ili konteksta, koristi samo podatke iste usluge i ne mijesaj tablice iz drugih zapisnika."];
+  if (serviceCode === "SPR") {
+    base.push("Za SPR iz starog zapisnika trazi tablicu sigurnosne/protupanicne rasvjete i obavezno vrati measurementSuggestions s mjernim mjestom, brojem lampi, Ei, Eimin i ocjenom kada su vidljivi.");
+  }
+  if (serviceCode === "TZIN") {
+    base.push("Za TZIN iz starog zapisnika trazi samo tipkala za isklop elektricne energije u slucaju nuzde; vrati mjerna mjesta, broj tipkala, tip tipkala i ocjenu. Ne koristi SPR lux retke ni EIZ mjerenja.");
+  }
+  if (serviceCode === "SZOM") {
+    base.push("Za SZOM iz starog zapisnika trazi mjerna mjesta sustava zastite od munje. Povezanost metalnih masa popuni samo ako izvor izricito spominje metalne mase, povezanost masa ili izjednacavanje potencijala.");
+  }
+  if (serviceCode === "EIZ") {
+    base.push(
+      "Za EIZ vrijede elektricarska pravila: stari EIZ zapisnik smije popuniti stvarne mjerne vrijednosti, a jednopolna shema/projekt/slika ormara smije popuniti samo strukturu instalacije: razdjelnik, oznaku strujnog kruga, zastitni uredaj, In/Idn, tip 1P/3P i vrstu kabela/vodica.",
+      "Za EIZ.ZUDS/PID/FID/RCD jednu sklopku vrati kao jednu vrijednost In/Idn, npr. 40/30. Dio prije / je nazivna struja u A, dio nakon / je diferencijalna struja u mA. Ne dupliraj isti uredaj u vise redaka.",
+      "Za EIZ.OI iz jednopolne sheme prepoznaj je li krug jednopolni/jednofazni ili tropolni/trofazni. Kod jednopolnog kruga fazno-fazne Riso kolone mogu biti '-' samo kao oznaka neprimjenjivosti; numericke Riso vrijednosti prepisuj samo iz starog EIZ/OI zapisnika ili stvarnog mjerenja.",
+    );
+  }
+  return base;
 }
 
 function buildOpenAiFieldForPrompt(field = {}, index = 0) {
@@ -7988,6 +8072,7 @@ function buildOpenAiLiveContextPayload(body = {}, user = null, selectedModel = "
       "Vrati iskljucivo JSON koji aplikacija moze parsirati. Ne izmisljaj vrijednosti ako nisu vidljive u izvoru. Ako je expectedJsonShape posebno zadan za purpose, postuj taj oblik. Za Excel tablice koristi tocne fieldId i columnId vrijednosti iz measurementColumns. measurementColumns sadrzi samo kolone koje AI smije popuniti.",
       "Ako u starom SPR zapisniku vidis panik/sigurnosnu rasvjetu, u starom TZIN zapisniku tipkala ili u starom SZOM zapisniku mjerna mjesta sustava zastite od munje, obavezno vrati measurementSuggestions za odgovarajucu Gridline tablicu; sazetak bez redaka nije dovoljan.",
       "Za SZOM ne popunjavaj kolonu Elektricna povezanost metalnih masa osim ako izvor izricito spominje metalne mase/povezanost masa/izjednacavanje potencijala.",
+      ...buildOpenAiDocumentationServiceInstructions(body),
       ...sourcePolicy.instructions,
     ].filter(Boolean).join(" "),
     purpose: String(body.purpose || "document-template-runtime-ai-prefill").slice(0, 120),
@@ -9035,6 +9120,14 @@ function buildOpenAiSzomParserMeasurementRows(target = {}, parsedRows = [], sour
     .filter((row) => Object.keys(row.values).length > 0);
 }
 
+function getOpenAiParserProfilesForService(serviceCode = "") {
+  const normalized = normalizeInputValue(serviceCode).toUpperCase();
+  if (normalized === "SPR") return ["SPR"];
+  if (normalized === "TZIN") return ["TZIN"];
+  if (normalized === "SZOM") return ["SZOM"];
+  return ["SPR", "TZIN", "SZOM"];
+}
+
 async function buildOpenAiParserPlan(body = {}, user = null) {
   const columns = Array.isArray(body.columns) ? body.columns : [];
   const files = (Array.isArray(body.files) ? body.files : []).filter(isOpenAiPdfFile);
@@ -9066,21 +9159,43 @@ async function buildOpenAiParserPlan(body = {}, user = null) {
 
   const searchText = parsedByFile.map((item) => item.searchText).join("\n");
   const sourceFile = parsedByFile.map((item) => item.fileName).filter(Boolean).join(", ").slice(0, 240);
-  let target = getOpenAiSprMeasurementTarget(columns, searchText);
-  let profile = "SPR";
-  let parsedRows = target ? parsedByFile.flatMap((item) => item.sprRows) : [];
-  let rows = target ? buildOpenAiParserMeasurementRows(target, parsedRows, sourceFile) : [];
-  if (!rows.length) {
-    target = getOpenAiTzinMeasurementTarget(columns, searchText);
-    profile = "TZIN";
-    parsedRows = target ? parsedByFile.flatMap((item) => item.tzinRows) : [];
-    rows = target ? buildOpenAiTzinParserMeasurementRows(target, parsedRows, sourceFile) : [];
-  }
-  if (!rows.length) {
-    target = getOpenAiSzomMeasurementTarget(columns, searchText);
-    profile = "SZOM";
-    parsedRows = target ? parsedByFile.flatMap((item) => item.szomRows) : [];
-    rows = target ? buildOpenAiSzomParserMeasurementRows(target, parsedRows, sourceFile) : [];
+  let target = null;
+  let profile = "";
+  let rows = [];
+  for (const candidateProfile of getOpenAiParserProfilesForService(getOpenAiDocumentationServiceCode(body))) {
+    if (candidateProfile === "SPR") {
+      const candidateTarget = getOpenAiSprMeasurementTarget(columns, searchText);
+      const parsedRows = candidateTarget ? parsedByFile.flatMap((item) => item.sprRows) : [];
+      const candidateRows = candidateTarget ? buildOpenAiParserMeasurementRows(candidateTarget, parsedRows, sourceFile) : [];
+      if (candidateRows.length) {
+        target = candidateTarget;
+        profile = candidateProfile;
+        rows = candidateRows;
+        break;
+      }
+    }
+    if (candidateProfile === "TZIN") {
+      const candidateTarget = getOpenAiTzinMeasurementTarget(columns, searchText);
+      const parsedRows = candidateTarget ? parsedByFile.flatMap((item) => item.tzinRows) : [];
+      const candidateRows = candidateTarget ? buildOpenAiTzinParserMeasurementRows(candidateTarget, parsedRows, sourceFile) : [];
+      if (candidateRows.length) {
+        target = candidateTarget;
+        profile = candidateProfile;
+        rows = candidateRows;
+        break;
+      }
+    }
+    if (candidateProfile === "SZOM") {
+      const candidateTarget = getOpenAiSzomMeasurementTarget(columns, searchText);
+      const parsedRows = candidateTarget ? parsedByFile.flatMap((item) => item.szomRows) : [];
+      const candidateRows = candidateTarget ? buildOpenAiSzomParserMeasurementRows(candidateTarget, parsedRows, sourceFile) : [];
+      if (candidateRows.length) {
+        target = candidateTarget;
+        profile = candidateProfile;
+        rows = candidateRows;
+        break;
+      }
+    }
   }
   if (!rows.length) {
     return null;
@@ -9303,6 +9418,7 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
       "Ako u starom SPR zapisniku vidis tablicu mjernih mjesta sigurnosne/protupanicne rasvjete, obavezno vrati retke u measurementSuggestions; sazetak bez measurementSuggestions nije dovoljan.",
       "Ako u starom TZIN zapisniku vidis tablicu tipkala za isklop, obavezno vrati mjerna mjesta i broj tipkala u measurementSuggestions za TZIN Gridline tablicu.",
       "Ako u starom SZOM zapisniku vidis tablicu mjerenja sustava zastite od munje, obavezno vrati retke u measurementSuggestions. Elektricnu povezanost metalnih masa popuni samo kada izvor izricito navodi povezanost masa/metalne mase.",
+      ...buildOpenAiDocumentationServiceInstructions(body),
       ...sourcePolicy.instructions,
       ...buildOpenAiPurposeInstructions(body),
       "Za hrvatske poslovne dokumente koristi hrvatski jezik i zadrzi strucne nazive.",
@@ -29467,15 +29583,14 @@ function applyMobileEizIpkVoiceRowsToSheet(sheet = null, voiceRows = [], replace
     if (passColumn?.id) row.cells[passColumn.id] = "DA";
   };
   const sectionMerges = [];
-  const firstColumn = normalized.columns[0] || placeColumn;
+  const sectionColumn = placeColumn || normalized.columns[0];
+  const sectionColumnIndex = Math.max(0, normalized.columns.findIndex((column) => column.id === sectionColumn?.id));
   const makeSectionRow = (row, title = "") => {
     const sectionTitle = cleanMobileEizIpkSectionTitle(title) || normalizeInputValue(title);
     clearRow(row);
-    row.cells[firstColumn.id] = sectionTitle;
-    if (placeColumn?.id && placeColumn.id !== firstColumn.id) {
-      row.cells[placeColumn.id] = sectionTitle;
-    }
-    row.formats[firstColumn.id] = {
+    if (!sectionColumn?.id) return;
+    row.cells[sectionColumn.id] = sectionTitle;
+    row.formats[sectionColumn.id] = {
       bold: true,
       fillColor: "#eef7ff",
       align: "left",
@@ -29483,9 +29598,9 @@ function applyMobileEizIpkVoiceRowsToSheet(sheet = null, voiceRows = [], replace
     };
     sectionMerges.push({
       rowId: row.id,
-      columnId: firstColumn.id,
+      columnId: sectionColumn.id,
       rowSpan: 1,
-      colSpan: normalized.columns.length,
+      colSpan: Math.max(1, normalized.columns.length - sectionColumnIndex),
     });
   };
   const existingSectionRows = new Set(
