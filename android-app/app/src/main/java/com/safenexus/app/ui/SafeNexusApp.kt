@@ -29938,18 +29938,21 @@ private fun WorkOrderDocumentationWizardDialog(
             onDismiss = { gridlineParserPreview = null },
             onApply = { replaceExisting ->
                 if (previewTemplate != null) {
+                    val fieldApply = applyDocumentationAiFieldSuggestions(
+                        template = previewTemplate,
+                        result = preview.result,
+                        values = templateFieldValues,
+                    )
                     val sheetApply = applyDocumentationAiMeasurementSuggestions(
                         template = previewTemplate,
                         result = preview.result,
                         sheets = measurementSheets,
                         replaceExisting = replaceExisting,
                     )
+                    templateFieldValues = fieldApply.values
                     measurementSheets = sheetApply.sheets
-                    aiMessage = if (replaceExisting) {
-                        "Zamijenjena Gridline tablica: upisano ${sheetApply.rowCount} redaka iz PDF parsera."
-                    } else {
-                        "Dodano u Gridline tablicu: upisano ${sheetApply.rowCount} redaka iz PDF parsera."
-                    }
+                    val modeText = if (replaceExisting) "Zamijenjeno" else "Dodano"
+                    aiMessage = "$modeText iz previewa: ${fieldApply.count} polja i ${sheetApply.rowCount} Gridline redaka."
                 }
                 gridlineParserPreview = null
             },
@@ -30484,19 +30487,17 @@ private fun WorkOrderDocumentationWizardDialog(
                                                 result = result,
                                                 sheets = measurementSheets,
                                             )
-                                            if (
-                                                parserRows.isNotEmpty() &&
-                                                result.modelLabel.equals("PDF parser", ignoreCase = true)
-                                            ) {
+                                            if (parserRows.isNotEmpty()) {
                                                 gridlineParserPreview = DocumentationGridlinePreviewState(
                                                     templateId = template.id,
                                                     result = result,
                                                     rows = parserRows,
                                                     message = result.message.ifBlank {
-                                                        "Parser je pripremio ${parserRows.size} redaka za Gridline."
+                                                        "NexAI je pripremio ${parserRows.size} redaka za Gridline. Provjeri sto ide u koju tablicu prije upisa."
                                                     },
                                                 )
-                                                aiMessage = "PDF parser je pripremio ${parserRows.size} redaka. Provjeri preview prije upisa."
+                                                val tableCount = parserRows.map { it.tableLabel }.distinct().size
+                                                aiMessage = "NexAI je pripremio ${parserRows.size} redaka za $tableCount Gridline tablica. Otvoren je preview prije upisa."
                                             } else {
                                                 val fieldApply = applyDocumentationAiFieldSuggestions(
                                                     template = template,
@@ -31288,6 +31289,7 @@ private data class SprVoiceMeasurementRow(
 )
 
 private data class DocumentationGridlinePreviewRow(
+    val tableLabel: String,
     val place: String,
     val quantity: String,
     val details: List<Pair<String, String>> = emptyList(),
@@ -33863,6 +33865,10 @@ private fun buildDocumentationAiGridlinePreviewRows(
     buildList {
         result.measurementSuggestions.forEach { suggestion ->
             val table = template.resolveAiMeasurementTable(suggestion) ?: return@forEach
+            val tableLabel = listOf(table.label, suggestion.fieldLabel, table.key)
+                .firstOrNull { it.isNotBlank() }
+                .orEmpty()
+                .ifBlank { "Gridline tablica" }
             val stateKey = measurementSheetStateKey(template, table)
             val sheet = sheets[stateKey] ?: table.sheet
             val aiColumns = template.aiMeasurementColumns.filter { it.matchesField(table) }
@@ -33902,6 +33908,7 @@ private fun buildDocumentationAiGridlinePreviewRows(
                 if (place.isNotBlank() || quantity.isNotBlank() || details.isNotEmpty()) {
                     add(
                         DocumentationGridlinePreviewRow(
+                            tableLabel = tableLabel,
                             place = place.ifBlank { "Red ${size + 1}" },
                             quantity = quantity,
                             details = details,
@@ -38583,9 +38590,12 @@ private fun DocumentationGridlineParserPreviewDialog(
     onDismiss: () -> Unit,
     onApply: (Boolean) -> Unit,
 ) {
+    val groupedRows = remember(preview.rows) {
+        preview.rows.groupBy { row -> row.tableLabel.ifBlank { "Gridline tablica" } }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Provjeri tablicu iz PDF-a", fontWeight = FontWeight.Black) },
+        title = { Text("Provjeri NexAI upis u Gridline", fontWeight = FontWeight.Black) },
         text = {
             Column(
                 modifier = Modifier
@@ -38595,7 +38605,7 @@ private fun DocumentationGridlineParserPreviewDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
-                    preview.message.ifBlank { "Parser je pripremio ${preview.rows.size} redaka za Gridline." },
+                    preview.message.ifBlank { "NexAI je pripremio ${preview.rows.size} redaka za Gridline." },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                     fontWeight = FontWeight.SemiBold,
@@ -38606,66 +38616,84 @@ private fun DocumentationGridlineParserPreviewDialog(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
                 ) {
                     Column(modifier = Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
+                        groupedRows.forEach { (tableLabel, rows) ->
                             Text(
-                                "Mjesto ispitivanja",
-                                modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Black,
-                            )
-                            Text(
-                                "Kolicina",
-                                modifier = Modifier.width(72.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Black,
-                                textAlign = TextAlign.End,
-                            )
-                        }
-                        preview.rows.forEachIndexed { index, row ->
-                            Column(
+                                tableLabel,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.86f))
-                                    .padding(horizontal = 8.dp, vertical = 7.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f))
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Black,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            val hasQuantity = rows.any { it.quantity.isNotBlank() }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
+                                Text(
+                                    "Red / oznaka",
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Black,
+                                )
+                                if (hasQuantity) {
                                     Text(
-                                        "${index + 1}. ${row.place}",
-                                        modifier = Modifier.weight(1f),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                    Text(
-                                        row.quantity,
+                                        "Kolicina",
                                         modifier = Modifier.width(72.dp),
-                                        style = MaterialTheme.typography.bodySmall,
+                                        style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Black,
-                                        color = MaterialTheme.colorScheme.primary,
                                         textAlign = TextAlign.End,
                                     )
                                 }
-                                if (row.details.isNotEmpty()) {
-                                    Text(
-                                        row.details.joinToString(" · ") { (label, value) -> "$label: $value" },
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                                    )
+                            }
+                            rows.forEachIndexed { index, row ->
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.86f))
+                                        .padding(horizontal = 8.dp, vertical = 7.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            "${index + 1}. ${row.place}",
+                                            modifier = Modifier.weight(1f),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                        if (hasQuantity) {
+                                            Text(
+                                                row.quantity,
+                                                modifier = Modifier.width(72.dp),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Black,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                textAlign = TextAlign.End,
+                                            )
+                                        }
+                                    }
+                                    if (row.details.isNotEmpty()) {
+                                        Text(
+                                            row.details.joinToString(" · ") { (label, value) -> "$label: $value" },
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                 }
                 Text(
-                    "Dodaj upisuje ispod zadnjeg popunjenog reda. Zamijeni brise samo kolone koje su u ovom pregledu i upisuje ih od prvog reda Gridline tablice.",
+                    "Dodaj upisuje u prikazane Gridline tablice ispod zadnjeg popunjenog reda. Zamijeni brise samo kolone koje su u ovom pregledu i upisuje ih od prvog reda ciljnih Gridline tablica.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
                 )

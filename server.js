@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.347.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.348.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -7934,6 +7934,17 @@ function getOpenAiDocumentationServiceCode(body = {}) {
   return inferFromLookup(lookup);
 }
 
+function buildOpenAiExeiCircuitTracingInstructions() {
+  return [
+    "EXEI jednopolnu shemu citaj kao elektro tehnicar: prvo pregledaj donju trecinu ili dno papira, jer su tamo obicno nazivi potrosaca/opreme i tehnoloske cjeline. Tamo trazi kljucne rijeci: crpka, pumpa, agregat, generator, motor, elektromotorni pogon, procesor agregata, rasvjeta agregata, display, brojilo, UMP, mjerni uredaj, kompresor, elektroventil, ventil, sonda, senzor, detektor, punionica, istakaliste, pretakaliste, spremnik, rezervoar, separator, ventilacija, RO-UNP, UNP, LPG, Ex zona, zona 0, zona 1, zona 2, gorivo, Eurosuper, Eurodiesel i tehnoloska oprema benzinske postaje.",
+    "Kad u donjem dijelu nadjes takvu kljucnu rijec, prati istu vertikalnu liniju/krug prema gore i prema sabirnicama. Nemoj uzeti prvi tekst s papira; spoji samo oznake koje pripadaju istoj vertikali ili istom prikljucku tog potrosaca.",
+    "Za isti krug potrazi oznaku kabela/voda. Ona vrlo cesto pocinje slovom W ili W- i moze izgledati kao W-23, W-2-1, W1, W15, W-2-1U. Uz W oznaku potrazi tip i presjek kabela, npr. PP00-Y 4x2,5 mm2, NYY 4x2,5 mm2, NYM 3x1,5 mm2, H07RN-F 5G2,5, LIYCY 4x0,75 mm2. Zadrzi kabel samo ako je na istoj vertikali ili je linijom povezan s potrosacem.",
+    "Za isti krug potrazi oznaku prikljucka/terminala/kruga, npr. X1:12, X2:05, 2X-UPS/5, 2N-UPS/10, 1F2, F15, QF1, Q1.3.5, K1. Nemoj zamijeniti broj lista, koordinatu polja, broj stupca ili redni broj s oznakom kruga.",
+    "Za isti krug potrazi zastitni uredjaj ili osigurac u gornjem dijelu vertikale: F, FU, QF, Q, KZS, RCBO, RCD, FID, B10A, B16A, C16/3, 20A/3, 10kA i slicno. U polje tip/karakteristika upisi samo tip zastite, npr. Aut B16A, Aut C16/3, RCD 40/30; oznaku uredjaja kao 1F2 ili F15 stavi u drugu liniju oznake kruga.",
+    "Ako su naziv potrosaca, W oznaka, kabel i osigurac razbacani oko iste vertikale, spoji ih u jedan redak. Ako ne mozes pouzdano povezati tekstove s istom vertikalom, vrati warning i nemoj izmisljati.",
+  ];
+}
+
 function buildOpenAiDocumentationServiceInstructions(body = {}) {
   const serviceCode = getOpenAiDocumentationServiceCode(body);
   const base = serviceCode
@@ -7967,6 +7978,7 @@ function buildOpenAiDocumentationServiceInstructions(body = {}) {
     base.push(
       "Za EXEI vrijede Ex elektricarska pravila, ali NexAI ne smije upisivati stvarne mjerne vrijednosti. Stari EXEI/ExEi zapisnik, pomocna jednopolna shema, projekt ili slike ormara smiju sluziti samo za strukturu: redoslijed, razdjelnik, oznaku kruga/opreme, osigurac, zastitni uredjaj, RCD/FID/ZUDS nazivnu vrijednost i tip/karakteristiku.",
       "U shemi i slikama ormara trazi samo Ex relevantne krugove i opremu: agregat, generator, crpka/pumpa, procesor agregata, rasvjeta agregata, UMP, motor, kompresor, istakaliste, pretakaliste, spremnik, Ex zona i slicne tehnoloske cjeline. Ne popunjavaj cijeli EIZ dio niti opce uredske/prodajne krugove ako nisu vezani na Ex prostor.",
+      ...buildOpenAiExeiCircuitTracingInstructions(),
       "Ako pomocna shema/slika potvrdi redoslijed, vrati redove u istom redoslijedu kao shema ili stari EXEI zapisnik. Ne dupliraj isti krug/opremu ako se pojavljuje na vise slika; spoji podatke u jedan redak kada imaju isti razdjelnik/oznaku kruga ili isti motor/opremu.",
       "Ako u EXEI uploadu vidis jednopolnu shemu, GRO/RO razdjelnik ili Ex relevantne agregate/krugove, obavezno vrati measurementSuggestions za dostupne EXEI Gridline tablice. Sazetak bez redaka nije dovoljan.",
       "Za svaku EXEI jednopolnu shemu procitaj OCR-om bas sitne oznake uz svaku relevantnu vertikalu: oznaku osiguraca ili zastitnog uredjaja (npr. F15, QF1, Q1.3.5), karakteristiku/nazivnu struju (npr. B10A, C16/3, 20A/3, 10kA), oznaku prikljucka/kruga (npr. 2X-UPS/5, X2:05), oznaku voda/kabela (npr. W-2-1, NYY 4x2,5 mm2) i naziv potrosaca u donjem bloku (npr. MJERNI UREDAJ 3/4 (A2) 0359).",
@@ -8109,6 +8121,7 @@ function buildOpenAiImageInstructionForFile(file = {}, index = 0, total = 1, bod
   if (serviceCode === "EXEI" && (sourceKind === "single_line_diagram" || sourceKind === "electrical_cabinet_photo" || sourceKind === "project" || String(file?.type || "").toLowerCase().startsWith("image/"))) {
     base.push(
       "Za EXEI iz ove slike izvuci samo Ex relevantne strujne krugove. Za svaki relevantan krug procitaj potrosac/opremu, W oznaku voda, tip/presjek kabela, prikljucak/krug i oznaku osiguraca/zastitnog uredjaja.",
+      ...buildOpenAiExeiCircuitTracingInstructions(),
       "U EXEI.IPK oznaka mora biti dvije linije: prva potrosac/oprema, druga 'W oznaka, kabel, oznaka osiguraca/kruga'. Tip/karakteristika mora biti samo npr. 'Aut B16A' ili 'Aut C16/3'.",
       "Ne vracaj redak ako vidis samo redni broj bez stvarne oznake kruga/opreme.",
     );
@@ -9117,10 +9130,28 @@ function isOpenAiExeiRelevantLabel(label = "", segment = "") {
     "ump",
     "motor",
     "kompresor",
+    "elektroventil",
+    "ventil",
+    "sonda",
+    "senzor",
+    "detektor",
     "istakaliste",
     "pretakaliste",
     "spremnik",
+    "rezervoar",
+    "separator",
+    "ventilacija",
+    "punionica",
+    "gorivo",
+    "eurosuper",
+    "eurodiesel",
+    "unplpg",
+    "unp",
+    "lpg",
     "exzona",
+    "zona0",
+    "zona1",
+    "zona2",
     "rounp",
     "elektromotornipogon",
     "displaybrojilo",
@@ -9194,7 +9225,7 @@ function hasOpenAiExeiCircuitEvidence(entry = {}) {
 
 function extractOpenAiExeiEntriesFromText(searchText = "") {
   const source = String(searchText || "").replace(/\r/g, "\n");
-  if (!source.trim() || !/(?:exei|jednopol|shema|gro|mjerni\s+ure[d\u0111]aj|agregat|pumpa|crpka|ump|motor|ro\s*-\s*unp)/iu.test(source)) {
+  if (!source.trim() || !/(?:exei|jednopol|shema|gro|mjerni\s+ure[d\u0111]aj|agregat|pumpa|crpka|ump|motor|kompresor|elektroventil|sonda|senzor|detektor|punionica|ro\s*-\s*unp|unp|lpg|ex\s*zona)/iu.test(source)) {
     return [];
   }
   const board = extractOpenAiExeiBoard(source);
@@ -9236,7 +9267,7 @@ function extractOpenAiExeiEntriesFromText(searchText = "") {
 
   const patterns = [
     /\bmjerni\s+ure[d\u0111]aj\s+[0-9A-Z./-]+(?:\s*\([^)]+\))?(?:\s+\d{2,8})?/giu,
-    /\b(?:procesor\s+agregata|rasvjeta\s+agregata|elektromotorni\s+pogon|display\s+brojilo|RO\s*-\s*UNP|agregat|generator|crpka|pumpa|UMP|motor|kompresor|istakali[s\u0161]te|pretakali[s\u0161]te|spremnik)[^,;\n.]{0,80}/giu,
+    /\b(?:procesor\s+agregata|rasvjeta\s+agregata|elektromotorni\s+pogon|display\s+brojilo|RO\s*-\s*UNP|agregat|generator|crpka|pumpa|UMP|motor|kompresor|elektroventil|ventil|sonda|senzor|detektor|punionica|istakali[s\u0161]te|pretakali[s\u0161]te|spremnik|rezervoar|separator|ventilacija|LPG|UNP|Ex\s+zona|zona\s*[012]|Eurosuper|Eurodiesel|gorivo)[^,;\n.]{0,80}/giu,
   ];
   patterns.forEach((pattern) => {
     Array.from(source.matchAll(pattern)).forEach((match) => {
@@ -9252,7 +9283,7 @@ function extractOpenAiExeiEntriesFromText(searchText = "") {
       if (!isOpenAiExeiRelevantLabel(segment, segment)) {
         return;
       }
-      const labelMatch = segment.match(/\b(?:mjerni\s+ure[d\u0111]aj\s+[0-9A-Z./-]+(?:\s*\([^)]+\))?(?:\s+\d{2,8})?|RO\s*-\s*UNP|agregat\s+\d+|pumpa\s+\d+|crpka\s+\d+|motor\s+\d+)\b/iu);
+      const labelMatch = segment.match(/\b(?:mjerni\s+ure[d\u0111]aj\s+[0-9A-Z./-]+(?:\s*\([^)]+\))?(?:\s+\d{2,8})?|RO\s*-\s*UNP|agregat\s+\d+|pumpa\s+\d+|crpka\s+\d+|motor\s+\d+|kompresor\s+\d+|elektroventil|ventil|sonda|senzor|detektor|punionica|spremnik|rezervoar|separator|ventilacija|LPG|UNP|Ex\s+zona|zona\s*[012])\b/iu);
       pushEntry(labelMatch ? labelMatch[0] : segment, segment, source.length + index);
     });
 
