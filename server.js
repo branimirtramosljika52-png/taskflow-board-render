@@ -7960,7 +7960,7 @@ function buildOpenAiDocumentationServiceInstructions(body = {}) {
       "Ako pomocna shema/slika potvrdi redoslijed, vrati redove u istom redoslijedu kao shema ili stari EXEI zapisnik. Ne dupliraj isti krug/opremu ako se pojavljuje na vise slika; spoji podatke u jedan redak kada imaju isti razdjelnik/oznaku kruga ili isti motor/opremu.",
       "Ako u EXEI uploadu vidis jednopolnu shemu, GRO/RO razdjelnik ili Ex relevantne agregate/krugove, obavezno vrati measurementSuggestions za dostupne EXEI Gridline tablice. Sazetak bez redaka nije dovoljan.",
       "Za svaku EXEI jednopolnu shemu procitaj OCR-om bas sitne oznake uz svaku relevantnu vertikalu: oznaku osiguraca ili zastitnog uredjaja (npr. F15, QF1, Q1.3.5), karakteristiku/nazivnu struju (npr. B10A, C16/3, 20A/3, 10kA), oznaku prikljucka/kruga (npr. 2X-UPS/5, X2:05), oznaku voda/kabela (npr. W-2-1, NYY 4x2,5 mm2) i naziv potrosaca u donjem bloku (npr. MJERNI UREDAJ 3/4 (A2) 0359).",
-      "U EXEI.IPK kolonu oznake kruga upisi kombinaciju procitanog broja kruga/voda i potrosaca, a u kolonu tip/karakteristika upisi procitani osigurac zajedno s karakteristikom, npr. 'F15 C16/3'. Ako osigurac ili broj kruga nije citljiv, ne izmisljaj ga; vrati samo citljive dijelove i dodaj warning.",
+      "U EXEI.IPK kolonu oznake kruga upisi dvije linije: prva linija je potrosac/oprema, npr. 'Agregat 1 - motor'; druga linija je 'W oznaka, kabel, oznaka osiguraca/kruga', npr. 'W-23, PP00-Y 4x2,5 mm2, 1F2'. U kolonu tip/karakteristika upisi samo vrstu i karakteristiku osiguraca, npr. 'Aut B16A' ili 'Aut C16/3'. Ne upisuj samo redni broj 1, 2, 3 kao oznaku kruga.",
       "U EXEI.OI koristi istu procitanu oznaku kruga/opreme kao IPK. U EXEI.ZUDS vrati red samo ako je stvarno vidljiv FID/RCD/ZUDS/RCBO/KZS uredjaj s In/Idn. U EXEI.Motori/oprema vrati vidljivi naziv/tvornicki broj agregata ili motora.",
       "Za EXEI.ZUDS/FID/RCD nazivnu vrijednost zastitnog uredjaja vrati kao In/Idn, npr. 40/30, gdje je dio prije / nazivna struja u A, a dio nakon / diferencijalna struja u mA. Ne vracaj Iisk, tisk, U0, Z, Riso, Rizm ni DA/NE mjernu ocjenu.",
       "Za EXEI.OI i EXEI.IPK vrati samo oznaku kruga i eventualno tip zastitnog uredjaja/1x/3x ako je to jasno iz sheme. Ne popunjavaj Riso, Z(L-PE), Z(L-N), Z(L-L), kontinuitet, izmjereni otpor ni zakljucak mjerenja.",
@@ -8352,6 +8352,26 @@ function sanitizeOpenAiExeiMeasurementSuggestionKeys(result = null, body = {}) {
       if (!allowed || allowed.size === 0) {
         return null;
       }
+      const circuitLikeKeys = new Set(
+        (Array.isArray(body?.columns) ? body.columns : [])
+          .filter((column) => String(column?.fieldId || "").trim() === fieldId)
+          .filter((column) => {
+            const lookup = normalizeOpenAiPolicyKey([
+              column?.columnId,
+              column?.key,
+              column?.label,
+              column?.aiMapping?.key,
+              column?.aiMapping?.label,
+            ].join(" "));
+            return lookup.includes("circuit")
+              || lookup.includes("oznakastrujnogkruga")
+              || lookup.includes("strujnikrug")
+              || lookup.includes("eluredaj");
+          })
+          .flatMap((column) => [column?.columnId, column?.key, column?.aiMapping?.key])
+          .map((key) => String(key || "").trim())
+          .filter(Boolean)
+      );
       const rows = (Array.isArray(suggestion?.rows) ? suggestion.rows : [])
         .map((row) => {
           const values = row?.values && typeof row.values === "object" && !Array.isArray(row.values)
@@ -8360,6 +8380,10 @@ function sanitizeOpenAiExeiMeasurementSuggestionKeys(result = null, body = {}) {
           const { orderedValues, ...rest } = row && typeof row === "object" ? row : {};
           return { ...rest, values };
         })
+        .filter((row) => !Array.from(circuitLikeKeys).some((key) => {
+          const value = normalizeInputValue(row.values?.[key]);
+          return value && /^\d{1,3}$/.test(value);
+        }))
         .filter((row) => Object.keys(row.values || {}).length > 0);
       return rows.length ? { ...suggestion, rows } : null;
     })
@@ -8922,6 +8946,7 @@ function extractOpenAiExeiCircuitReference(segment = "") {
   const text = String(segment || "");
   const patterns = [
     /\b\d+[A-Z]\s*-\s*[A-Z0-9]+(?:\s*-\s*[A-Z0-9]+)?\s*\/\s*\d+[A-Z]?\b/iu,
+    /\b\d{1,3}\s*[FKQ]\s*\d{1,3}[A-Z]?\b/iu,
     /\bX\d+\s*[:.-]?\s*\d{1,4}\b/iu,
     /\b(?:K|F|QF|Q)\s*\d+[A-Z]?(?:[./-]\d+)?\b/iu,
   ];
@@ -8936,13 +8961,35 @@ function extractOpenAiExeiCircuitReference(segment = "") {
 
 function extractOpenAiExeiCableLabel(segment = "") {
   const match = String(segment || "").match(/\b(?:NYY|N2XH|PP00\s*-\s*Y|PP\s*-\s*Y|PPY|H07RN)\s*[-A-Z0-9]*\s*\d+\s*x\s*\d+(?:[,.]\d+)?\s*(?:mm2|mm\^2|mm\u00b2)?\b/iu);
-  return match ? cleanOpenAiExeiTextValue(match[0]).replace(/\s*x\s*/i, "x") : "";
+  return match
+    ? cleanOpenAiExeiTextValue(match[0])
+        .replace(/\s*x\s*/i, "X")
+        .replace(/\s*(?:mm2|mm\^2|mm\u00b2)$/iu, "mm2")
+        .toUpperCase()
+    : "";
 }
 
 function extractOpenAiExeiProtectionReference(segment = "") {
   const text = String(segment || "");
-  const match = text.match(/\b(?:QF|F|Q|K)\s*\d+[A-Z]?(?:[./-]\d+)?\b/iu);
+  const match = text.match(/\b\d{1,3}\s*[FKQ]\s*\d{1,3}[A-Z]?\b|\b(?:QF|F|Q|K)\s*\d+[A-Z]?(?:[./-]\d+)?\b/iu);
   return match ? cleanOpenAiExeiTextValue(match[0]).replace(/\s+/g, "").toUpperCase() : "";
+}
+
+function formatOpenAiExeiBreakerType(value = "") {
+  const text = cleanOpenAiExeiTextValue(value).replace(/\s+/g, "").toUpperCase();
+  if (!text) {
+    return "";
+  }
+  if (/^[BCD]\d{1,3}(?:A|\/[1234])?$/iu.test(text)) {
+    return `Aut ${text}`;
+  }
+  if (/^[BCD]\d{1,3}\/[1234]A?$/iu.test(text)) {
+    return `Aut ${text.replace(/A$/iu, "")}`;
+  }
+  if (/^(?:AUT|AUTO)\s*/iu.test(value)) {
+    return cleanOpenAiExeiTextValue(value).replace(/^auto?\s*/iu, "Aut ");
+  }
+  return cleanOpenAiExeiTextValue(value);
 }
 
 function extractOpenAiExeiProtectionType(segment = "") {
@@ -8953,10 +9000,10 @@ function extractOpenAiExeiProtectionType(segment = "") {
   }
   const breakerMatch = text.match(/\b[BCD]\s*[-]?\s*\d{1,3}\s*A?(?:\s*[\/\\]\s*[1234])?\b/iu);
   if (breakerMatch) {
-    return breakerMatch[0].replace(/\s+/g, "").toUpperCase();
+    return formatOpenAiExeiBreakerType(breakerMatch[0]);
   }
   const fuseMatch = text.match(/\b(?:osigurac|osigura[c\u010d]|sklopka|zastitni\s+uredaj|zastitni\s+ure[d\u0111]aj)\s*[:=-]?\s*([A-Z0-9./ -]{2,24})/iu);
-  return fuseMatch ? cleanOpenAiExeiTextValue(fuseMatch[1]).slice(0, 40) : "";
+  return fuseMatch ? formatOpenAiExeiBreakerType(fuseMatch[1]).slice(0, 40) : "";
 }
 
 function extractOpenAiExeiRcdRating(segment = "") {
@@ -8983,10 +9030,7 @@ function inferOpenAiExeiPhaseCount(segment = "") {
 }
 
 function mergeOpenAiExeiProtectionLabel(reference = "", type = "") {
-  const parts = [reference, type]
-    .map(cleanOpenAiExeiTextValue)
-    .filter(Boolean);
-  return Array.from(new Set(parts.map((part) => part.toUpperCase()))).join(" ");
+  return formatOpenAiExeiBreakerType(type);
 }
 
 function isOpenAiExeiRelevantLabel(label = "", segment = "") {
@@ -9034,21 +9078,37 @@ function extractOpenAiExeiContextSegment(source = "", index = 0) {
 }
 
 function buildOpenAiExeiCircuitName(entry = {}) {
-  const parts = [];
+  const detailParts = [];
   const labelLookup = normalizeOpenAiPolicyKey(entry.label);
-  if (entry.circuitReference && !labelLookup.includes(normalizeOpenAiPolicyKey(entry.circuitReference))) {
-    parts.push(entry.circuitReference);
-  }
   if (entry.wire && !labelLookup.includes(normalizeOpenAiPolicyKey(entry.wire))) {
-    parts.push(entry.wire);
-  }
-  if (entry.label) {
-    parts.push(entry.label);
+    detailParts.push(entry.wire);
   }
   if (entry.cable && !labelLookup.includes(normalizeOpenAiPolicyKey(entry.cable))) {
-    parts.push(entry.cable);
+    detailParts.push(entry.cable);
   }
-  return cleanOpenAiExeiCircuitLabel(parts.join(" - "));
+  const reference = entry.circuitReference || entry.protectionReference || "";
+  if (reference && !labelLookup.includes(normalizeOpenAiPolicyKey(reference))) {
+    detailParts.push(reference);
+  }
+  const consumer = cleanOpenAiExeiCircuitLabel(entry.label);
+  const details = Array.from(new Set(detailParts.map(cleanOpenAiExeiTextValue).filter(Boolean))).join(", ");
+  return [consumer, details].filter(Boolean).join("\n").slice(0, 180).trim();
+}
+
+function normalizeOpenAiExeiConsumerLabel(label = "", segment = "") {
+  const text = cleanOpenAiExeiCircuitLabel(label);
+  const segmentLookup = normalizeOpenAiPolicyKey(`${text} ${segment}`);
+  const aggregateMatch = text.match(/\bagregat\s*(\d{1,3})\b/iu);
+  if (aggregateMatch && (segmentLookup.includes("motor") || segmentLookup.includes("elektromotornipogon"))) {
+    return `Agregat ${aggregateMatch[1]} - motor`;
+  }
+  if (aggregateMatch && segmentLookup.includes("rasvjeta")) {
+    return `Agregat ${aggregateMatch[1]} - rasvjeta`;
+  }
+  if (aggregateMatch && segmentLookup.includes("display")) {
+    return `Agregat ${aggregateMatch[1]} - display brojilo`;
+  }
+  return text;
 }
 
 function hasOpenAiExeiCircuitEvidence(entry = {}) {
@@ -9070,7 +9130,7 @@ function extractOpenAiExeiEntriesFromText(searchText = "") {
   const entries = [];
   const seen = new Set();
   const pushEntry = (rawLabel = "", segment = "", index = 0) => {
-    const label = cleanOpenAiExeiCircuitLabel(rawLabel);
+    const label = normalizeOpenAiExeiConsumerLabel(rawLabel, segment);
     if (!label || label.length < 3 || !isOpenAiExeiRelevantLabel(label, segment)) {
       return;
     }
