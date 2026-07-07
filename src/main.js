@@ -61148,10 +61148,11 @@ function getDocumentationSprPreviousRecordMeasurementTables(record = {}, model =
     }
     if (index === 0) {
       const legacySheet = getDocumentationSprPreviousRecordSheet(record);
-      if (legacySheet) {
+      const normalizedLegacySheet = normalizeWorkOrderMeasurementSheet(legacySheet);
+      if (normalizedLegacySheet?.columns?.length) {
         return {
           ...table,
-          sheet: cloneDocumentationSprMeasurementSheet(legacySheet),
+          sheet: cloneDocumentationSprMeasurementSheet(normalizedLegacySheet),
         };
       }
     }
@@ -61177,7 +61178,7 @@ function buildDocumentationSprGridlineModelFromPreviousSheet(sheet = null) {
     return normalizeDocumentationSprGridlineModel(sheet);
   }
   const normalizedSheet = normalizeWorkOrderMeasurementSheet(sheet);
-  if (!normalizedSheet) {
+  if (!normalizedSheet?.columns?.length) {
     return null;
   }
   const columns = normalizedSheet.columns.filter((column) => !column.computed);
@@ -69994,7 +69995,7 @@ function getDocumentTemplateDatabaseTableOptions() {
 
 function getDocumentTemplateDatabaseColumnOptions(table = "") {
   const definition = getDocumentTemplateDatabaseTableDefinition(table);
-  if (!definition) {
+  if (!Array.isArray(definition?.columns)) {
     return [];
   }
   return definition.columns.map((column) => ({
@@ -70005,7 +70006,7 @@ function getDocumentTemplateDatabaseColumnOptions(table = "") {
 
 function getDocumentTemplateDatabaseColumnDefinition(table = "", column = "") {
   const definition = getDocumentTemplateDatabaseTableDefinition(table);
-  if (!definition) {
+  if (!Array.isArray(definition?.columns)) {
     return null;
   }
   const normalizedColumn = String(column || "").trim().toLowerCase();
@@ -149442,14 +149443,17 @@ workOrderTemplateDeleteButtons.forEach((button) => {
 workOrderBulkOpenDocumentsButton?.addEventListener("click", (event) => {
   event.preventDefault();
   event.stopPropagation();
+  const mode = getSelectedWorkOrderDocumentMode();
+  const copy = getWorkOrderDocumentActionCopy(mode);
+  const actionLabel = copy.title || copy.bulk || "Dokumentacija";
   try {
-    openWorkOrderDocumentWizard(getSelectedWorkOrderDocumentMode());
+    openWorkOrderDocumentWizard(mode);
   } catch (error) {
-    console.error("Otvaranje Ispiti i edukacija wizarda nije uspjelo.", error);
+    console.error(`Otvaranje ${actionLabel} wizarda nije uspjelo.`, error);
     const details = String(error?.message || "").trim();
     state.workOrderBatch.message = details
-      ? `Ispiti i edukacija se nisu otvorili: ${details}`
-      : "Ispiti i edukacija se nisu otvorili. Osvježi stranicu (Ctrl+F5) i pokušaj ponovno.";
+      ? `${actionLabel} se nije otvorio: ${details}`
+      : `${actionLabel} se nije otvorio. Osvježi stranicu (Ctrl+F5) i pokušaj ponovno.`;
     state.workOrderBatch.tone = "error";
     renderWorkOrderBatchBar();
   }

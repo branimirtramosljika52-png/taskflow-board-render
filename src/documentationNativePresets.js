@@ -4402,59 +4402,82 @@ export function getDocumentationNativeReportPreset(serviceCode = "") {
 export function createDocumentationMeasurementTablesForService(serviceCode = "") {
   const preset = getDocumentationNativeReportPreset(serviceCode);
   const nativeTables = getCistaNativeTableSpecsForService(preset.serviceCode) || preset.tables;
-  return nativeTables.map((table) => ({
-    id: table.id,
-    key: table.key,
-    tokenKey: table.tokenKey,
-    label: table.label,
-    helpText: "Gridline tablica popunjava rezultate za odabranu uslugu.",
-    summary: table.summary,
-    enabledByDefault: table.enabledByDefault !== false,
-    enabledFieldId: table.enabledFieldId || `use-${table.id}`,
-    assessmentLabel: table.assessmentLabel || "",
-    chapterTitle: table.chapterTitle || "",
-    pageOrientation: table.pageOrientation === "landscape" ? "landscape" : "portrait",
-    sourceSheet: table.sourceSheet || "",
-    formulaOnly: table.formulaOnly === true,
-    includeInReport: table.includeInReport !== false,
-    sheet: {
-      columns: table.columns.map((column) => withDocumentationColumnAiMapping(table.id, column)),
-      rows: table.rows.map((row, index) => ({
-        id: row.id || `measurement-row-${index + 1}`,
-        cells: { ...(row.cells || {}) },
-        formats: { ...(row.formats || {}) },
-      })),
-      merges: Array.isArray(table.merges) ? table.merges.map((merge) => ({ ...merge })) : [],
-      headerRows: Array.isArray(table.headerRows) ? [...table.headerRows] : [],
-    },
-  }));
+  return (Array.isArray(nativeTables) ? nativeTables : []).flatMap((table, tableIndex) => {
+    const columns = Array.isArray(table?.columns) ? table.columns : [];
+    if (columns.length === 0) {
+      console.warn("Preskacem native dokumentacijsku tablicu bez kolona.", {
+        serviceCode: preset.serviceCode,
+        tableId: table?.id || table?.key || `table-${tableIndex + 1}`,
+      });
+      return [];
+    }
+    const rows = Array.isArray(table?.rows) ? table.rows : [];
+    const tableId = table.id || table.key || `measurement-table-${tableIndex + 1}`;
+    return [{
+      id: tableId,
+      key: table.key,
+      tokenKey: table.tokenKey,
+      label: table.label,
+      helpText: "Gridline tablica popunjava rezultate za odabranu uslugu.",
+      summary: table.summary,
+      enabledByDefault: table.enabledByDefault !== false,
+      enabledFieldId: table.enabledFieldId || `use-${tableId}`,
+      assessmentLabel: table.assessmentLabel || "",
+      chapterTitle: table.chapterTitle || "",
+      pageOrientation: table.pageOrientation === "landscape" ? "landscape" : "portrait",
+      sourceSheet: table.sourceSheet || "",
+      formulaOnly: table.formulaOnly === true,
+      includeInReport: table.includeInReport !== false,
+      sheet: {
+        columns: columns.map((column) => withDocumentationColumnAiMapping(tableId, column)),
+        rows: rows.map((row, index) => ({
+          id: row.id || `measurement-row-${index + 1}`,
+          cells: { ...(row.cells || {}) },
+          formats: { ...(row.formats || {}) },
+        })),
+        merges: Array.isArray(table.merges) ? table.merges.map((merge) => ({ ...merge })) : [],
+        headerRows: Array.isArray(table.headerRows) ? [...table.headerRows] : [],
+      },
+    }];
+  });
 }
 
 export function createDocumentationFormulaSheetsForService(serviceCode = "") {
   const preset = getDocumentationNativeReportPreset(serviceCode);
   const nativeFormulaSheets = getCistaNativeFormulaSheetSpecsForService(preset.serviceCode);
   const formulaSheets = nativeFormulaSheets.length ? nativeFormulaSheets : (preset.formulaSheets || []);
-  return formulaSheets.map((table) => ({
-    id: table.id,
-    key: table.key,
-    tokenKey: table.tokenKey,
-    label: table.label,
-    summary: table.summary,
-    sourceSheet: table.sourceSheet || table.sheetName || table.label || "",
-    formulaOnly: true,
-    includeInReport: false,
-    pageOrientation: table.pageOrientation === "landscape" ? "landscape" : "portrait",
-    sheet: {
-      columns: table.columns.map((column) => ({ ...column })),
-      rows: table.rows.map((row, index) => ({
-        id: row.id || `formula-row-${index + 1}`,
-        cells: { ...(row.cells || {}) },
-        formats: { ...(row.formats || {}) },
-      })),
-      merges: Array.isArray(table.merges) ? table.merges.map((merge) => ({ ...merge })) : [],
-      headerRows: Array.isArray(table.headerRows) ? [...table.headerRows] : [],
-    },
-  }));
+  return (Array.isArray(formulaSheets) ? formulaSheets : []).flatMap((table, tableIndex) => {
+    const columns = Array.isArray(table?.columns) ? table.columns : [];
+    if (columns.length === 0) {
+      console.warn("Preskacem native formulsku tablicu bez kolona.", {
+        serviceCode: preset.serviceCode,
+        tableId: table?.id || table?.key || `formula-${tableIndex + 1}`,
+      });
+      return [];
+    }
+    const rows = Array.isArray(table?.rows) ? table.rows : [];
+    return [{
+      id: table.id,
+      key: table.key,
+      tokenKey: table.tokenKey,
+      label: table.label,
+      summary: table.summary,
+      sourceSheet: table.sourceSheet || table.sheetName || table.label || "",
+      formulaOnly: true,
+      includeInReport: false,
+      pageOrientation: table.pageOrientation === "landscape" ? "landscape" : "portrait",
+      sheet: {
+        columns: columns.map((column) => ({ ...column })),
+        rows: rows.map((row, index) => ({
+          id: row.id || `formula-row-${index + 1}`,
+          cells: { ...(row.cells || {}) },
+          formats: { ...(row.formats || {}) },
+        })),
+        merges: Array.isArray(table.merges) ? table.merges.map((merge) => ({ ...merge })) : [],
+        headerRows: Array.isArray(table.headerRows) ? [...table.headerRows] : [],
+      },
+    }];
+  });
 }
 
 export function createDocumentationChecklistsForService(serviceCode = "") {
