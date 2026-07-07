@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.340.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.341.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -13627,6 +13627,10 @@ function normalizeGeneratedDocumentRecordDate(value = "") {
 const GENERATED_DOCUMENT_PERIODICS_TRACKED_DATES_KEY = "__PERIODICS_TRACKED_DATES";
 const MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY = "__mobileDocumentationAttachments";
 const MOBILE_DOCUMENTATION_RECORD_TEMPLATE_ATTACHMENTS_KEY = "__mobileDocumentationTemplateAttachments";
+const MOBILE_DOCUMENTATION_DRAFT_MARKER_KEY = "__mobileDocumentationDraft";
+const MOBILE_DOCUMENTATION_DRAFT_WORK_ORDER_ID_KEY = "__mobileDocumentationDraftWorkOrderId";
+const MOBILE_DOCUMENTATION_DRAFT_WORK_ORDER_NUMBER_KEY = "__mobileDocumentationDraftWorkOrderNumber";
+const MOBILE_DOCUMENTATION_DRAFT_UPDATED_AT_KEY = "__mobileDocumentationDraftUpdatedAt";
 
 function normalizeGeneratedDocumentExpirationDate(value = "") {
   const raw = String(value ?? "").trim();
@@ -13711,6 +13715,59 @@ function getGeneratedDocumentRecordWorkOrderNumber(record = {}, workOrder = {}) 
     || workOrder?.workOrderNumber
     || "",
   ).replace(/^RN\s*/i, "").trim();
+}
+
+function getMobileDocumentationDraftFieldValues(source = {}) {
+  return source?.fieldValues && typeof source.fieldValues === "object" && !Array.isArray(source.fieldValues)
+    ? source.fieldValues
+    : {};
+}
+
+function isMobileDocumentationDraftRecord(source = {}) {
+  const fieldValues = getMobileDocumentationDraftFieldValues(source);
+  const marker = fieldValues[MOBILE_DOCUMENTATION_DRAFT_MARKER_KEY];
+  return marker === true || marker === "true" || marker === "1" || marker === 1;
+}
+
+function getMobileDocumentationDraftWorkOrderId(source = {}) {
+  return normalizeInputValue(getMobileDocumentationDraftFieldValues(source)[MOBILE_DOCUMENTATION_DRAFT_WORK_ORDER_ID_KEY]);
+}
+
+function getMobileDocumentationDraftWorkOrderNumber(source = {}) {
+  const fieldValues = getMobileDocumentationDraftFieldValues(source);
+  return normalizeInputValue(
+    fieldValues[MOBILE_DOCUMENTATION_DRAFT_WORK_ORDER_NUMBER_KEY]
+    || fieldValues.WORK_ORDER_NUMBER
+    || source?.workOrderNumber,
+  );
+}
+
+function mobileDocumentationDraftMatchesWorkOrder(source = {}, workOrder = {}) {
+  if (!isMobileDocumentationDraftRecord(source)) {
+    return false;
+  }
+  const draftWorkOrderId = getMobileDocumentationDraftWorkOrderId(source);
+  const workOrderId = normalizeInputValue(workOrder?.id);
+  if (draftWorkOrderId && workOrderId) {
+    return draftWorkOrderId === workOrderId;
+  }
+  const draftWorkOrderNumber = getMobileDocumentationDraftWorkOrderNumber(source);
+  const workOrderNumber = normalizeInputValue(workOrder?.workOrderNumber || workOrder?.number || workOrder?.displayNumber);
+  return Boolean(draftWorkOrderNumber && workOrderNumber && draftWorkOrderNumber === workOrderNumber);
+}
+
+function stripMobileDocumentationDraftFields(fieldValues = {}) {
+  if (!fieldValues || typeof fieldValues !== "object" || Array.isArray(fieldValues)) {
+    return {};
+  }
+  const {
+    [MOBILE_DOCUMENTATION_DRAFT_MARKER_KEY]: _draftMarker,
+    [MOBILE_DOCUMENTATION_DRAFT_WORK_ORDER_ID_KEY]: _draftWorkOrderId,
+    [MOBILE_DOCUMENTATION_DRAFT_WORK_ORDER_NUMBER_KEY]: _draftWorkOrderNumber,
+    [MOBILE_DOCUMENTATION_DRAFT_UPDATED_AT_KEY]: _draftUpdatedAt,
+    ...rest
+  } = fieldValues;
+  return rest;
 }
 
 function getGeneratedDocumentRecordTrackedExpirationDate(fieldValues = {}) {
@@ -14176,9 +14233,138 @@ async function persistWorkOrderDocumentRecordsFromRequest({
   return { savedRecords, warnings };
 }
 
+function getMobileDocumentationDraftTemplateIds(body = {}, scopedSnapshot = {}) {
+  const ids = new Set();
+  [
+    body.templateId,
+    body.documentTemplateId,
+  ].map(normalizeInputValue).filter(Boolean).forEach((id) => ids.add(id));
+
+  [
+    body.templateFieldValues,
+    body.templateFieldSheets,
+    body.templateAttachments,
+  ].forEach((source) => {
+    if (source && typeof source === "object" && !Array.isArray(source)) {
+      Object.keys(source).map(normalizeInputValue).filter(Boolean).forEach((id) => ids.add(id));
+    }
+  });
+
+  const validIds = new Set(
+    (Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [])
+      .filter(isActiveMobileDocumentTemplate)
+      .map((template) => normalizeInputValue(template?.id))
+      .filter(Boolean),
+  );
+
+  return Array.from(ids).filter((id) => validIds.has(id));
+}
+
+function buildMobileDocumentationDraftRecordInputs(body = {}, workOrder = {}, scopedSnapshot = {}) {
+  const templateIds = getMobileDocumentationDraftTemplateIds(body, scopedSnapshot);
+  if (templateIds.length === 0) {
+    const fallbackTemplate = resolveWorkOrderDocumentRecordTemplate(body, workOrder, scopedSnapshot);
+    if (fallbackTemplate?.id) {
+      templateIds.push(normalizeInputValue(fallbackTemplate.id));
+    }
+  }
+
+  const commonFieldValues = body.fieldValues && typeof body.fieldValues === "object" && !Array.isArray(body.fieldValues)
+    ? body.fieldValues
+    : {};
+  const commonFieldSheets = body.fieldSheets && typeof body.fieldSheets === "object" && !Array.isArray(body.fieldSheets)
+    ? body.fieldSheets
+    : {};
+  const templateFieldValues = body.templateFieldValues && typeof body.templateFieldValues === "object" && !Array.isArray(body.templateFieldValues)
+    ? body.templateFieldValues
+    : {};
+  const templateFieldSheets = body.templateFieldSheets && typeof body.templateFieldSheets === "object" && !Array.isArray(body.templateFieldSheets)
+    ? body.templateFieldSheets
+    : {};
+  const nowIso = new Date().toISOString();
+  const workOrderNumber = normalizeInputValue(body.workOrderNumber || workOrder.workOrderNumber || workOrder.number);
+  const workOrderId = normalizeInputValue(workOrder.id);
+
+  return templateIds.map((templateId) => {
+    const templateValues = templateFieldValues[templateId] && typeof templateFieldValues[templateId] === "object" && !Array.isArray(templateFieldValues[templateId])
+      ? templateFieldValues[templateId]
+      : {};
+    const templateSheets = templateFieldSheets[templateId] && typeof templateFieldSheets[templateId] === "object" && !Array.isArray(templateFieldSheets[templateId])
+      ? templateFieldSheets[templateId]
+      : {};
+    return {
+      ...body,
+      templateId,
+      fieldValues: {
+        ...commonFieldValues,
+        ...templateValues,
+        [MOBILE_DOCUMENTATION_DRAFT_MARKER_KEY]: "1",
+        [MOBILE_DOCUMENTATION_DRAFT_WORK_ORDER_ID_KEY]: workOrderId,
+        [MOBILE_DOCUMENTATION_DRAFT_WORK_ORDER_NUMBER_KEY]: workOrderNumber,
+        [MOBILE_DOCUMENTATION_DRAFT_UPDATED_AT_KEY]: nowIso,
+      },
+      fieldSheets: {
+        ...commonFieldSheets,
+        ...templateSheets,
+      },
+      templateAttachments: body.templateAttachments,
+      attachments: body.attachments,
+    };
+  });
+}
+
+async function persistMobileWorkOrderDocumentationDraft({
+  body = {},
+  workOrder = {},
+  scopedSnapshot = {},
+  user = null,
+} = {}) {
+  const recordInputs = buildMobileDocumentationDraftRecordInputs(body, workOrder, scopedSnapshot);
+  const savedRecords = [];
+  const warnings = [];
+
+  for (const recordInput of recordInputs) {
+    const payload = buildWorkOrderDocumentRecordPayloadFromRequest(recordInput, workOrder, scopedSnapshot);
+    if (!payload) {
+      warnings.push("Nije pronađen povezani predložak za spremanje mobilnog drafta.");
+      continue;
+    }
+    try {
+      const saved = await upsertDocumentRecordPayload(payload, user, workOrder);
+      if (saved) {
+        savedRecords.push(saved);
+      }
+    } catch (error) {
+      warnings.push(error?.message || "Mobilni draft nije spremljen.");
+    }
+  }
+
+  return { savedRecords, warnings };
+}
+
 function isSameGeneratedDocumentRecord(existing = {}, payload = {}, workOrder = {}) {
   if (!existing || !payload) {
     return false;
+  }
+
+  if (isMobileDocumentationDraftRecord(existing) || isMobileDocumentationDraftRecord(payload)) {
+    return isMobileDocumentationDraftRecord(existing)
+      && isMobileDocumentationDraftRecord(payload)
+      && String(existing.templateId || "") === String(payload.templateId || "")
+      && String(existing.companyId || "") === String(payload.companyId || "")
+      && String(existing.locationId || "") === String(payload.locationId || "")
+      && String(existing.objectId || "") === String(payload.objectId || "")
+      && String(existing.objectName || "") === String(payload.objectName || "")
+      && (
+        (
+          getMobileDocumentationDraftWorkOrderId(existing)
+          && getMobileDocumentationDraftWorkOrderId(existing) === getMobileDocumentationDraftWorkOrderId(payload)
+        )
+        || (
+          getMobileDocumentationDraftWorkOrderNumber(existing)
+          && getMobileDocumentationDraftWorkOrderNumber(existing) === getMobileDocumentationDraftWorkOrderNumber(payload)
+        )
+      );
   }
 
   const existingObjectId = String(existing.objectId || "").trim();
@@ -24545,6 +24731,7 @@ function findLatestMobileDocumentRecordForTemplate(template = {}, workOrder = {}
       record,
       templateScore: getMobileDocumentRecordTemplateScore(record, template),
       objectScore: getMobileDocumentRecordObjectScore(record, workOrder),
+      draftScore: mobileDocumentationDraftMatchesWorkOrder(record, workOrder) ? 1000 : 0,
     }))
     .filter((candidate) => {
       const record = candidate.record;
@@ -24555,7 +24742,8 @@ function findLatestMobileDocumentRecordForTemplate(template = {}, workOrder = {}
         && normalizeInputValue(record?.locationId) === locationId;
     })
     .sort((left, right) => (
-      right.templateScore - left.templateScore
+      right.draftScore - left.draftScore
+      || right.templateScore - left.templateScore
       || right.objectScore - left.objectScore
       || getMobileDocumentRecordSortKey(right.record).localeCompare(getMobileDocumentRecordSortKey(left.record))
     ))
@@ -24621,8 +24809,9 @@ function buildMobileDocumentRecordWizardDefaults(record = null, workOrder = {}) 
   const {
     [MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY]: _savedDocumentationAttachments,
     [MOBILE_DOCUMENTATION_RECORD_TEMPLATE_ATTACHMENTS_KEY]: _savedDocumentationTemplateAttachments,
-    ...fieldValuesForDefaults
+    ...rawFieldValuesForDefaults
   } = fieldValues;
+  const fieldValuesForDefaults = stripMobileDocumentationDraftFields(rawFieldValuesForDefaults);
   const fieldSheets = record?.fieldSheets && typeof record.fieldSheets === "object" && !Array.isArray(record.fieldSheets)
     ? record.fieldSheets
     : {};
@@ -35536,6 +35725,40 @@ async function handleApiRequest(request, response, url) {
       } catch (error) {
         sendError(response, error.statusCode || 500, error.message || "Zapisnik osposobljavanja nije generiran.");
       }
+      return true;
+    }
+
+    const mobileWorkOrderDocumentationDraftMatch = url.pathname.match(/^\/api\/mobile\/work-orders\/([^/]+)\/documentation-draft$/);
+    if (mobileWorkOrderDocumentationDraftMatch && request.method === "POST") {
+      if (!canManageWorkOrders(user)) {
+        sendError(response, 403, "Nemate pravo spremati draft dokumentacije RN-a.");
+        return true;
+      }
+
+      const body = await readJsonBody(request).catch(() => ({}));
+      const { scopedSnapshot } = await getScopedState(user, request);
+      const workOrder = await hydrateWorkOrderMeasurementSheet(assertInScope(
+        scopedSnapshot.workOrders ?? [],
+        mobileWorkOrderDocumentationDraftMatch[1],
+        "Radni nalog nije pronađen.",
+      ));
+      const workOrderForDraft = applyMobileSelectedObjectToWorkOrder(workOrder, scopedSnapshot, body);
+      const result = await persistMobileWorkOrderDocumentationDraft({
+        body,
+        workOrder: workOrderForDraft,
+        scopedSnapshot,
+        user,
+      });
+
+      sendJson(response, 201, {
+        ok: true,
+        count: result.savedRecords.length,
+        warnings: result.warnings,
+        items: result.savedRecords.map((record) => ({
+          ...record,
+          fieldValues: stripMobileDocumentationDraftFields(record.fieldValues || {}),
+        })),
+      });
       return true;
     }
 

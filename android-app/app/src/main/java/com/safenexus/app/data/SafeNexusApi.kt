@@ -42,6 +42,108 @@ private val RO_ASSESSMENT_PHOTO_FINDING_CLEANUPS: List<Pair<Regex, String>> = li
 private fun isRoAssessmentUnverifiedNote(value: String): Boolean =
     RO_ASSESSMENT_UNVERIFIED_NOTE_REGEX.containsMatchIn(value.trim())
 
+fun WorkOrderDocumentationDraft.toDocumentationJsonPayload(
+    async: Boolean = true,
+    draftOnly: Boolean = false,
+): String {
+    val inspectorIds = JSONArray()
+    inspectorUserIds.forEach { inspectorIds.put(it) }
+    val electricalInspectorIds = JSONArray()
+    electricalInspectorUserIds.forEach { electricalInspectorIds.put(it) }
+    val tipkaloInspectorIds = JSONArray()
+    tipkaloInspectorUserIds.forEach { tipkaloInspectorIds.put(it) }
+    val workEquipmentInspectorIds = JSONArray()
+    workEquipmentInspectorUserIds.forEach { workEquipmentInspectorIds.put(it) }
+    val workEnvironmentInspectorIds = JSONArray()
+    workEnvironmentInspectorUserIds.forEach { workEnvironmentInspectorIds.put(it) }
+    val selectedEquipmentIds = JSONArray()
+    this.selectedEquipmentIds.forEach { selectedEquipmentIds.put(it) }
+    val selectedLegalFrameworkIds = JSONArray()
+    this.selectedLegalFrameworkIds.forEach { selectedLegalFrameworkIds.put(it) }
+    val selectedRulebookIds = JSONArray()
+    this.selectedRulebookIds.forEach { selectedRulebookIds.put(it) }
+    val selectedWorkEquipmentRecords = JSONArray()
+    this.selectedWorkEquipmentRecords.forEach { selectedWorkEquipmentRecords.put(it.toJsonObject()) }
+    val selectedWorkEnvironmentRecords = JSONArray()
+    this.selectedWorkEnvironmentRecords.forEach { selectedWorkEnvironmentRecords.put(it.toJsonObject()) }
+    val manualWorkEquipments = JSONArray()
+    this.manualWorkEquipments.forEach { manualWorkEquipments.put(it.toJsonObject()) }
+    val executors = JSONArray()
+    this.executors.forEach { executors.put(it) }
+    val additionalRecords = JSONArray()
+    this.additionalRecords.forEach { record ->
+        additionalRecords.put(
+            JSONObject()
+                .put("serviceKey", record.serviceKey)
+                .put("serviceIndex", record.serviceIndex)
+                .put("serviceCode", record.serviceCode)
+                .put("serviceName", record.serviceName)
+                .put("objectId", record.objectId)
+                .put("objectName", record.objectName)
+                .put("objectSequence", record.objectSequence),
+        )
+    }
+    return JSONObject()
+        .put("objectId", objectId)
+        .put("objectName", objectName)
+        .put("inspectionDate", inspectionDate)
+        .put("issuedDate", issuedDate)
+        .put("issuedPlace", issuedPlace)
+        .put("testingLocation", testingLocation)
+        .put("note", note)
+        .put("inspectionType", inspectionType)
+        .put("completedBy", completedBy)
+        .put("outsideTemperature", outsideTemperature)
+        .put("relativeHumidity", relativeHumidity)
+        .put("airflowSpeed", airflowSpeed)
+        .put("weather", weather)
+        .put("groundCondition", groundCondition)
+        .put("groundResistance", groundResistance)
+        .put("measurementEquipmentGroup", measurementEquipmentGroup)
+        .put("selectedEquipmentIds", selectedEquipmentIds)
+        .put("selectedLegalFrameworkIds", selectedLegalFrameworkIds)
+        .put("selectedRulebookIds", selectedRulebookIds)
+        .put("selectedWorkEquipmentRecords", selectedWorkEquipmentRecords)
+        .put("selectedWorkEnvironmentRecords", selectedWorkEnvironmentRecords)
+        .put("manualWorkEquipments", manualWorkEquipments)
+        .put("workEquipmentSubmitResult", workEquipmentSubmitResult.toJsonObject())
+        .put("workEnvironmentSubmitResult", workEnvironmentSubmitResult.toJsonObject())
+        .put("signatureMode", signatureMode)
+        .put("validityMonths", validityMonths)
+        .put("electricalValidityMonths", electricalValidityMonths)
+        .put("tipkaloValidityMonths", tipkaloValidityMonths)
+        .put("serviceValidityMonths", serviceValidityMonths.toJsonObject())
+        .put("executors", executors)
+        .put("inspectorUserIds", inspectorIds)
+        .put("inspectorUserId", inspectorUserId)
+        .put("authorizationHolderUserId", authorizationHolderUserId)
+        .put("electricalInspectorUserIds", electricalInspectorIds)
+        .put("electricalInspectorUserId", electricalInspectorUserId)
+        .put("electricalAuthorizationHolderUserId", electricalAuthorizationHolderUserId)
+        .put("tipkaloInspectorUserIds", tipkaloInspectorIds)
+        .put("tipkaloInspectorUserId", tipkaloInspectorUserId)
+        .put("tipkaloAuthorizationHolderUserId", tipkaloAuthorizationHolderUserId)
+        .put("radna_opremaInspectorUserIds", workEquipmentInspectorIds)
+        .put("radna_opremaInspectorUserId", workEquipmentInspectorUserId)
+        .put("radna_opremaAuthorizationHolderUserId", workEquipmentAuthorizationHolderUserId)
+        .put("radni_okolisInspectorUserIds", workEnvironmentInspectorIds)
+        .put("radni_okolisInspectorUserId", workEnvironmentInspectorUserId)
+        .put("radni_okolisAuthorizationHolderUserId", workEnvironmentAuthorizationHolderUserId)
+        .put("handoverVerifierUserId", handoverVerifierUserId)
+        .put("fieldValues", fieldValues.toJsonObject())
+        .put("templateFieldValues", templateFieldValues.toNestedJsonObject())
+        .put("fieldSheets", fieldSheets.toMeasurementSheetJsonObject())
+        .put("templateFieldSheets", templateFieldSheets.toNestedMeasurementSheetJsonObject())
+        .put("includedMeasurementTableKeys", JSONArray(includedMeasurementTableKeys.map { it.trim() }.filter { it.isNotBlank() }))
+        .put("attachments", attachments.toDocumentationAiFilesJsonArray())
+        .put("templateAttachments", templateAttachments.toNestedDocumentationAiFilesJsonObject())
+        .put("additionalRecords", additionalRecords)
+        .put("includeHandoverProtocol", includeHandoverProtocol)
+        .put("async", async)
+        .put("draftOnly", draftOnly)
+        .toString()
+}
+
 class SafeNexusApi(
     private val baseUrl: String = BuildConfig.SAFE_NEXUS_BASE_URL.trimEnd('/'),
 ) {
@@ -1023,101 +1125,7 @@ class SafeNexusApi(
         draft: WorkOrderDocumentationDraft,
     ): Result<List<WorkOrderDocument>> = withContext(Dispatchers.IO) {
         runCatching {
-            val inspectorIds = JSONArray()
-            draft.inspectorUserIds.forEach { inspectorIds.put(it) }
-            val electricalInspectorIds = JSONArray()
-            draft.electricalInspectorUserIds.forEach { electricalInspectorIds.put(it) }
-            val tipkaloInspectorIds = JSONArray()
-            draft.tipkaloInspectorUserIds.forEach { tipkaloInspectorIds.put(it) }
-            val workEquipmentInspectorIds = JSONArray()
-            draft.workEquipmentInspectorUserIds.forEach { workEquipmentInspectorIds.put(it) }
-            val workEnvironmentInspectorIds = JSONArray()
-            draft.workEnvironmentInspectorUserIds.forEach { workEnvironmentInspectorIds.put(it) }
-            val selectedEquipmentIds = JSONArray()
-            draft.selectedEquipmentIds.forEach { selectedEquipmentIds.put(it) }
-            val selectedLegalFrameworkIds = JSONArray()
-            draft.selectedLegalFrameworkIds.forEach { selectedLegalFrameworkIds.put(it) }
-            val selectedRulebookIds = JSONArray()
-            draft.selectedRulebookIds.forEach { selectedRulebookIds.put(it) }
-            val selectedWorkEquipmentRecords = JSONArray()
-            draft.selectedWorkEquipmentRecords.forEach { selectedWorkEquipmentRecords.put(it.toJsonObject()) }
-            val selectedWorkEnvironmentRecords = JSONArray()
-            draft.selectedWorkEnvironmentRecords.forEach { selectedWorkEnvironmentRecords.put(it.toJsonObject()) }
-            val manualWorkEquipments = JSONArray()
-            draft.manualWorkEquipments.forEach { manualWorkEquipments.put(it.toJsonObject()) }
-            val executors = JSONArray()
-            draft.executors.forEach { executors.put(it) }
-            val additionalRecords = JSONArray()
-            draft.additionalRecords.forEach { record ->
-                additionalRecords.put(
-                    JSONObject()
-                        .put("serviceKey", record.serviceKey)
-                        .put("serviceIndex", record.serviceIndex)
-                        .put("serviceCode", record.serviceCode)
-                        .put("serviceName", record.serviceName)
-                        .put("objectId", record.objectId)
-                        .put("objectName", record.objectName)
-                        .put("objectSequence", record.objectSequence),
-                )
-            }
-            val payload = JSONObject()
-                .put("objectId", draft.objectId)
-                .put("objectName", draft.objectName)
-                .put("inspectionDate", draft.inspectionDate)
-                .put("issuedDate", draft.issuedDate)
-                .put("issuedPlace", draft.issuedPlace)
-                .put("testingLocation", draft.testingLocation)
-                .put("note", draft.note)
-                .put("inspectionType", draft.inspectionType)
-                .put("completedBy", draft.completedBy)
-                .put("outsideTemperature", draft.outsideTemperature)
-                .put("relativeHumidity", draft.relativeHumidity)
-                .put("airflowSpeed", draft.airflowSpeed)
-                .put("weather", draft.weather)
-                .put("groundCondition", draft.groundCondition)
-                .put("groundResistance", draft.groundResistance)
-                .put("measurementEquipmentGroup", draft.measurementEquipmentGroup)
-                .put("selectedEquipmentIds", selectedEquipmentIds)
-                .put("selectedLegalFrameworkIds", selectedLegalFrameworkIds)
-                .put("selectedRulebookIds", selectedRulebookIds)
-                .put("selectedWorkEquipmentRecords", selectedWorkEquipmentRecords)
-                .put("selectedWorkEnvironmentRecords", selectedWorkEnvironmentRecords)
-                .put("manualWorkEquipments", manualWorkEquipments)
-                .put("workEquipmentSubmitResult", draft.workEquipmentSubmitResult.toJsonObject())
-                .put("workEnvironmentSubmitResult", draft.workEnvironmentSubmitResult.toJsonObject())
-                .put("signatureMode", draft.signatureMode)
-                .put("validityMonths", draft.validityMonths)
-                .put("electricalValidityMonths", draft.electricalValidityMonths)
-                .put("tipkaloValidityMonths", draft.tipkaloValidityMonths)
-                .put("serviceValidityMonths", draft.serviceValidityMonths.toJsonObject())
-                .put("executors", executors)
-                .put("inspectorUserIds", inspectorIds)
-                .put("inspectorUserId", draft.inspectorUserId)
-                .put("authorizationHolderUserId", draft.authorizationHolderUserId)
-                .put("electricalInspectorUserIds", electricalInspectorIds)
-                .put("electricalInspectorUserId", draft.electricalInspectorUserId)
-                .put("electricalAuthorizationHolderUserId", draft.electricalAuthorizationHolderUserId)
-                .put("tipkaloInspectorUserIds", tipkaloInspectorIds)
-                .put("tipkaloInspectorUserId", draft.tipkaloInspectorUserId)
-                .put("tipkaloAuthorizationHolderUserId", draft.tipkaloAuthorizationHolderUserId)
-                .put("radna_opremaInspectorUserIds", workEquipmentInspectorIds)
-                .put("radna_opremaInspectorUserId", draft.workEquipmentInspectorUserId)
-                .put("radna_opremaAuthorizationHolderUserId", draft.workEquipmentAuthorizationHolderUserId)
-                .put("radni_okolisInspectorUserIds", workEnvironmentInspectorIds)
-                .put("radni_okolisInspectorUserId", draft.workEnvironmentInspectorUserId)
-                .put("radni_okolisAuthorizationHolderUserId", draft.workEnvironmentAuthorizationHolderUserId)
-                .put("handoverVerifierUserId", draft.handoverVerifierUserId)
-                .put("fieldValues", draft.fieldValues.toJsonObject())
-                .put("templateFieldValues", draft.templateFieldValues.toNestedJsonObject())
-                .put("fieldSheets", draft.fieldSheets.toMeasurementSheetJsonObject())
-                .put("templateFieldSheets", draft.templateFieldSheets.toNestedMeasurementSheetJsonObject())
-                .put("includedMeasurementTableKeys", JSONArray(draft.includedMeasurementTableKeys.map { it.trim() }.filter { it.isNotBlank() }))
-                .put("attachments", draft.attachments.toDocumentationAiFilesJsonArray())
-                .put("templateAttachments", draft.templateAttachments.toNestedDocumentationAiFilesJsonObject())
-                .put("additionalRecords", additionalRecords)
-                .put("includeHandoverProtocol", draft.includeHandoverProtocol)
-                .put("async", true)
-                .toString()
+            val payload = draft.toDocumentationJsonPayload(async = true)
             var json = JSONObject(
                 request(
                     "/api/mobile/work-orders/${workOrderId.pathSegment()}/generate-documents",
@@ -1154,6 +1162,21 @@ class SafeNexusApi(
                 }
             }
             json.optJSONArray("items").toWorkOrderDocuments()
+        }
+    }
+
+    suspend fun saveWorkOrderDocumentationDraft(
+        workOrderId: String,
+        payload: String,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            request(
+                "/api/mobile/work-orders/${workOrderId.pathSegment()}/documentation-draft",
+                method = "POST",
+                body = payload,
+                readTimeoutMs = DEFAULT_READ_TIMEOUT_MS,
+            )
+            Unit
         }
     }
 

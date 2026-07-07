@@ -170,6 +170,7 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -286,11 +287,13 @@ import com.safenexus.app.data.WorkOrderTrainingService
 import com.safenexus.app.data.WorkOrderUploadFile
 import com.safenexus.app.data.WorkOrderUserOption
 import com.safenexus.app.data.parseDateOrNull
+import com.safenexus.app.data.toDocumentationJsonPayload
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -593,14 +596,93 @@ private fun AppState.hasAndroidBackTarget(): Boolean =
         section != AppSection.Operations ||
         (section == AppSection.More && moreFocus != MoreSectionFocus.Overview)
 
+private data class OfflineDocumentationDraftEntry(
+    val key: String,
+    val workOrderId: String,
+    val objectId: String,
+    val updatedAt: String,
+    val payload: String,
+)
+
+private class OfflineDocumentationDraftStore(context: Context) {
+    private val directory = File(context.filesDir, "documentation-drafts").apply { mkdirs() }
+
+    private fun safeFileKey(workOrderId: String, objectId: String): String =
+        listOf(workOrderId.ifBlank { "work-order" }, objectId.ifBlank { "location" })
+            .joinToString("__")
+            .replace(Regex("[^A-Za-z0-9._-]"), "_")
+            .take(180)
+            .ifBlank { "draft" }
+
+    private fun fileForKey(key: String): File = File(directory, "$key.json")
+
+    fun save(workOrder: WorkOrder, draft: WorkOrderDocumentationDraft, payload: String): OfflineDocumentationDraftEntry? =
+        runCatching {
+            val key = safeFileKey(workOrder.id, draft.objectId)
+            val updatedAt = Instant.now().toString()
+            val entry = JSONObject()
+                .put("key", key)
+                .put("workOrderId", workOrder.id)
+                .put("workOrderNumber", workOrder.displayNumber)
+                .put("objectId", draft.objectId)
+                .put("objectName", draft.objectName)
+                .put("updatedAt", updatedAt)
+                .put("syncedAt", "")
+                .put("payload", payload)
+            fileForKey(key).writeText(entry.toString())
+            OfflineDocumentationDraftEntry(
+                key = key,
+                workOrderId = workOrder.id,
+                objectId = draft.objectId,
+                updatedAt = updatedAt,
+                payload = payload,
+            )
+        }.getOrNull()
+
+    fun pendingEntries(): List<OfflineDocumentationDraftEntry> =
+        directory.listFiles { file -> file.isFile && file.extension.equals("json", ignoreCase = true) }
+            ?.mapNotNull { file ->
+                runCatching {
+                    val json = JSONObject(file.readText())
+                    val payload = json.optString("payload").trim()
+                    if (payload.isBlank() || json.optString("syncedAt").isNotBlank()) {
+                        return@mapNotNull null
+                    }
+                    OfflineDocumentationDraftEntry(
+                        key = json.optString("key").ifBlank { file.nameWithoutExtension },
+                        workOrderId = json.optString("workOrderId"),
+                        objectId = json.optString("objectId"),
+                        updatedAt = json.optString("updatedAt"),
+                        payload = payload,
+                    )
+                }.getOrNull()
+            }
+            ?.sortedBy { it.updatedAt }
+            .orEmpty()
+
+    fun markSynced(key: String) {
+        runCatching {
+            val file = fileForKey(key)
+            if (!file.exists()) return
+            val json = JSONObject(file.readText())
+            json.put("syncedAt", Instant.now().toString())
+            file.writeText(json.toString())
+        }
+    }
+}
+
 class SafeNexusViewModel(application: Application) : AndroidViewModel(application) {
     private val api = SafeNexusApi()
     private val authStore = SafeNexusAuthStore(application)
+    private val documentationDraftStore = OfflineDocumentationDraftStore(application)
     private val workOrderMutationVersions = mutableMapOf<String, Int>()
     private val documentationContextCache = mutableMapOf<String, WorkOrderDocumentationContext>()
     private val documentationContextRequests = mutableSetOf<String>()
     private val navigationBackStack = mutableListOf<AppNavigationDestination>()
     private var shouldRememberSession = false
+    private var documentationDraftAutosaveJob: Job? = null
+    private var documentationDraftSyncJob: Job? = null
+    private var pendingDocumentationDraftAutosave: Pair<WorkOrder, WorkOrderDocumentationDraft>? = null
 
     var state by mutableStateOf(AppState())
         private set
@@ -728,6 +810,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                         isLoading = false,
                         error = "",
                     )
+                    syncPendingDocumentationDrafts(silent = true)
                     loadCompanyDirectory(reset = true)
                 }
                 .onFailure { error ->
@@ -2326,8 +2409,13 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
 
+        val draftEntry = saveWorkOrderDocumentationDraftLocally(workOrder, draft)
         state = state.copy(isLoading = true, error = "", notice = "")
         viewModelScope.launch {
+            draftEntry?.let { entry ->
+                api.saveWorkOrderDocumentationDraft(workOrder.id, entry.payload)
+                    .onSuccess { documentationDraftStore.markSynced(entry.key) }
+            }
             api.generateWorkOrderDocumentation(workOrder.id, draft)
                 .onSuccess { documents ->
                     state = state.copy(
@@ -2348,9 +2436,54 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                 .onFailure { error ->
                     state = state.copy(
                         isLoading = false,
-                        error = error.message ?: "Ne mogu izraditi dokumentaciju RN-a.",
+                        error = (error.message ?: "Ne mogu izraditi dokumentaciju RN-a.") +
+                            if (draftEntry != null) " Draft je spremljen lokalno i sinkronizirat će se kad se internet vrati." else "",
                     )
                 }
+        }
+    }
+
+    private fun saveWorkOrderDocumentationDraftLocally(
+        workOrder: WorkOrder,
+        draft: WorkOrderDocumentationDraft,
+    ): OfflineDocumentationDraftEntry? {
+        if (workOrder.id.isBlank()) return null
+        val payload = runCatching { draft.toDocumentationJsonPayload(async = false, draftOnly = true) }.getOrNull()
+            ?: return null
+        return documentationDraftStore.save(workOrder, draft, payload)
+    }
+
+    fun autosaveWorkOrderDocumentationDraft(workOrder: WorkOrder, draft: WorkOrderDocumentationDraft) {
+        if (workOrder.id.isBlank()) return
+        pendingDocumentationDraftAutosave = workOrder to draft
+        documentationDraftAutosaveJob?.cancel()
+        documentationDraftAutosaveJob = viewModelScope.launch {
+            delay(1_200)
+            val (targetWorkOrder, targetDraft) = pendingDocumentationDraftAutosave ?: return@launch
+            val saved = saveWorkOrderDocumentationDraftLocally(targetWorkOrder, targetDraft)
+            pendingDocumentationDraftAutosave = null
+            if (saved != null) {
+                syncPendingDocumentationDrafts(silent = true)
+            }
+        }
+    }
+
+    private fun syncPendingDocumentationDrafts(silent: Boolean = true) {
+        if (documentationDraftSyncJob?.isActive == true || state.user == null) return
+        val pending = documentationDraftStore.pendingEntries()
+        if (pending.isEmpty()) return
+        documentationDraftSyncJob = viewModelScope.launch {
+            var synced = 0
+            pending.forEach { entry ->
+                api.saveWorkOrderDocumentationDraft(entry.workOrderId, entry.payload)
+                    .onSuccess {
+                        documentationDraftStore.markSynced(entry.key)
+                        synced += 1
+                    }
+            }
+            if (!silent && synced > 0) {
+                state = state.copy(notice = "Sinkronizirano $synced mobilnih draftova dokumentacije.")
+            }
         }
     }
 
@@ -3661,6 +3794,9 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
             },
             onAddTrainingPerson = { draft ->
                 viewModel.addTrainingPersonManually(workOrder, draft, documentationWizardObjectId)
+            },
+            onDraftAutosave = { draft ->
+                viewModel.autosaveWorkOrderDocumentationDraft(workOrder, draft)
             },
             onConfirm = { draft ->
                 documentationWizardTargetId = ""
@@ -28141,6 +28277,7 @@ private fun WorkOrderDocumentationWizardDialog(
     onDownloadTrainingImportTemplate: () -> Unit,
     onUploadTrainingImport: () -> Unit,
     onAddTrainingPerson: (WorkOrderTrainingManualPersonDraft) -> Unit,
+    onDraftAutosave: (WorkOrderDocumentationDraft) -> Unit,
     onConfirm: (WorkOrderDocumentationDraft) -> Unit,
 ) {
     val androidContext = LocalContext.current
@@ -29444,6 +29581,93 @@ private fun WorkOrderDocumentationWizardDialog(
         )
     }
 
+    fun buildCurrentDocumentationDraft(): WorkOrderDocumentationDraft {
+        val templatePayload = buildTemplateFieldPayload(allPromptTemplates, effectiveTemplateFieldValues)
+        val sheetPayload = buildMeasurementSheetPayload(allMeasurementTemplates, measurementSheets)
+        val includedMeasurementPayload = buildIncludedMeasurementTablePayloadKeys(
+            allMeasurementTemplates,
+            includedMeasurementTableKeys,
+        )
+        val serviceValidityPayload = buildServiceValidityPayload(serviceFlowItems, serviceValidityMonths, validityMonths)
+        val primaryValidityMonths = serviceValidityPayload.values.firstOrNull { it.isNotBlank() }
+            ?: validityMonths.trim()
+        return WorkOrderDocumentationDraft(
+            objectId = selectedObject?.id.orEmpty(),
+            objectName = selectedObject?.name.orEmpty(),
+            inspectionDate = inspectionDate.trim(),
+            issuedDate = issuedDate.trim(),
+            issuedPlace = "",
+            testingLocation = testingLocation.trim(),
+            note = "",
+            inspectionType = inspectionType.trim(),
+            completedBy = completedBy.trim(),
+            outsideTemperature = outsideTemperature.trim(),
+            relativeHumidity = relativeHumidity.trim(),
+            airflowSpeed = airflowSpeed.trim(),
+            weather = weather.trim(),
+            groundCondition = groundCondition.trim(),
+            groundResistance = groundResistance.trim(),
+            measurementEquipmentGroup = measurementEquipmentGroup.trim(),
+            selectedEquipmentIds = selectedEquipmentIds.toList(),
+            selectedLegalFrameworkIds = selectedLegalFrameworkIds.toList(),
+            selectedRulebookIds = emptyList(),
+            selectedWorkEquipmentRecords = selectedWorkEquipmentRecords,
+            selectedWorkEnvironmentRecords = selectedPhysicalFactorsRecords,
+            manualWorkEquipments = readyManualDocumentEquipments,
+            workEquipmentSubmitResult = lastWorkEquipmentSubmitResult,
+            workEnvironmentSubmitResult = lastPhysicalFactorsSubmitResult,
+            signatureMode = signatureMode,
+            validityMonths = primaryValidityMonths,
+            electricalValidityMonths = electricalValidityMonths.trim(),
+            tipkaloValidityMonths = tipkaloValidityMonths.trim(),
+            serviceValidityMonths = serviceValidityPayload,
+            executors = editableExecutors,
+            inspectorUserIds = inspectorUserIds.toList(),
+            inspectorUserId = inspectorUserId.ifBlank { inspectorUserIds.firstOrNull().orEmpty() },
+            authorizationHolderUserId = authorizationHolderUserId,
+            electricalInspectorUserIds = electricalInspectorUserIds.toList(),
+            electricalInspectorUserId = electricalInspectorUserId.ifBlank { electricalInspectorUserIds.firstOrNull().orEmpty() },
+            electricalAuthorizationHolderUserId = electricalAuthorizationHolderUserId,
+            tipkaloInspectorUserIds = tipkaloInspectorUserIds.toList(),
+            tipkaloInspectorUserId = tipkaloInspectorUserId.ifBlank { tipkaloInspectorUserIds.firstOrNull().orEmpty() },
+            tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
+            workEquipmentInspectorUserIds = workEquipmentInspectorUserIds.toList(),
+            workEquipmentInspectorUserId = workEquipmentInspectorUserId.ifBlank { workEquipmentInspectorUserIds.firstOrNull().orEmpty() },
+            workEquipmentAuthorizationHolderUserId = workEquipmentAuthorizationHolderUserId,
+            workEnvironmentInspectorUserIds = workEnvironmentInspectorUserIds.toList(),
+            workEnvironmentInspectorUserId = workEnvironmentInspectorUserId.ifBlank { workEnvironmentInspectorUserIds.firstOrNull().orEmpty() },
+            workEnvironmentAuthorizationHolderUserId = workEnvironmentAuthorizationHolderUserId,
+            handoverVerifierUserId = handoverVerifierUserId,
+            fieldValues = templatePayload.first,
+            templateFieldValues = templatePayload.second,
+            fieldSheets = sheetPayload.first,
+            templateFieldSheets = sheetPayload.second,
+            includedMeasurementTableKeys = includedMeasurementPayload,
+            attachments = documentationAttachmentFiles,
+            templateAttachments = documentationAttachmentFilesByTemplate
+                .filterKeys { it != DOCUMENTATION_COMMON_ATTACHMENT_KEY }
+                .filterValues { it.isNotEmpty() },
+            additionalRecords = additionalRecords.map { record ->
+                WorkOrderDocumentationAdditionalRecord(
+                    serviceKey = record.serviceKey,
+                    serviceIndex = record.serviceIndex,
+                    serviceCode = record.serviceCode,
+                    serviceName = record.serviceName,
+                    objectId = record.objectId,
+                    objectName = record.objectName,
+                    objectSequence = record.objectSequence,
+                )
+            },
+            includeHandoverProtocol = includeHandoverProtocol,
+        )
+    }
+
+    if (!isTrainingDocumentationFlow && !contextLoading && !formLoading) {
+        SideEffect {
+            onDraftAutosave(buildCurrentDocumentationDraft())
+        }
+    }
+
     if (!measurementPreviewOpen) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -30326,85 +30550,7 @@ private fun WorkOrderDocumentationWizardDialog(
                             return@Button
                         }
                         requiredWarning = ""
-                        val templatePayload = buildTemplateFieldPayload(allPromptTemplates, effectiveTemplateFieldValues)
-                        val sheetPayload = buildMeasurementSheetPayload(allMeasurementTemplates, measurementSheets)
-                        val includedMeasurementPayload = buildIncludedMeasurementTablePayloadKeys(
-                            allMeasurementTemplates,
-                            includedMeasurementTableKeys,
-                        )
-                        val serviceValidityPayload = buildServiceValidityPayload(serviceFlowItems, serviceValidityMonths, validityMonths)
-                        val primaryValidityMonths = serviceValidityPayload.values.firstOrNull { it.isNotBlank() }
-                            ?: validityMonths.trim()
-                        val draft = WorkOrderDocumentationDraft(
-                            objectId = selectedObject?.id.orEmpty(),
-                            objectName = selectedObject?.name.orEmpty(),
-                            inspectionDate = inspectionDate.trim(),
-                            issuedDate = issuedDate.trim(),
-                            issuedPlace = "",
-                            testingLocation = testingLocation.trim(),
-                            note = "",
-                            inspectionType = inspectionType.trim(),
-                            completedBy = completedBy.trim(),
-                            outsideTemperature = outsideTemperature.trim(),
-                            relativeHumidity = relativeHumidity.trim(),
-                            airflowSpeed = airflowSpeed.trim(),
-                            weather = weather.trim(),
-                            groundCondition = groundCondition.trim(),
-                            groundResistance = groundResistance.trim(),
-                            measurementEquipmentGroup = measurementEquipmentGroup.trim(),
-                            selectedEquipmentIds = selectedEquipmentIds.toList(),
-                            selectedLegalFrameworkIds = selectedLegalFrameworkIds.toList(),
-                            selectedRulebookIds = emptyList(),
-                            selectedWorkEquipmentRecords = selectedWorkEquipmentRecords,
-                            selectedWorkEnvironmentRecords = selectedPhysicalFactorsRecords,
-                            manualWorkEquipments = readyManualDocumentEquipments,
-                            workEquipmentSubmitResult = lastWorkEquipmentSubmitResult,
-                            workEnvironmentSubmitResult = lastPhysicalFactorsSubmitResult,
-                            signatureMode = signatureMode,
-                            validityMonths = primaryValidityMonths,
-                            electricalValidityMonths = electricalValidityMonths.trim(),
-                            tipkaloValidityMonths = tipkaloValidityMonths.trim(),
-                            serviceValidityMonths = serviceValidityPayload,
-                            executors = editableExecutors,
-                            inspectorUserIds = inspectorUserIds.toList(),
-                            inspectorUserId = inspectorUserId.ifBlank { inspectorUserIds.firstOrNull().orEmpty() },
-                            authorizationHolderUserId = authorizationHolderUserId,
-                            electricalInspectorUserIds = electricalInspectorUserIds.toList(),
-                            electricalInspectorUserId = electricalInspectorUserId.ifBlank { electricalInspectorUserIds.firstOrNull().orEmpty() },
-                            electricalAuthorizationHolderUserId = electricalAuthorizationHolderUserId,
-                            tipkaloInspectorUserIds = tipkaloInspectorUserIds.toList(),
-                            tipkaloInspectorUserId = tipkaloInspectorUserId.ifBlank { tipkaloInspectorUserIds.firstOrNull().orEmpty() },
-                            tipkaloAuthorizationHolderUserId = tipkaloAuthorizationHolderUserId,
-                            workEquipmentInspectorUserIds = workEquipmentInspectorUserIds.toList(),
-                            workEquipmentInspectorUserId = workEquipmentInspectorUserId.ifBlank { workEquipmentInspectorUserIds.firstOrNull().orEmpty() },
-                            workEquipmentAuthorizationHolderUserId = workEquipmentAuthorizationHolderUserId,
-                            workEnvironmentInspectorUserIds = workEnvironmentInspectorUserIds.toList(),
-                            workEnvironmentInspectorUserId = workEnvironmentInspectorUserId.ifBlank { workEnvironmentInspectorUserIds.firstOrNull().orEmpty() },
-                            workEnvironmentAuthorizationHolderUserId = workEnvironmentAuthorizationHolderUserId,
-                            handoverVerifierUserId = handoverVerifierUserId,
-                            fieldValues = templatePayload.first,
-                            templateFieldValues = templatePayload.second,
-                            fieldSheets = sheetPayload.first,
-                            templateFieldSheets = sheetPayload.second,
-                            includedMeasurementTableKeys = includedMeasurementPayload,
-                            attachments = documentationAttachmentFiles,
-                            templateAttachments = documentationAttachmentFilesByTemplate
-                                .filterKeys { it != DOCUMENTATION_COMMON_ATTACHMENT_KEY }
-                                .filterValues { it.isNotEmpty() },
-                            additionalRecords = additionalRecords.map { record ->
-                                WorkOrderDocumentationAdditionalRecord(
-                                    serviceKey = record.serviceKey,
-                                    serviceIndex = record.serviceIndex,
-                                    serviceCode = record.serviceCode,
-                                    serviceName = record.serviceName,
-                                    objectId = record.objectId,
-                                    objectName = record.objectName,
-                                    objectSequence = record.objectSequence,
-                                )
-                            },
-                            includeHandoverProtocol = includeHandoverProtocol,
-                        )
-                        onConfirm(draft)
+                        onConfirm(buildCurrentDocumentationDraft())
                     },
                     enabled = !formLoading &&
                         (!isTrainingDocumentationFlow || (selectedTrainingPersonIds.isNotEmpty() && selectedTrainingServiceKeys.isNotEmpty())),
