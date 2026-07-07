@@ -1378,7 +1378,8 @@ const EXEI_RELEVANT_CIRCUIT_TERMS = [
 const EXEI_STRUCTURE_AI_AVOID = [
   "Ne koristi SPR, SZOM, TZIN, SVZ ili obicni EIZ dio za EXEI retke.",
   "Pomocna shema, projekt i slika ormara sluze samo za strukturu, redoslijed, oznake krugova/opreme, 1x/3x i zastitne uredjaje.",
-  "Stvarne mjerne vrijednosti prepisuj samo iz starog EXEI/ExEi zapisnika, parsera mjerenja, diktata ili rucnog unosa.",
+  "Ne upisuj stvarne mjerne vrijednosti u EXEI iz NexAI izvora: ne popunjavaj Z, Riso, Rizm, Iisk, tisk, U0, kontinuitet ni DA/NE mjerne ocjene.",
+  "Stari EXEI/ExEi zapisnik smije sluziti samo za redoslijed, oznake krugova/opreme, razdjelnike, osigurace, zastitne uredjaje i nazivne podatke zastitnih uredjaja.",
   "Ne popunjavaj opce uredske, prodajne ili obicne EIZ krugove ako nisu jasno povezani s Ex prostorom ili Ex opremom.",
   "Ne dupliraj isti krug/opremu ako se ponavlja na shemi i slici ormara.",
 ].join(" ");
@@ -2991,6 +2992,32 @@ function getDocumentationColumnAiMapping(tableId = "", columnId = "") {
   return DOCUMENTATION_COLUMN_AI_BY_TABLE[normalizedTableId]?.[columnId] || null;
 }
 
+const EXEI_ALLOWED_AI_COLUMN_IDS_BY_TABLE = Object.freeze({
+  "exei-ipk": new Set(["circuit", "protectionDevice", "protectionType"]),
+  "exei-equipment": new Set(["device", "manufacturerType", "motorSerial", "protectionCertificate", "inCurrent"]),
+  "exei-zuds": new Set(["board", "circuit", "rcdRating", "inCurrent", "idn"]),
+  "exei-oi": new Set(["circuit"]),
+  "exei-pe": new Set(["testPoint1", "testPoint2"]),
+  "exei-bimetal": new Set(["circuit", "protectionType", "inCurrent", "ip"]),
+  "exei-cista-ipk": new Set(["c1", "c2", "c3"]),
+  "exei-cista-oi": new Set(["c2"]),
+  "exei-cista-zuds": new Set(["c3", "c6", "c8", "c10"]),
+  "exei-cista-pe-direct": new Set(["c6", "c7"]),
+  "exei-cista-motors": new Set(["c1", "c2", "c3", "c4"]),
+  "exei-cista-overload-e": new Set(["c2", "c5"]),
+  "exei-cista-overload-d": new Set(["c2", "c5"]),
+});
+
+function isExeiBlockedAiColumn(tableId = "", column = {}) {
+  const normalizedTableId = String(tableId || "") === "spr-cista-results" ? "spr-results" : String(tableId || "");
+  const allowed = EXEI_ALLOWED_AI_COLUMN_IDS_BY_TABLE[normalizedTableId];
+  if (!allowed) {
+    return false;
+  }
+  const columnId = String(column?.id || "").trim();
+  return !allowed.has(columnId);
+}
+
 function getGenericDocumentationColumnAiMapping(tableId = "", column = {}) {
   const columnId = String(column?.id || "").trim();
   const label = String(column?.label || columnId || "").trim();
@@ -3021,6 +3048,9 @@ function getGenericDocumentationColumnAiMapping(tableId = "", column = {}) {
 }
 
 function withDocumentationColumnAiMapping(tableId = "", column = {}) {
+  if (isExeiBlockedAiColumn(tableId, column)) {
+    return { ...column };
+  }
   const aiMapping = getDocumentationColumnAiMapping(tableId, column?.id);
   const genericAiMapping = aiMapping || getGenericDocumentationColumnAiMapping(tableId, column);
   return genericAiMapping ? { ...column, aiMapping: { ...genericAiMapping } } : { ...column };

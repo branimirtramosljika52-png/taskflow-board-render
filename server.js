@@ -7947,11 +7947,11 @@ function buildOpenAiDocumentationServiceInstructions(body = {}) {
   }
   if (serviceCode === "EXEI") {
     base.push(
-      "Za EXEI vrijede Ex elektricarska pravila: stari EXEI/ExEi zapisnik smije popuniti stvarne mjerne vrijednosti za IPK, OI, ZUDS, PE, Ex motore/opremu i bimetale; pomocna jednopolna shema, projekt ili slike ormara smiju samo provjeriti redoslijed i strukturu Ex krugova.",
+      "Za EXEI vrijede Ex elektricarska pravila, ali NexAI ne smije upisivati stvarne mjerne vrijednosti. Stari EXEI/ExEi zapisnik, pomocna jednopolna shema, projekt ili slike ormara smiju sluziti samo za strukturu: redoslijed, razdjelnik, oznaku kruga/opreme, osigurac, zastitni uredjaj, RCD/FID/ZUDS nazivnu vrijednost i tip/karakteristiku.",
       "U shemi i slikama ormara trazi samo Ex relevantne krugove i opremu: agregat, generator, crpka/pumpa, procesor agregata, rasvjeta agregata, UMP, motor, kompresor, istakaliste, pretakaliste, spremnik, Ex zona i slicne tehnoloske cjeline. Ne popunjavaj cijeli EIZ dio niti opce uredske/prodajne krugove ako nisu vezani na Ex prostor.",
       "Ako pomocna shema/slika potvrdi redoslijed, vrati redove u istom redoslijedu kao shema ili stari EXEI zapisnik. Ne dupliraj isti krug/opremu ako se pojavljuje na vise slika; spoji podatke u jedan redak kada imaju isti razdjelnik/oznaku kruga ili isti motor/opremu.",
-      "Za EXEI.ZUDS/FID/RCD vrijednost vrati kao In/Idn, npr. 40/30, gdje je dio prije / nazivna struja u A, a dio nakon / diferencijalna struja u mA. Iz strukturnih izvora ne vracaj Iisk/tisk/U0 kao stvarna mjerenja.",
-      "Za EXEI.OI iz sheme prepoznaj 1x/3x. Kod 1x/jednofaznog kruga fazno-fazne Riso kolone smiju biti '-' kao neprimjenjivo; kod 3x/trofaznog kruga popuni L1-L2-L3 strukturu samo ako je jasno. Numericke Riso vrijednosti uzimaj samo iz starog EXEI/OI zapisnika ili stvarnog mjerenja.",
+      "Za EXEI.ZUDS/FID/RCD nazivnu vrijednost zastitnog uredjaja vrati kao In/Idn, npr. 40/30, gdje je dio prije / nazivna struja u A, a dio nakon / diferencijalna struja u mA. Ne vracaj Iisk, tisk, U0, Z, Riso, Rizm ni DA/NE mjernu ocjenu.",
+      "Za EXEI.OI i EXEI.IPK vrati samo oznaku kruga i eventualno tip zastitnog uredjaja/1x/3x ako je to jasno iz sheme. Ne popunjavaj Riso, Z(L-PE), Z(L-N), Z(L-L), kontinuitet, izmjereni otpor ni zakljucak mjerenja.",
     );
   }
   return base;
@@ -8258,6 +8258,62 @@ function parseOpenAiJsonObject(text = "") {
 function hasOpenAiMeasurementSuggestionRows(result = {}) {
   return (Array.isArray(result?.measurementSuggestions) ? result.measurementSuggestions : [])
     .some((suggestion) => Array.isArray(suggestion?.rows) && suggestion.rows.length > 0);
+}
+
+function sanitizeOpenAiExeiMeasurementSuggestionKeys(result = null, body = {}) {
+  if (!result || typeof result !== "object" || getOpenAiDocumentationServiceCode(body) !== "EXEI") {
+    return result;
+  }
+  const allowedKeysByFieldId = new Map();
+  (Array.isArray(body?.columns) ? body.columns : []).forEach((column) => {
+    const fieldId = String(column?.fieldId || "").trim();
+    if (!fieldId) {
+      return;
+    }
+    const mapping = column?.aiMapping && typeof column.aiMapping === "object" ? column.aiMapping : {};
+    if (!mapping.key && !mapping.aiDescription && !mapping.aiLookFor && !mapping.label) {
+      return;
+    }
+    if (!allowedKeysByFieldId.has(fieldId)) {
+      allowedKeysByFieldId.set(fieldId, new Set());
+    }
+    const allowed = allowedKeysByFieldId.get(fieldId);
+    [
+      column?.columnId,
+      column?.key,
+      mapping.key,
+    ].forEach((value) => {
+      const text = String(value || "").trim();
+      if (text) {
+        allowed.add(text);
+      }
+    });
+  });
+
+  const measurementSuggestions = (Array.isArray(result.measurementSuggestions) ? result.measurementSuggestions : [])
+    .map((suggestion) => {
+      const fieldId = String(suggestion?.fieldId || "").trim();
+      const allowed = allowedKeysByFieldId.get(fieldId);
+      if (!allowed || allowed.size === 0) {
+        return null;
+      }
+      const rows = (Array.isArray(suggestion?.rows) ? suggestion.rows : [])
+        .map((row) => {
+          const values = row?.values && typeof row.values === "object" && !Array.isArray(row.values)
+            ? Object.fromEntries(Object.entries(row.values).filter(([key]) => allowed.has(String(key || "").trim())))
+            : {};
+          const { orderedValues, ...rest } = row && typeof row === "object" ? row : {};
+          return { ...rest, values };
+        })
+        .filter((row) => Object.keys(row.values || {}).length > 0);
+      return rows.length ? { ...suggestion, rows } : null;
+    })
+    .filter(Boolean);
+
+  return {
+    ...result,
+    measurementSuggestions,
+  };
 }
 
 function collectOpenAiStringParts(value, parts = []) {
@@ -9477,8 +9533,11 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
 
   const outputText = extractOpenAiResponseText(payload);
   const parsedResult = parseOpenAiJsonObject(outputText);
-  const result = parsedResult
+  const augmentedResult = parsedResult
     ? augmentOpenAiDocumentMeasurementSuggestions(parsedResult, body, outputText)
+    : null;
+  const result = augmentedResult
+    ? sanitizeOpenAiExeiMeasurementSuggestionKeys(augmentedResult, body)
     : null;
   const parsedAt = Date.now();
   const fields = Array.isArray(body.fields) ? body.fields : [];
