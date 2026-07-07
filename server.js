@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.351.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.352.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -7945,16 +7945,38 @@ function buildOpenAiExeiCircuitTracingInstructions() {
   ];
 }
 
+function buildOpenAiEizMeasurementExtractionInstructions() {
+  return [
+    "EIZ stari PDF/zapisnik moze imati vise ispitnih listova. Za svaki list vrati measurementSuggestions samo za odgovarajucu Gridline tablicu: IL - EIZ.ZUDS ide u eiz-zuds, IL - EIZ.IPK ide u eiz-ipk, IL - EIZ.OI ide u eiz-oi. Ne mijesaj retke izmedju ZUDS, IPK i OI.",
+    "EIZ.ZUDS / ispitivanje zastitnog uredjaja diferencijalne struje: trazi naslov 'ISPITIVANJE ZASTITNOG UREDJAJA DIFERENCIJALNE STRUJE - ZUDS' ili 'IL - EIZ.ZUDS'. Kolone su redom: R.br., Razdjelnik, Strujni krug, In / Idn [A/mA], Iisk [mA], tisk [ms], U0 [V], DA/NE. Primjer retka: RO T | QR | 40/300 | 237 | 17 | <50 | DA. Vrijednost In/Idn vrati spojeno kao 40/300 ili 40/30, ne kao dvije odvojene kolone.",
+    "EIZ.IPK / ispitivanje impedancije petlje kvara: trazi naslov 'ISPITIVANJE IMPEDANCIJE PETLJE KVARA' ili 'IL - EIZ.IPK'. Kolone su: Mjerno mjesto, Oznaka strujnog kruga, Tip i karakteristika zastitnog uredjaja, I delta n / Ia [A], td [s], Z(L-PE) [ohm], Izem [A], Z(L-N) [ohm], Z(L-L) [ohm], Uo [V], ZADOVOLJAVA. Ako PDF ima grupni naslov poput HODNIK WC, TERASA ili SANK, koristi ga kao kontekst i po potrebi ga dodaj uz mjerno mjesto, npr. 'TERASA - Uticnica 230 V', da se jednaka mjesta ne pobrkaju.",
+    "EIZ.OI / ispitivanje otpora izolacije: trazi naslov 'ISPITIVANJE OTPORA IZOLACIJE' ili 'IL - EIZ.OI'. Kolone su: Oznaka strujnog kruga, Vrsta vodica, Riso L1-L2-L3, Riso L1-L2-L3-N, Riso L1-L2-L3-PE, Riso N-PE, Doz. otpor izolacije Rd, Riso > Rd. Sacuvaj vrijednosti poput '-', '>30' i '>1' tocno kako su vidljive.",
+    "Za SPR, TZIN i EIZ stari PDF smije popuniti stvarne mjerne vrijednosti ako su vidljive u tablici. Jednopolna shema, fotografija ormara ili projekt ne smiju popunjavati izmjerene vrijednosti EIZ-a (Iisk, tisk, Z, Izem, Riso, DA/NE), nego samo strukturu instalacije: mjesto, razdjelnik, krug, kabel/vodic, zastitni uredjaj i nazivne vrijednosti.",
+    "Kada vracas measurementSuggestions, koristi tocne columnId vrijednosti iz measurementColumns ako ih imas. Za EIZ.ZUDS koristi board, circuit, rcdRating, iisk, tisk, u0, pass. Za EIZ.IPK koristi place, circuit, protectionType, idnIa, td, zLpe, izem, zLn, zLl, u0, pass. Za EIZ.OI koristi circuit, conductor, l123, l123n, l123pe, npe, rd, pass.",
+    "Ako nisi siguran u pojedinu celiju, ostavi ju praznu i dodaj kratko warning zasto. Nemoj vratiti poruku 'nema sigurnih upisa' ako su u tablici jasno citljivi barem mjesto/krug i neke vrijednosti; tada vrati redove s confidence low/medium i warningom za nejasne celije.",
+  ];
+}
+
 function buildOpenAiDocumentationServiceInstructions(body = {}) {
   const serviceCode = getOpenAiDocumentationServiceCode(body);
   const base = serviceCode
     ? [`Trenutni zapisnik je ${serviceCode}. Koristi podatke samo za tu istu uslugu; ako upload sadrzi druge zapisnike, ne prepisuj njihove tablice u ovaj zapisnik.`]
     : ["Ako mozes prepoznati sifru usluge iz templatea ili konteksta, koristi samo podatke iste usluge i ne mijesaj tablice iz drugih zapisnika."];
   if (serviceCode === "SPR") {
-    base.push("Za SPR iz starog zapisnika trazi tablicu sigurnosne/protupanicne rasvjete i obavezno vrati measurementSuggestions s mjernim mjestom, brojem lampi, Ei, Eimin i ocjenom kada su vidljivi.");
+    base.push(
+      "Za SPR trazi naslov 'ISPITNI IZVJESTAJ / ISPITIVANJE SIGURNOSNE PROTUPANICNE RASVJETE' ili 'IL - SPR'. To je tablica sigurnosne/protupanicne rasvjete, ne TZIN i ne EIZ.",
+      "SPR tablica ima kolone: R.br., Mjesto ispitivanja, Broj lampi, Ei [lux], Eimin [lux], ZADOVOLJAVA DA/NE. Primjer retka: Prodajni prostor | 2 | >2 | 1 | DA.",
+      "Obavezno vrati measurementSuggestions za spr-results kada vidis retke tablice. Sacuvaj vrijednosti kao >2, 1, 0,5, DA/NE bez pretvaranja i bez brisanja znaka >.",
+      "Legenda iznad tablice (Ei = izmjereno osvjetljenje, Eimin = minimalno osvjetljenje) sluzi za razumijevanje kolona, ali nije redak mjerenja.",
+    );
   }
   if (serviceCode === "TZIN") {
-    base.push("Za TZIN iz starog zapisnika trazi samo tipkala za isklop elektricne energije u slucaju nuzde; vrati mjerna mjesta, broj tipkala, tip tipkala i ocjenu. Ne koristi SPR lux retke ni EIZ mjerenja.");
+    base.push(
+      "Za TZIN trazi naslov 'ISPITIVANJE TIPKALA ZA ISKLOP ELEKTRICNE ENERGIJE U SLUCAJU NUZDE' ili 'IL - TZIN'. To su tipkala za isklop, ne panik rasvjeta i ne EIZ instalacije.",
+      "TZIN tablica ima kolone: R.br., Mjesto ispitivanja, Broj tipkala, Tip tipkala, ZADOVOLJAVA DA/NE. Primjer retka: Juzna strana objekta | 2 | - | DA.",
+      "Obavezno vrati measurementSuggestions za tzin-buttons kada vidis retke tablice. Ako je tip tipkala u starom PDF-u crtica, prepisuj '-' i ne izmisljaj model.",
+      "Ne koristi SPR lux retke, EIZ mjerenja, ZUDS/IPK/OI vrijednosti ili opis sustava za popunjavanje TZIN tablice.",
+    );
   }
   if (serviceCode === "SZOM") {
     base.push("Za SZOM iz starog zapisnika trazi mjerna mjesta sustava zastite od munje. Povezanost metalnih masa popuni samo ako izvor izricito spominje metalne mase, povezanost masa ili izjednacavanje potencijala.");
@@ -7972,6 +7994,7 @@ function buildOpenAiDocumentationServiceInstructions(body = {}) {
       "Za EIZ vrijede elektricarska pravila: stari EIZ zapisnik smije popuniti stvarne mjerne vrijednosti, a jednopolna shema/projekt/slika ormara smije popuniti samo strukturu instalacije: razdjelnik, oznaku strujnog kruga, zastitni uredaj, In/Idn, tip 1P/3P i vrstu kabela/vodica.",
       "Za EIZ.ZUDS/PID/FID/RCD jednu sklopku vrati kao jednu vrijednost In/Idn, npr. 40/30. Dio prije / je nazivna struja u A, dio nakon / je diferencijalna struja u mA. Ne dupliraj isti uredaj u vise redaka.",
       "Za EIZ.OI iz jednopolne sheme prepoznaj je li krug jednopolni/jednofazni ili tropolni/trofazni. Kod jednopolnog kruga fazno-fazne Riso kolone mogu biti '-' samo kao oznaka neprimjenjivosti; numericke Riso vrijednosti prepisuj samo iz starog EIZ/OI zapisnika ili stvarnog mjerenja.",
+      ...buildOpenAiEizMeasurementExtractionInstructions(),
     );
   }
   if (serviceCode === "EXEI") {

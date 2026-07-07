@@ -33798,8 +33798,17 @@ private fun inferExeiAiSuggestionKind(suggestion: WorkOrderDocumentationAiMeasur
         ).joinToString(" "),
     )
     return when {
-        lookup.contains("zuds") || lookup.contains("fid") || lookup.contains("rcd") || lookup.contains("diferenc") -> "zuds"
-        lookup.contains("otpor izolacije") || lookup.contains("riso") || lookup.contains("izolacija vodova") -> "oi"
+        lookup.contains("eiz ipk") || lookup.contains("exei ipk") || lookup.contains("il eiz ipk") ||
+            lookup.contains("impedancija petlje kvara") || lookup.contains("petlje kvara") ||
+            lookup.contains("z l pe") || lookup.contains("zlpe") || lookup.contains("izem") ||
+            lookup.contains("z l n") || lookup.contains("zln") || lookup.contains("z l l") || lookup.contains("zll") -> "ipk"
+        lookup.contains("eiz oi") || lookup.contains("exei oi") || lookup.contains("il eiz oi") ||
+            lookup.contains("otpor izolacije") || lookup.contains("riso") || lookup.contains("izolacija vodova") ||
+            lookup.contains("l1 l2 l3") || lookup.contains("l1l2l3") || lookup.contains("n pe") || lookup.contains("npe") ||
+            lookup.contains("mohm") || lookup.contains("megaohm") -> "oi"
+        lookup.contains("eiz zuds") || lookup.contains("exei zuds") || lookup.contains("il eiz zuds") ||
+            lookup.contains("zuds") || lookup.contains("iisk") || lookup.contains("tisk") ||
+            lookup.contains("fid") || lookup.contains("rcd") || lookup.contains("diferenc") -> "zuds"
         lookup.contains("kontinuitet") || lookup.contains("pe vod") || lookup.contains("metalne mase") -> "pe"
         lookup.contains("bimetal") || lookup.contains("preopterecenje") || lookup.contains("preopterećenje") -> "overload"
         lookup.contains("tvornicki broj") || lookup.contains("tvornički broj") || lookup.contains("serijski broj motora") || lookup.contains("namoti motora") -> "motors"
@@ -33827,6 +33836,11 @@ private fun WorkOrderDocumentationTemplate.resolveAiMeasurementTable(
     measurementTables.firstOrNull { it.matchesAiMeasurementSuggestion(suggestion) }?.let { return it }
     if (serviceCode.equals("SPR", ignoreCase = true)) {
         measurementTables.firstOrNull { it.looksLikeSprMeasurementTable() }?.let { return it }
+    }
+    if (serviceCode.equals("EIZ", ignoreCase = true)) {
+        val kind = inferExeiAiSuggestionKind(suggestion)
+        measurementTables.firstOrNull { it.looksLikeExeiMeasurementTable(kind) }?.let { return it }
+        measurementTables.firstOrNull { it.looksLikeExeiMeasurementTable("ipk") }?.let { return it }
     }
     if (serviceCode.equals("EXEI", ignoreCase = true)) {
         val kind = inferExeiAiSuggestionKind(suggestion)
@@ -33868,12 +33882,54 @@ private fun WorkOrderMeasurementColumn.matchesDocumentationAiSemanticKey(key: St
         terms.map(::normalizeSprVoiceLookup).any { term -> term.isNotBlank() && columnLookup.contains(term) }
     fun keyHas(vararg terms: String): Boolean =
         terms.map(::normalizeSprVoiceLookup).any { term -> term.isNotBlank() && (keyLookup.contains(term) || valueLookup.contains(term)) }
+    fun compact(value: String): String = value.replace(" ", "")
+    val keyLookupCompact = compact(keyLookup)
+    val valueLookupCompact = compact(valueLookup)
+    val columnLookupCompact = compact(columnLookup)
+    fun columnHasCompact(vararg terms: String): Boolean =
+        terms.map(::normalizeSprVoiceLookup).map(::compact).any { term -> term.isNotBlank() && columnLookupCompact.contains(term) }
+    fun keyHasCompact(vararg terms: String): Boolean =
+        terms.map(::normalizeSprVoiceLookup).map(::compact).any { term -> term.isNotBlank() && (keyLookupCompact.contains(term) || valueLookupCompact.contains(term)) }
     val valueLooksLikeCableOrCircuit = Regex("\\bW\\s*-?\\s*\\d", RegexOption.IGNORE_CASE).containsMatchIn(value) ||
         Regex("\\b(NYY|PP00|PP\\s*-\\s*Y|H07RN|LIYCY)", RegexOption.IGNORE_CASE).containsMatchIn(value)
     val valueLooksLikeProtection = Regex("\\b(?:Aut\\s*)?[BCD]\\s*\\d{1,3}\\s*A?(?:\\s*[\\\\/]\\s*[1234])?", RegexOption.IGNORE_CASE).containsMatchIn(value)
     val valueLooksLikePhase = value.trim().equals("1x", ignoreCase = true) || value.trim().equals("3x", ignoreCase = true)
 
     return when {
+        columnHas("mjerno mjesto", "mjesto ispitivanja", "place") ->
+            keyHas("mjerno mjesto", "mjesto ispitivanja", "place", "lokacija", "prostor")
+        columnHasCompact("rcdrating", "inidn") ->
+            keyHasCompact("rcdrating", "inidn", "in idn", "i delta n", "idn", "fid", "rcd", "zuds")
+        columnHasCompact("idnia") ->
+            keyHasCompact("idnia", "idn ia", "i delta n", "ia")
+        columnHasCompact("iisk") ->
+            keyHasCompact("iisk", "struja prorade")
+        columnHasCompact("tisk") ->
+            keyHasCompact("tisk", "vrijeme prorade")
+        columnHasCompact("zlpe") ->
+            keyHasCompact("zlpe", "z l pe", "z l pe", "z l-pe")
+        columnHasCompact("izem") ->
+            keyHasCompact("izem", "struja zemljospoja")
+        columnHasCompact("zln") ->
+            keyHasCompact("zln", "z l n", "z l-n")
+        columnHasCompact("zll") ->
+            keyHasCompact("zll", "z l l", "z l-l")
+        columnHasCompact("u0", "uo") ->
+            keyHasCompact("u0", "uo", "dodirni napon")
+        columnHas("vrsta vodica", "vrsta vodiča", "conductor") ->
+            keyHas("vrsta vodica", "vrsta vodiča", "conductor", "kabel", "vodic", "vodič")
+        columnHasCompact("l123pe", "l1l2l3pe") ->
+            keyHasCompact("l123pe", "l1l2l3pe", "l1 l2 l3 pe")
+        columnHasCompact("l123n", "l1l2l3n") ->
+            keyHasCompact("l123n", "l1l2l3n", "l1 l2 l3 n")
+        columnHasCompact("npe") ->
+            keyHasCompact("npe", "n pe")
+        columnHasCompact("l123", "l1l2l3") ->
+            keyHasCompact("l123", "l1l2l3", "l1 l2 l3")
+        columnHas("doz otpor", "dopusteni otpor", "rd") ->
+            keyHas("rd", "doz otpor", "dopusteni otpor", "dozvoljeni otpor")
+        columnHas("zadovoljava", "da ne", "ocjena", "riso rd", "iisk idn", "tdoz") ->
+            keyHas("pass", "zadovoljava", "da ne", "ocjena", "result", "ispravno")
         columnHas("oznaka strujnog kruga", "strujni krug", "oznaka el uredaja", "elektricni uredaj", "električni uređaj", "circuit") ->
             keyHas("oznaka", "strujni krug", "circuit", "krug", "potrosac", "potrošač", "oprema", "uredaj", "uređaj", "opis") || valueLooksLikeCableOrCircuit
         columnHas("tip i karakteristika", "karakteristika", "osigurac", "osigurač", "zastitni uredaj", "zaštitni uređaj", "bimetal") ->

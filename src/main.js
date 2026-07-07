@@ -72590,6 +72590,138 @@ function findDocumentTemplateRuntimeAiField(fields = [], suggestion = {}) {
   return getDocumentTemplateRuntimeAiMatchedFields(fields, suggestion)[0] ?? null;
 }
 
+function getDocumentTemplateRuntimeAiSuggestionLooseText(suggestion = {}) {
+  const parts = [
+    suggestion?.fieldId,
+    suggestion?.field_id,
+    suggestion?.fieldKey,
+    suggestion?.field_key,
+    suggestion?.key,
+    suggestion?.label,
+    suggestion?.fieldLabel,
+    suggestion?.field_label,
+    suggestion?.sourceFile,
+    suggestion?.source_file,
+  ];
+  getDocumentTemplateRuntimeAiSuggestionRows(suggestion).forEach((row) => {
+    const values = getDocumentTemplateRuntimeAiSuggestionRowValues(row);
+    if (Array.isArray(values)) {
+      parts.push(...values);
+    } else if (values && typeof values === "object") {
+      Object.entries(values).forEach(([key, value]) => {
+        parts.push(key, value && typeof value === "object" ? JSON.stringify(value) : value);
+      });
+    } else {
+      parts.push(values);
+    }
+  });
+  return normalizeLooseName(parts.filter((part) => part != null).join(" "));
+}
+
+function inferDocumentTemplateRuntimeElectricalMeasurementKind(suggestion = {}) {
+  const lookup = getDocumentTemplateRuntimeAiSuggestionLooseText(suggestion);
+  const compact = lookup.replace(/\s+/g, "");
+  if (
+    lookup.includes("eiz ipk")
+    || lookup.includes("exei ipk")
+    || lookup.includes("il eiz ipk")
+    || lookup.includes("impedancija petlje kvara")
+    || lookup.includes("petlje kvara")
+    || compact.includes("zlpe")
+    || lookup.includes("z l pe")
+    || compact.includes("izem")
+    || compact.includes("zln")
+    || compact.includes("zll")
+  ) {
+    return "ipk";
+  }
+  if (
+    lookup.includes("eiz oi")
+    || lookup.includes("exei oi")
+    || lookup.includes("il eiz oi")
+    || lookup.includes("otpor izolacije")
+    || lookup.includes("riso")
+    || lookup.includes("izolacija vodova")
+    || compact.includes("l1l2l3")
+    || compact.includes("npe")
+    || compact.includes("mohm")
+    || compact.includes("megaohm")
+  ) {
+    return "oi";
+  }
+  if (
+    lookup.includes("eiz zuds")
+    || lookup.includes("exei zuds")
+    || lookup.includes("il eiz zuds")
+    || lookup.includes("zuds")
+    || lookup.includes("fid")
+    || lookup.includes("rcd")
+    || lookup.includes("diferenc")
+    || compact.includes("iisk")
+    || compact.includes("tisk")
+  ) {
+    return "zuds";
+  }
+  return "";
+}
+
+function getDocumentTemplateRuntimeMeasurementFieldLooseText(field = {}) {
+  const aiConfig = getDocumentTemplateFieldAiConfigForTemplate(field, 0);
+  const sheet = ensureDocumentTemplateMeasurementFieldSheet(field);
+  const columnText = Array.isArray(sheet?.columns)
+    ? sheet.columns.map((column) => [
+      column?.id,
+      column?.key,
+      column?.label,
+      column?.placeholder,
+      column?.aiMapping?.key,
+      column?.aiMapping?.label,
+    ].filter(Boolean).join(" ")).join(" ")
+    : "";
+  return normalizeLooseName([
+    field?.id,
+    field?.key,
+    field?.wordLabel,
+    field?.label,
+    field?.helpText,
+    aiConfig.key,
+    aiConfig.label,
+    aiConfig.aiDescription,
+    ...(Array.isArray(aiConfig.aiLookFor) ? aiConfig.aiLookFor : []),
+    columnText,
+  ].filter(Boolean).join(" "));
+}
+
+function doesDocumentTemplateRuntimeMeasurementFieldMatchElectricalKind(field = {}, kind = "") {
+  const lookup = getDocumentTemplateRuntimeMeasurementFieldLooseText(field);
+  const compact = lookup.replace(/\s+/g, "");
+  if (kind === "zuds") {
+    return lookup.includes("zuds")
+      || lookup.includes("fid")
+      || lookup.includes("rcd")
+      || lookup.includes("diferenc")
+      || compact.includes("iisk")
+      || compact.includes("tisk");
+  }
+  if (kind === "oi") {
+    return lookup.includes("otpor izolacije")
+      || lookup.includes("izolacija vodova")
+      || lookup.includes("riso")
+      || compact.includes("l1l2l3")
+      || compact.includes("npe");
+  }
+  if (kind === "ipk") {
+    return lookup.includes("impedancija")
+      || lookup.includes("petlje kvara")
+      || lookup.includes("ipk")
+      || compact.includes("zlpe")
+      || compact.includes("izem")
+      || compact.includes("zln")
+      || compact.includes("zll");
+  }
+  return false;
+}
+
 function findDocumentTemplateRuntimeAiMeasurementField(fields = [], suggestion = {}) {
   const allFields = Array.isArray(fields) ? fields : [];
   const matchedFields = getDocumentTemplateRuntimeAiMatchedFields(allFields, suggestion);
@@ -72614,6 +72746,15 @@ function findDocumentTemplateRuntimeAiMeasurementField(fields = [], suggestion =
   const measurementFields = allFields.filter((field) => (
     String(field?.type || "").trim().toLowerCase() === "measurement_table"
   ));
+  const electricalKind = inferDocumentTemplateRuntimeElectricalMeasurementKind(suggestion);
+  if (electricalKind) {
+    const kindMatch = measurementFields.find((field) => (
+      doesDocumentTemplateRuntimeMeasurementFieldMatchElectricalKind(field, electricalKind)
+    ));
+    if (kindMatch) {
+      return kindMatch;
+    }
+  }
   return measurementFields.length === 1 ? measurementFields[0] : null;
 }
 
