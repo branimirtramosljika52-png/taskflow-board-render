@@ -5730,6 +5730,46 @@ private fun DocumentationMobileRichTextField(
 }
 
 @Composable
+private fun SprVoicePreviewEditField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    onApplyAll: (() -> Unit)? = null,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+            )
+            if (onApplyAll != null && value.isNotBlank()) {
+                TextButton(
+                    onClick = onApplyAll,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                ) {
+                    Text("Na sve", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+            shape = RoundedCornerShape(10.dp),
+        )
+    }
+}
+
+@Composable
 private fun DocumentationSprVoiceField(
     label: String,
     value: String,
@@ -5788,11 +5828,23 @@ private fun DocumentationSprVoiceField(
     }
     var message by remember { mutableStateOf("") }
     var pendingSpoken by remember { mutableStateOf("") }
+    var editablePreviewRows by remember { mutableStateOf(emptyList<SprVoiceAiRow>()) }
+    fun parseLocalPreviewRows(spoken: String): List<SprVoiceAiRow> =
+        when {
+            isEizZudsVoice -> parseEizZudsVoiceTranscriptToAiRows(spoken)
+            isEizIpkVoice -> parseEizIpkVoiceTranscriptToAiRows(spoken)
+            else -> parseSprVoiceTranscriptToAiRows(spoken)
+        }
     fun applySpoken(replaceExisting: Boolean) {
         val spoken = pendingSpoken.trim()
         if (spoken.isBlank()) return
+        val rows = editablePreviewRows.ifEmpty { parseLocalPreviewRows(spoken) }
         pendingSpoken = ""
-        onVoiceApply(encodeSprVoiceAction(spoken, replaceExisting), replaceExisting)
+        editablePreviewRows = emptyList()
+        onVoiceApply(
+            if (rows.isNotEmpty()) encodeSprVoiceRowsAction(spoken, rows, replaceExisting) else encodeSprVoiceAction(spoken, replaceExisting),
+            replaceExisting,
+        )
         message = if (replaceExisting) {
             "Gridline tablica je zamijenjena diktatom: $spoken"
         } else {
@@ -5808,6 +5860,7 @@ private fun DocumentationSprVoiceField(
             .orEmpty()
         if (spoken.isNotBlank()) {
             pendingSpoken = spoken
+            editablePreviewRows = parseLocalPreviewRows(spoken)
             onVoicePreview(spoken)
         }
     }
@@ -5824,6 +5877,11 @@ private fun DocumentationSprVoiceField(
             message = "Glasovni unos nije dostupan na ovom uredaju."
         }
     }
+    LaunchedEffect(pendingSpoken, voicePreviewRows) {
+        if (pendingSpoken.isNotBlank() && editablePreviewRows.isEmpty() && voicePreviewRows.isNotEmpty()) {
+            editablePreviewRows = voicePreviewRows
+        }
+    }
     if (pendingSpoken.isNotBlank()) {
         val localPreviewRows = remember(pendingSpoken, isEizZudsVoice, isEizIpkVoice) {
             when {
@@ -5832,10 +5890,13 @@ private fun DocumentationSprVoiceField(
                 else -> parseSprVoiceTranscriptToAiRows(pendingSpoken)
             }
         }
-        val dialogPreviewRows = voicePreviewRows.ifEmpty { localPreviewRows }
+        val dialogPreviewRows = editablePreviewRows.ifEmpty { voicePreviewRows.ifEmpty { localPreviewRows } }
         val dialogPreviewLoading = voicePreviewLoading && dialogPreviewRows.isEmpty()
         AlertDialog(
-            onDismissRequest = { pendingSpoken = "" },
+            onDismissRequest = {
+                pendingSpoken = ""
+                editablePreviewRows = emptyList()
+            },
             title = { Text("Provjeri diktat", fontWeight = FontWeight.Black) },
             text = {
                 Column(
@@ -5866,38 +5927,32 @@ private fun DocumentationSprVoiceField(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                         ) {
                             Column(modifier = Modifier.padding(9.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    Text(
-                                        if (isEizZudsVoice) "Razdjelnik / krug" else "Mjesto ispitivanja",
-                                        modifier = Modifier.weight(1f),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Black,
-                                    )
-                                    Text(
-                                        if (isEizZudsVoice) "PID/FID" else "Količina",
-                                        modifier = Modifier.width(70.dp),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Black,
-                                        textAlign = TextAlign.End,
-                                    )
+                                fun updatePreviewRow(rowIndex: Int, nextRow: SprVoiceAiRow) {
+                                    editablePreviewRows = dialogPreviewRows.mapIndexed { index, row ->
+                                        if (index == rowIndex) nextRow else row
+                                    }
+                                }
+                                fun applyPreviewColumn(transform: (SprVoiceAiRow) -> SprVoiceAiRow) {
+                                    editablePreviewRows = dialogPreviewRows.map { row ->
+                                        val isSectionRow = row.kind.equals("section", ignoreCase = true) || row.lampCount.isBlank()
+                                        if (isSectionRow) row else transform(row)
+                                    }
                                 }
                                 var previewMeasurementIndex = 0
-                                dialogPreviewRows.forEach { row ->
+                                dialogPreviewRows.forEachIndexed { rowIndex, row ->
                                     val isSection = row.kind.equals("section", ignoreCase = true) || row.lampCount.isBlank()
                                     if (isSection) {
-                                        Text(
-                                            if (isEizIpkVoice) "Blok: ${cleanPreviewSectionTitle(row.place)}" else row.place,
+                                        SprVoicePreviewEditField(
+                                            label = if (isEizIpkVoice) "Blok / merge red" else "Blok",
+                                            value = if (isEizIpkVoice) cleanPreviewSectionTitle(row.place) else row.place,
+                                            onValueChange = { nextValue ->
+                                                updatePreviewRow(rowIndex, row.copy(place = nextValue))
+                                            },
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clip(RoundedCornerShape(11.dp))
-                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
-                                                .padding(horizontal = 9.dp, vertical = 8.dp),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = FontWeight.Black,
-                                            color = MaterialTheme.colorScheme.primary,
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                                                .padding(horizontal = 8.dp, vertical = 6.dp),
                                         )
                                     } else {
                                         previewMeasurementIndex += 1
@@ -5907,7 +5962,7 @@ private fun DocumentationSprVoiceField(
                                                 .clip(RoundedCornerShape(11.dp))
                                                 .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f))
                                                 .padding(horizontal = 8.dp, vertical = 7.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalArrangement = Arrangement.spacedBy(7.dp),
                                         ) {
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
@@ -5915,35 +5970,123 @@ private fun DocumentationSprVoiceField(
                                                 verticalAlignment = Alignment.CenterVertically,
                                             ) {
                                                 Text(
-                                                    if (isEizZudsVoice) {
-                                                        "$previewMeasurementIndex. ${row.board.ifBlank { row.place }} · ${row.circuit.ifBlank { row.lampCount }}"
-                                                    } else {
-                                                        "$previewMeasurementIndex. ${row.place}"
-                                                    },
+                                                    "$previewMeasurementIndex. redak",
                                                     modifier = Modifier.weight(1f),
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                )
-                                                Text(
-                                                    if (isEizZudsVoice) {
-                                                        row.rcdRating.ifBlank { row.protectionType }
-                                                    } else {
-                                                        row.lampCount
-                                                    },
-                                                    modifier = Modifier.width(70.dp),
-                                                    style = MaterialTheme.typography.bodySmall,
+                                                    style = MaterialTheme.typography.labelMedium,
                                                     fontWeight = FontWeight.Black,
                                                     color = MaterialTheme.colorScheme.primary,
-                                                    textAlign = TextAlign.End,
                                                 )
                                             }
-                                            val details = previewRowDetails(row)
-                                            if (details.isNotBlank()) {
-                                                Text(
-                                                    details,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                                            if (isEizZudsVoice) {
+                                                val board = row.board.ifBlank { row.place }
+                                                val circuit = row.circuit.ifBlank { row.lampCount }
+                                                val rating = row.rcdRating.ifBlank { row.protectionType }
+                                                SprVoicePreviewEditField(
+                                                    label = "Razdjelnik",
+                                                    value = board,
+                                                    onValueChange = { nextValue ->
+                                                        updatePreviewRow(rowIndex, row.copy(place = nextValue, board = nextValue))
+                                                    },
+                                                    onApplyAll = {
+                                                        applyPreviewColumn { it.copy(place = board, board = board) }
+                                                    },
                                                 )
+                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    SprVoicePreviewEditField(
+                                                        label = "Krug",
+                                                        value = circuit,
+                                                        onValueChange = { nextValue ->
+                                                            updatePreviewRow(rowIndex, row.copy(lampCount = nextValue, circuit = nextValue))
+                                                        },
+                                                        modifier = Modifier.weight(1f),
+                                                        onApplyAll = {
+                                                            applyPreviewColumn { it.copy(lampCount = circuit, circuit = circuit) }
+                                                        },
+                                                    )
+                                                    SprVoicePreviewEditField(
+                                                        label = "PID/FID",
+                                                        value = rating,
+                                                        onValueChange = { nextValue ->
+                                                            updatePreviewRow(
+                                                                rowIndex,
+                                                                row.copy(protectionType = nextValue, rcdRating = nextValue),
+                                                            )
+                                                        },
+                                                        modifier = Modifier.weight(1f),
+                                                        onApplyAll = {
+                                                            applyPreviewColumn {
+                                                                it.copy(protectionType = rating, rcdRating = rating)
+                                                            }
+                                                        },
+                                                    )
+                                                }
+                                            } else {
+                                                SprVoicePreviewEditField(
+                                                    label = "Mjesto ispitivanja",
+                                                    value = row.place,
+                                                    onValueChange = { nextValue ->
+                                                        updatePreviewRow(rowIndex, row.copy(place = nextValue))
+                                                    },
+                                                    onApplyAll = {
+                                                        applyPreviewColumn { it.copy(place = row.place) }
+                                                    },
+                                                )
+                                                SprVoicePreviewEditField(
+                                                    label = "Količina",
+                                                    value = row.lampCount,
+                                                    onValueChange = { nextValue ->
+                                                        updatePreviewRow(rowIndex, row.copy(lampCount = nextValue))
+                                                    },
+                                                    onApplyAll = {
+                                                        applyPreviewColumn { it.copy(lampCount = row.lampCount) }
+                                                    },
+                                                )
+                                                if (isEizIpkVoice) {
+                                                    SprVoicePreviewEditField(
+                                                        label = "Zaštita",
+                                                        value = row.protectionType,
+                                                        onValueChange = { nextValue ->
+                                                            updatePreviewRow(rowIndex, row.copy(protectionType = nextValue))
+                                                        },
+                                                        onApplyAll = {
+                                                            applyPreviewColumn { it.copy(protectionType = row.protectionType) }
+                                                        },
+                                                    )
+                                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                        SprVoicePreviewEditField(
+                                                            label = "ZL-PE",
+                                                            value = row.zLpe,
+                                                            onValueChange = { nextValue ->
+                                                                updatePreviewRow(rowIndex, row.copy(zLpe = nextValue))
+                                                            },
+                                                            modifier = Modifier.weight(1f),
+                                                            onApplyAll = {
+                                                                applyPreviewColumn { it.copy(zLpe = row.zLpe) }
+                                                            },
+                                                        )
+                                                        SprVoicePreviewEditField(
+                                                            label = "ZL-N",
+                                                            value = row.zLn,
+                                                            onValueChange = { nextValue ->
+                                                                updatePreviewRow(rowIndex, row.copy(zLn = nextValue))
+                                                            },
+                                                            modifier = Modifier.weight(1f),
+                                                            onApplyAll = {
+                                                                applyPreviewColumn { it.copy(zLn = row.zLn) }
+                                                            },
+                                                        )
+                                                    }
+                                                    SprVoicePreviewEditField(
+                                                        label = "ZL-L",
+                                                        value = row.zLl,
+                                                        onValueChange = { nextValue ->
+                                                            updatePreviewRow(rowIndex, row.copy(zLl = nextValue))
+                                                        },
+                                                        onApplyAll = {
+                                                            applyPreviewColumn { it.copy(zLl = row.zLl) }
+                                                        },
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -30308,10 +30451,12 @@ private fun WorkOrderDocumentationWizardDialog(
                             if (field.type.equals("spr_voice", ignoreCase = true)) {
                                 val action = decodeSprVoiceAction(value, replaceExisting)
                                 templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to action.transcript)
-                                val rows = when {
-                                    isEizZudsVoiceField(field) -> parseEizZudsVoiceTranscriptToAiRows(action.transcript).ifEmpty { sprVoicePreviewRows }
-                                    template.serviceCode.equals("EIZ", ignoreCase = true) -> parseEizIpkVoiceTranscriptToAiRows(action.transcript).ifEmpty { sprVoicePreviewRows }
-                                    else -> parseSprVoiceTranscriptToAiRows(action.transcript).ifEmpty { sprVoicePreviewRows }
+                                val rows = action.rows.ifEmpty {
+                                    when {
+                                        isEizZudsVoiceField(field) -> parseEizZudsVoiceTranscriptToAiRows(action.transcript).ifEmpty { sprVoicePreviewRows }
+                                        template.serviceCode.equals("EIZ", ignoreCase = true) -> parseEizIpkVoiceTranscriptToAiRows(action.transcript).ifEmpty { sprVoicePreviewRows }
+                                        else -> parseSprVoiceTranscriptToAiRows(action.transcript).ifEmpty { sprVoicePreviewRows }
+                                    }
                                 }
                                 if (rows.isNotEmpty()) {
                                     measurementSheets = applySprVoiceAiRowsToMeasurementSheets(template, measurementSheets, rows, action.replaceExisting, field)
@@ -30916,18 +31061,95 @@ private data class DocumentationGridlinePreviewState(
 
 private const val SPR_VOICE_REPLACE_COMMAND_PREFIX = "__SAFE_NEXUS_SPR_REPLACE__\n"
 private const val SPR_VOICE_APPEND_COMMAND_PREFIX = "__SAFE_NEXUS_SPR_APPEND__\n"
+private const val SPR_VOICE_ROWS_REPLACE_COMMAND_PREFIX = "__SAFE_NEXUS_SPR_ROWS_REPLACE__\n"
+private const val SPR_VOICE_ROWS_APPEND_COMMAND_PREFIX = "__SAFE_NEXUS_SPR_ROWS_APPEND__\n"
 
 private data class SprVoiceAction(
     val transcript: String,
     val replaceExisting: Boolean,
+    val rows: List<SprVoiceAiRow> = emptyList(),
 )
 
 private fun encodeSprVoiceAction(transcript: String, replaceExisting: Boolean): String =
     (if (replaceExisting) SPR_VOICE_REPLACE_COMMAND_PREFIX else SPR_VOICE_APPEND_COMMAND_PREFIX) + transcript.trim()
 
+private fun sprVoiceRowsToJson(rows: List<SprVoiceAiRow>): JSONArray =
+    JSONArray().apply {
+        rows.forEach { row ->
+            put(
+                JSONObject()
+                    .put("place", row.place)
+                    .put("lampCount", row.lampCount)
+                    .put("kind", row.kind)
+                    .put("protectionType", row.protectionType)
+                    .put("zLpe", row.zLpe)
+                    .put("zLn", row.zLn)
+                    .put("zLl", row.zLl)
+                    .put("board", row.board)
+                    .put("circuit", row.circuit)
+                    .put("rcdRating", row.rcdRating),
+            )
+        }
+    }
+
+private fun sprVoiceRowsFromJson(rows: JSONArray?): List<SprVoiceAiRow> {
+    if (rows == null) return emptyList()
+    return buildList {
+        for (index in 0 until rows.length()) {
+            val row = rows.optJSONObject(index) ?: continue
+            add(
+                SprVoiceAiRow(
+                    place = row.optString("place"),
+                    lampCount = row.optString("lampCount"),
+                    kind = row.optString("kind"),
+                    protectionType = row.optString("protectionType"),
+                    zLpe = row.optString("zLpe"),
+                    zLn = row.optString("zLn"),
+                    zLl = row.optString("zLl"),
+                    board = row.optString("board"),
+                    circuit = row.optString("circuit"),
+                    rcdRating = row.optString("rcdRating"),
+                ),
+            )
+        }
+    }
+}
+
+private fun encodeSprVoiceRowsAction(
+    transcript: String,
+    rows: List<SprVoiceAiRow>,
+    replaceExisting: Boolean,
+): String {
+    val payload = JSONObject()
+        .put("transcript", transcript.trim())
+        .put("rows", sprVoiceRowsToJson(rows))
+    return (if (replaceExisting) SPR_VOICE_ROWS_REPLACE_COMMAND_PREFIX else SPR_VOICE_ROWS_APPEND_COMMAND_PREFIX) +
+        payload.toString()
+}
+
+private fun decodeSprVoiceRowsActionPayload(value: String, replaceExisting: Boolean): SprVoiceAction =
+    try {
+        val payload = JSONObject(value)
+        SprVoiceAction(
+            transcript = payload.optString("transcript").trim(),
+            replaceExisting = replaceExisting,
+            rows = sprVoiceRowsFromJson(payload.optJSONArray("rows")),
+        )
+    } catch (_: Exception) {
+        SprVoiceAction(transcript = value.trim(), replaceExisting = replaceExisting)
+    }
+
 private fun decodeSprVoiceAction(value: String, fallbackReplaceExisting: Boolean = false): SprVoiceAction {
     val trimmed = value.trim()
     return when {
+        trimmed.startsWith(SPR_VOICE_ROWS_REPLACE_COMMAND_PREFIX) -> decodeSprVoiceRowsActionPayload(
+            trimmed.removePrefix(SPR_VOICE_ROWS_REPLACE_COMMAND_PREFIX).trim(),
+            replaceExisting = true,
+        )
+        trimmed.startsWith(SPR_VOICE_ROWS_APPEND_COMMAND_PREFIX) -> decodeSprVoiceRowsActionPayload(
+            trimmed.removePrefix(SPR_VOICE_ROWS_APPEND_COMMAND_PREFIX).trim(),
+            replaceExisting = false,
+        )
         trimmed.startsWith(SPR_VOICE_REPLACE_COMMAND_PREFIX) -> SprVoiceAction(
             transcript = trimmed.removePrefix(SPR_VOICE_REPLACE_COMMAND_PREFIX).trim(),
             replaceExisting = true,
@@ -31816,6 +32038,18 @@ private fun splitEizZudsRating(value: String): Pair<String, String> {
     return normalized.substringBefore("/") to normalized.substringAfter("/", "")
 }
 
+private fun isEizZudsCombinedRatingColumn(column: WorkOrderMeasurementColumn): Boolean {
+    val lookup = normalizeSprVoiceLookup("${column.id} ${column.label}")
+    val compact = lookup.replace(" ", "")
+    return lookup.contains("fid") ||
+        lookup.contains("rcd") ||
+        lookup.contains("pid") ||
+        lookup.contains("zuds") ||
+        lookup.contains("karakteristika") ||
+        compact.contains("inidn") ||
+        (lookup.contains("in") && lookup.contains("i n"))
+}
+
 private fun WorkOrderMeasurementSheet.isEizZudsTemplateLike(
     boardColumn: WorkOrderMeasurementColumn?,
     circuitColumn: WorkOrderMeasurementColumn?,
@@ -31843,7 +32077,8 @@ private fun applyEizZudsVoiceRowsToSheet(
     val numberColumn = findSprMeasurementColumn(sheet, listOf("r br", "redni broj", "broj", "rb"), 0)
     val boardColumn = findSprMeasurementColumn(sheet, listOf("razdjelnik", "razdelnik", "ormar", "ro"), 1)
     val circuitColumn = findSprMeasurementColumn(sheet, listOf("strujni krug", "oznaka kruga", "oznaka strujnog kruga", "circuit"), 2)
-    val ratingColumn = findSprMeasurementColumn(sheet, listOf("in idn", "in i n", "in/idn", "fid", "rcd", "pid", "zuds", "karakteristika"), -1)
+    val ratingColumn = sheet.columns.firstOrNull(::isEizZudsCombinedRatingColumn)
+        ?: findSprMeasurementColumn(sheet, listOf("in idn", "in i n", "in/idn", "fid", "rcd", "pid", "zuds", "karakteristika"), -1)
     val inColumn = findSprMeasurementColumn(sheet, listOf("in a", "in [a]", "nazivna struja"), 3)
     val slashColumn = sheet.columns.firstOrNull { column -> column.label.trim() == "/" || column.id.trim() == "/" }
         ?: if (ratingColumn == null) sheet.columns.getOrNull(4) else null
@@ -31926,10 +32161,13 @@ private fun applyEizZudsVoiceRowsToSheet(
         numberColumn?.id?.takeIf { it.isNotBlank() }?.let { row.cells[it] = measurementNumber.toString() }
         row.cells[boardColumn.id] = board
         row.cells[circuitColumn.id] = circuit
-        ratingColumn?.id?.takeIf { it.isNotBlank() }?.let { row.cells[it] = rating }
-        inColumn?.id?.takeIf { it.isNotBlank() }?.let { row.cells[it] = inValue }
-        slashColumn?.id?.takeIf { it.isNotBlank() }?.let { row.cells[it] = "/" }
-        idnColumn?.id?.takeIf { it.isNotBlank() }?.let { row.cells[it] = idnValue }
+        if (ratingColumn != null) {
+            ratingColumn.id.takeIf { it.isNotBlank() }?.let { row.cells[it] = rating }
+        } else {
+            inColumn?.id?.takeIf { it.isNotBlank() }?.let { row.cells[it] = inValue }
+            slashColumn?.id?.takeIf { it.isNotBlank() }?.let { row.cells[it] = "/" }
+            idnColumn?.id?.takeIf { it.isNotBlank() }?.let { row.cells[it] = idnValue }
+        }
         passColumn?.id?.takeIf { it.isNotBlank() && row.cells[it].orEmpty().isBlank() }?.let { row.cells[it] = "DA" }
         measurementNumber += 1
     }
@@ -31952,6 +32190,9 @@ private fun applySprVoiceTranscriptToMeasurementSheets(
     field: WorkOrderDocumentationField? = null,
 ): Map<String, WorkOrderMeasurementSheet> {
     val action = decodeSprVoiceAction(transcript, replaceExisting)
+    if (action.rows.isNotEmpty()) {
+        return applySprVoiceAiRowsToMeasurementSheets(template, sheets, action.rows, action.replaceExisting, field)
+    }
     val isEiz = template.serviceCode.equals("EIZ", ignoreCase = true)
     val isZudsVoice = isEiz && isEizZudsVoiceField(field)
     val voiceRows = when {
