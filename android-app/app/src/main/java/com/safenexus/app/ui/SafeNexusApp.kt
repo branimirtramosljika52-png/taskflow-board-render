@@ -29930,33 +29930,27 @@ private fun WorkOrderDocumentationWizardDialog(
         )
     }
 
-    gridlineParserPreview?.let { preview ->
+    fun applyGridlineParserPreview(replaceExisting: Boolean) {
+        val preview = gridlineParserPreview ?: return
         val previewTemplate = activeTemplates.firstOrNull { it.id == preview.templateId }
-        DocumentationGridlineParserPreviewDialog(
-            preview = preview,
-            enabled = !formLoading && previewTemplate != null,
-            onDismiss = { gridlineParserPreview = null },
-            onApply = { replaceExisting ->
-                if (previewTemplate != null) {
-                    val fieldApply = applyDocumentationAiFieldSuggestions(
-                        template = previewTemplate,
-                        result = preview.result,
-                        values = templateFieldValues,
-                    )
-                    val sheetApply = applyDocumentationAiMeasurementSuggestions(
-                        template = previewTemplate,
-                        result = preview.result,
-                        sheets = measurementSheets,
-                        replaceExisting = replaceExisting,
-                    )
-                    templateFieldValues = fieldApply.values
-                    measurementSheets = sheetApply.sheets
-                    val modeText = if (replaceExisting) "Zamijenjeno" else "Dodano"
-                    aiMessage = "$modeText iz previewa: ${fieldApply.count} polja i ${sheetApply.rowCount} Gridline redaka."
-                }
-                gridlineParserPreview = null
-            },
-        )
+        if (previewTemplate != null) {
+            val fieldApply = applyDocumentationAiFieldSuggestions(
+                template = previewTemplate,
+                result = preview.result,
+                values = templateFieldValues,
+            )
+            val sheetApply = applyDocumentationAiMeasurementSuggestions(
+                template = previewTemplate,
+                result = preview.result,
+                sheets = measurementSheets,
+                replaceExisting = replaceExisting,
+            )
+            templateFieldValues = fieldApply.values
+            measurementSheets = sheetApply.sheets
+            val modeText = if (replaceExisting) "Zamijenjeno" else "Dodano"
+            aiMessage = "$modeText iz previewa: ${fieldApply.count} polja i ${sheetApply.rowCount} Gridline redaka."
+        }
+        gridlineParserPreview = null
     }
 
     if (measurementPreviewOpen) {
@@ -30459,6 +30453,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         files = aiFiles,
                         modelTier = aiModelTier,
                         message = aiMessage,
+                        gridlinePreview = gridlineParserPreview?.takeIf { it.templateId == selectedAiTemplate?.id },
                         loading = aiLoading,
                         enabled = !formLoading,
                         onModelTierChange = { aiModelTier = it },
@@ -30497,7 +30492,7 @@ private fun WorkOrderDocumentationWizardDialog(
                                                     },
                                                 )
                                                 val tableCount = parserRows.map { it.tableLabel }.distinct().size
-                                                aiMessage = "NexAI je pripremio ${parserRows.size} redaka za $tableCount Gridline tablica. Otvoren je preview prije upisa."
+                                                aiMessage = "NexAI je pripremio ${parserRows.size} redaka za $tableCount Gridline tablica. Provjeri karticu prije upisa."
                                             } else {
                                                 val fieldApply = applyDocumentationAiFieldSuggestions(
                                                     template = template,
@@ -30522,6 +30517,8 @@ private fun WorkOrderDocumentationWizardDialog(
                                 }
                             }
                         },
+                        onGridlinePreviewDismiss = { gridlineParserPreview = null },
+                        onGridlinePreviewApply = { replaceExisting -> applyGridlineParserPreview(replaceExisting) },
                     )
                 }
                 val templateControls = DocumentationTemplateStandardControls(
@@ -31292,6 +31289,8 @@ private data class DocumentationGridlinePreviewRow(
     val tableLabel: String,
     val place: String,
     val quantity: String,
+    val confidence: String = "",
+    val sourceFile: String = "",
     val details: List<Pair<String, String>> = emptyList(),
 )
 
@@ -33911,6 +33910,8 @@ private fun buildDocumentationAiGridlinePreviewRows(
                             tableLabel = tableLabel,
                             place = place.ifBlank { "Red ${size + 1}" },
                             quantity = quantity,
+                            confidence = row.confidence.ifBlank { suggestion.confidence },
+                            sourceFile = row.sourceFile.ifBlank { suggestion.sourceFile },
                             details = details,
                         ),
                     )
@@ -38401,16 +38402,19 @@ private fun DocumentationAiAssistantSection(
     files: List<WorkOrderDocumentationAiFile>,
     modelTier: String,
     message: String,
+    gridlinePreview: DocumentationGridlinePreviewState?,
     loading: Boolean,
     enabled: Boolean,
     onModelTierChange: (String) -> Unit,
     onPickFiles: () -> Unit,
     onRemoveFile: (String) -> Unit,
     onRun: () -> Unit,
+    onGridlinePreviewDismiss: () -> Unit,
+    onGridlinePreviewApply: (Boolean) -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(loading, files.size, message) {
-        if (loading || files.isNotEmpty() || message.isNotBlank()) {
+    LaunchedEffect(loading, files.size, message, gridlinePreview) {
+        if (loading || files.isNotEmpty() || message.isNotBlank() || gridlinePreview != null) {
             expanded = true
         }
     }
@@ -38562,7 +38566,15 @@ private fun DocumentationAiAssistantSection(
                             }
                         }
                     }
-                    if (message.isNotBlank()) {
+                    gridlinePreview?.let { preview ->
+                        DocumentationGridlinePreviewCard(
+                            preview = preview,
+                            enabled = enabled && !loading,
+                            onDismiss = onGridlinePreviewDismiss,
+                            onApply = onGridlinePreviewApply,
+                        )
+                    }
+                    if (message.isNotBlank() && gridlinePreview == null) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
@@ -38577,6 +38589,266 @@ private fun DocumentationAiAssistantSection(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentationGridlinePreviewCard(
+    preview: DocumentationGridlinePreviewState,
+    enabled: Boolean,
+    onDismiss: () -> Unit,
+    onApply: (Boolean) -> Unit,
+) {
+    val groupedRows = remember(preview.rows) {
+        preview.rows.groupBy { row -> row.tableLabel.ifBlank { "Gridline tablica" } }
+    }
+    val lowConfidenceCount = remember(preview.rows) {
+        preview.rows.count { row -> row.confidence.equals("low", ignoreCase = true) }
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+            .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f), RoundedCornerShape(18.dp))
+            .padding(11.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primary) {
+                Icon(
+                    Icons.Rounded.ListAlt,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .padding(10.dp),
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Pregled prije upisa", fontWeight = FontWeight.Black)
+                Text(
+                    "${preview.rows.size} redaka · ${groupedRows.size} Gridline tablica",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                )
+            }
+            if (lowConfidenceCount > 0) {
+                Text(
+                    "$lowConfidenceCount provjeri",
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color(0xFFFFF7ED))
+                        .padding(horizontal = 9.dp, vertical = 5.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Black,
+                    color = Color(0xFFC2410C),
+                )
+            }
+        }
+
+        if (preview.message.isNotBlank()) {
+            Text(
+                preview.message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            groupedRows.forEach { (tableLabel, rows) ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f), RoundedCornerShape(14.dp))
+                        .padding(9.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            tableLabel,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            "${rows.size} red.",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        )
+                    }
+                    rows.take(8).forEachIndexed { index, row ->
+                        DocumentationGridlinePreviewMiniRow(index = index, row = row)
+                    }
+                    if (rows.size > 8) {
+                        Text(
+                            "+ još ${rows.size - 8} redaka u ovoj tablici",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = onDismiss, enabled = enabled) {
+                Text("Odustani", fontWeight = FontWeight.Bold)
+            }
+            OutlinedButton(
+                onClick = { onApply(false) },
+                enabled = enabled && preview.rows.isNotEmpty(),
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Dodaj", fontWeight = FontWeight.Bold)
+            }
+            Button(
+                onClick = { onApply(true) },
+                enabled = enabled && preview.rows.isNotEmpty(),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+            ) {
+                Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Zamijeni", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentationGridlinePreviewMiniRow(
+    index: Int,
+    row: DocumentationGridlinePreviewRow,
+) {
+    val confidenceColor = when (row.confidence.lowercase(Locale.getDefault())) {
+        "high" -> Color(0xFF15803D)
+        "medium" -> Color(0xFF2563EB)
+        "low" -> Color(0xFFC2410C)
+        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f)
+    }
+    val confidenceLabel = when (row.confidence.lowercase(Locale.getDefault())) {
+        "high" -> "sigurno"
+        "medium" -> "srednje"
+        "low" -> "provjeri"
+        else -> ""
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f))
+            .padding(horizontal = 8.dp, vertical = 7.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Text(
+                "${index + 1}",
+                modifier = Modifier
+                    .widthIn(min = 24.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Black,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center,
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    row.place,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                if (row.details.isNotEmpty()) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp),
+                    ) {
+                        row.details.take(5).forEach { (label, value) ->
+                            Text(
+                                "$label: $value",
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f))
+                                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
+            if (row.quantity.isNotBlank()) {
+                Text(
+                    row.quantity,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f))
+                        .padding(horizontal = 7.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.End,
+                )
+            }
+        }
+        if (confidenceLabel.isNotBlank() || row.sourceFile.isNotBlank()) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (confidenceLabel.isNotBlank()) {
+                    Text(
+                        confidenceLabel,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(confidenceColor.copy(alpha = 0.12f))
+                            .padding(horizontal = 7.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Black,
+                        color = confidenceColor,
+                    )
+                }
+                if (row.sourceFile.isNotBlank()) {
+                    Text(
+                        row.sourceFile,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.52f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }

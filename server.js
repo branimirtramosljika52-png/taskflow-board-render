@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.348.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.349.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -8452,12 +8452,16 @@ function sanitizeOpenAiExeiMeasurementSuggestionKeys(result = null, body = {}) {
             ? Object.fromEntries(Object.entries(row.values).filter(([key]) => allowed.has(String(key || "").trim())))
             : {};
           const { orderedValues, ...rest } = row && typeof row === "object" ? row : {};
-          return { ...rest, values };
+          const hasNumericOnlyCircuit = Array.from(circuitLikeKeys).some((key) => {
+            const value = normalizeInputValue(values?.[key]);
+            return value && /^\d{1,3}$/.test(value);
+          });
+          return {
+            ...rest,
+            values,
+            confidence: hasNumericOnlyCircuit ? "low" : rest.confidence,
+          };
         })
-        .filter((row) => !Array.from(circuitLikeKeys).some((key) => {
-          const value = normalizeInputValue(row.values?.[key]);
-          return value && /^\d{1,3}$/.test(value);
-        }))
         .filter((row) => Object.keys(row.values || {}).length > 0);
       return rows.length ? { ...suggestion, rows } : null;
     })
