@@ -15231,7 +15231,10 @@ function buildGeneratedDocumentTemplateRecordPayload({
   });
   expirationDate = periodicsPayload.expirationDate || expirationDate;
   fieldValues = periodicsPayload.fieldValues;
-  const resolvedTemplateId = normalizeInputValue(suppliedRecord.templateId || entry.templateId || template.id);
+  const resolvedTemplateId = normalizeMobileDocumentRecordTemplateIdForStorage(
+    suppliedRecord.templateId || entry.templateId || template.id,
+    template,
+  );
   const recordAttachments = normalizeMobileDocumentationAttachments(
     suppliedRecord.attachments
       || entry.attachments
@@ -15347,6 +15350,19 @@ function resolveWorkOrderDocumentRecordTemplate(input = {}, workOrder = {}, scop
     return directTemplate;
   }
 
+  const nativeTemplateId = parseMobileNativeDocumentationTemplateId(input.templateId || input.documentTemplateId);
+  if (nativeTemplateId) {
+    const nativeTemplate = buildMobileNativeDocumentationTemplate({
+      ...input,
+      serviceCode: nativeTemplateId.serviceCode,
+      code: nativeTemplateId.serviceCode,
+      name: input.serviceName || input.documentType || input.templateTitle || nativeTemplateId.serviceCode,
+    }, nativeTemplateId.serviceIndex, workOrder, scopedSnapshot);
+    if (nativeTemplate) {
+      return nativeTemplate;
+    }
+  }
+
   const service = findWorkOrderServiceForDocumentRecord(input, workOrder, scopedSnapshot);
   const linkedTemplateIds = service ? getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot) : [];
   for (const templateId of linkedTemplateIds) {
@@ -15380,6 +15396,28 @@ function resolveWorkOrderDocumentRecordTemplate(input = {}, workOrder = {}, scop
         ),
       );
     }) || null;
+}
+
+function getMobileNativeDocumentationRecordTemplateId(serviceCode = "") {
+  const normalizedServiceCode = normalizeMobileNativeMeasurementServiceCode(serviceCode);
+  if (!normalizedServiceCode) {
+    return "";
+  }
+  const codes = [...MOBILE_NATIVE_MEASUREMENT_SERVICE_CODES].sort();
+  const index = codes.indexOf(normalizedServiceCode);
+  return index >= 0 ? String(-900000 - index) : "";
+}
+
+function normalizeMobileDocumentRecordTemplateIdForStorage(templateId = "", template = {}) {
+  const nativeTemplateId = parseMobileNativeDocumentationTemplateId(templateId);
+  if (nativeTemplateId) {
+    return getMobileNativeDocumentationRecordTemplateId(nativeTemplateId.serviceCode);
+  }
+  const templateNativeCode = getMobileTemplateNativeDocumentationServiceCode(template);
+  if (templateNativeCode && normalizeInputValue(template?.id).startsWith("native-")) {
+    return getMobileNativeDocumentationRecordTemplateId(templateNativeCode);
+  }
+  return normalizeInputValue(templateId || template?.id);
 }
 
 function getGenericDocumentationSprRecordSheet(fieldSheets = {}) {
@@ -25747,6 +25785,8 @@ function applyMobileSelectedObjectToWorkOrder(workOrder = {}, scopedSnapshot = {
   const normalizedSource = source?.common && typeof source.common === "object" && !Array.isArray(source.common)
     ? source.common
     : (source && typeof source === "object" && !Array.isArray(source) ? source : {});
+  const hasExplicitObjectSelection = ["objectId", "locationObjectId", "selectedObjectId"]
+    .some((key) => Object.prototype.hasOwnProperty.call(normalizedSource, key));
   const requestedObjectId = normalizeInputValue(
     normalizedSource.objectId
     || normalizedSource.locationObjectId
@@ -25770,6 +25810,17 @@ function applyMobileSelectedObjectToWorkOrder(workOrder = {}, scopedSnapshot = {
       locationObjectName: normalizeInputValue(locationObject?.name || normalizedSource.objectName),
       locationObject,
     };
+  } else if (hasExplicitObjectSelection) {
+    nextWorkOrder = {
+      ...nextWorkOrder,
+      objectId: "",
+      locationObjectId: "",
+      selectedObjectId: "",
+      objectName: "",
+      locationObjectName: "",
+      locationObject: null,
+      object: null,
+    };
   }
 
   if (executors.length > 0) {
@@ -25782,6 +25833,15 @@ function applyMobileSelectedObjectToWorkOrder(workOrder = {}, scopedSnapshot = {
   }
 
   return nextWorkOrder;
+}
+
+function isMobileNoObjectRecordLabel(value = "") {
+  const lookup = normalizeMobileTemplateLookupKey(value);
+  return !lookup
+    || lookup === "nema objekta"
+    || lookup === "bez objekta"
+    || lookup === "samo lokacija"
+    || lookup === "lokacija";
 }
 
 function getMobileDocumentRecordTemplateScore(record = {}, template = {}) {
@@ -26047,7 +26107,7 @@ function getMobileDocumentRecordObjectScore(record = {}, workOrder = {}) {
     return recordObjectName === objectName ? 80 : 0;
   }
 
-  return !recordObjectId && !recordObjectName ? 60 : 0;
+  return !recordObjectId && isMobileNoObjectRecordLabel(recordObjectName) ? 60 : 0;
 }
 
 function getMobileDocumentRecordSortKey(record = {}) {
