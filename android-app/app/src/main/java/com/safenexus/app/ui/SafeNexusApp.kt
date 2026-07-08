@@ -2405,7 +2405,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                     state = state.copy(
                         data = state.data.copy(workOrderLocationObjects = nextObjects),
                         isLoading = false,
-                        notice = "Objekt je dodan i odabran za zapisnik.",
+                        notice = "Objekt je dodan.",
                     )
                     onCreated(createdObject)
                 }
@@ -3769,10 +3769,9 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                 documentationWizardObjectId = objectId
                 viewModel.loadWorkOrderDocumentationContext(workOrder, objectId, forceRefresh = true)
             },
-            onCreateObject = { name ->
+            onCreateObject = { name, onCreated ->
                 viewModel.createWorkOrderLocationObject(workOrder, name) { createdObject ->
-                    documentationWizardObjectId = createdObject.id
-                    viewModel.loadWorkOrderDocumentationContext(workOrder, createdObject.id, forceRefresh = true)
+                    onCreated(createdObject)
                 }
             },
             onExecutorsChange = { executors ->
@@ -29456,7 +29455,7 @@ private fun WorkOrderDocumentationWizardDialog(
     physicalFactorsSubmitResult: IsznrWorkEquipmentSubmitResult = IsznrWorkEquipmentSubmitResult(),
     onDismiss: () -> Unit,
     onObjectSelectionChange: (String) -> Unit,
-    onCreateObject: (String) -> Unit,
+    onCreateObject: (String, (WorkOrderLocationObjectOption) -> Unit) -> Unit,
     onExecutorsChange: (List<String>) -> Unit,
     onRunAi: (
         WorkOrderDocumentationTemplate,
@@ -30411,8 +30410,28 @@ private fun WorkOrderDocumentationWizardDialog(
             listOf("__add_new__" to "+ Dodaj novi objekt")
     }
     var newObjectDialogOpen by remember(workOrder.id) { mutableStateOf(false) }
+    var newObjectAdditionalTarget by remember(workOrder.id) {
+        mutableStateOf<DocumentationServiceFlowItem?>(null)
+    }
     var newObjectName by remember(workOrder.id, availableLocationObjects.size) {
         mutableStateOf("Objekt ${availableLocationObjects.size + 1}")
+    }
+    fun addAdditionalRecordForObject(target: DocumentationServiceFlowItem, selected: WorkOrderLocationObjectOption) {
+        val targetExistingCount = additionalRecords.count { it.serviceKey == target.serviceKey }
+        val newRecord = DocumentationAdditionalObjectRecord(
+            serviceKey = target.serviceKey,
+            serviceIndex = target.serviceIndex,
+            serviceCode = target.serviceCode,
+            serviceName = target.serviceName,
+            objectId = selected.id,
+            objectName = selected.name,
+            objectSequence = targetExistingCount + 2,
+        )
+        val nextRecords = additionalRecords + newRecord
+        additionalRecords = nextRecords
+        selectedFlowService = documentationAdditionalRecordFlowKey(newRecord, nextRecords.lastIndex)
+        additionalRecordTarget = null
+        additionalRecordObjectId = ""
     }
     var requiredWarning by remember(workOrder.id) { mutableStateOf("") }
     val standardValues = DocumentationStandardValues(
@@ -30580,8 +30599,16 @@ private fun WorkOrderDocumentationWizardDialog(
 
     if (newObjectDialogOpen) {
         AlertDialog(
-            onDismissRequest = { newObjectDialogOpen = false },
-            title = { Text("Novi objekt", fontWeight = FontWeight.Black) },
+            onDismissRequest = {
+                newObjectDialogOpen = false
+                newObjectAdditionalTarget = null
+            },
+            title = {
+                Text(
+                    if (newObjectAdditionalTarget != null) "Novi objekt za zapisnik" else "Novi objekt",
+                    fontWeight = FontWeight.Black,
+                )
+            },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
@@ -30598,6 +30625,13 @@ private fun WorkOrderDocumentationWizardDialog(
                         enabled = !formLoading,
                         shape = RoundedCornerShape(16.dp),
                     )
+                    newObjectAdditionalTarget?.let { target ->
+                        Text(
+                            "Nakon spremanja dodaje se dodatni zapisnik: ${target.serviceCode} - ${target.serviceName}.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        )
+                    }
                 }
             },
             confirmButton = {
@@ -30605,8 +30639,16 @@ private fun WorkOrderDocumentationWizardDialog(
                     onClick = {
                         val name = newObjectName.trim()
                         if (name.isNotBlank()) {
+                            val targetForAdditional = newObjectAdditionalTarget
                             newObjectDialogOpen = false
-                            onCreateObject(name)
+                            newObjectAdditionalTarget = null
+                            onCreateObject(name) { createdObject ->
+                                if (targetForAdditional != null) {
+                                    addAdditionalRecordForObject(targetForAdditional, createdObject)
+                                } else {
+                                    onObjectSelectionChange(createdObject.id)
+                                }
+                            }
                         }
                     },
                     enabled = !formLoading && newObjectName.isNotBlank(),
@@ -30616,7 +30658,13 @@ private fun WorkOrderDocumentationWizardDialog(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { newObjectDialogOpen = false }, enabled = !formLoading) {
+                TextButton(
+                    onClick = {
+                        newObjectDialogOpen = false
+                        newObjectAdditionalTarget = null
+                    },
+                    enabled = !formLoading,
+                ) {
                     Text("Odustani")
                 }
             },
@@ -30643,7 +30691,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     )
                     if (selectableObjects.isEmpty()) {
                         Text(
-                            "Nema slobodnog objekta za ovu uslugu. Dodaj novi objekt na lokaciji pa ponovno dugo pritisni uslugu.",
+                            "Nema slobodnog objekta za ovu uslugu. Dodaj novi objekt na lokaciji i odmah će se otvoriti kao dodatni zapisnik.",
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
                         )
                     } else {
@@ -30672,33 +30720,26 @@ private fun WorkOrderDocumentationWizardDialog(
                     onClick = {
                         val selected = selectableObjects.firstOrNull { it.id == additionalRecordObjectId }
                         if (selected != null) {
-                            val newRecord = DocumentationAdditionalObjectRecord(
-                                serviceKey = target.serviceKey,
-                                serviceIndex = target.serviceIndex,
-                                serviceCode = target.serviceCode,
-                                serviceName = target.serviceName,
-                                objectId = selected.id,
-                                objectName = selected.name,
-                                objectSequence = targetExistingCount + 2,
-                            )
-                            val nextRecords = additionalRecords + newRecord
-                            additionalRecords = nextRecords
-                            selectedFlowService = documentationAdditionalRecordFlowKey(newRecord, nextRecords.lastIndex)
+                            addAdditionalRecordForObject(target, selected)
+                        } else if (selectableObjects.isEmpty()) {
+                            newObjectAdditionalTarget = target
+                            newObjectName = "Objekt ${availableLocationObjects.size + 1}"
                             additionalRecordTarget = null
                             additionalRecordObjectId = ""
+                            newObjectDialogOpen = true
                         }
                     },
-                    enabled = !formLoading && additionalRecordObjectId.isNotBlank() && selectableObjects.isNotEmpty(),
+                    enabled = !formLoading && (selectableObjects.isEmpty() || additionalRecordObjectId.isNotBlank()),
                     shape = RoundedCornerShape(16.dp),
                 ) {
-                    Text("Dodaj zapisnik", fontWeight = FontWeight.Black)
+                    Text(if (selectableObjects.isEmpty()) "Dodaj objekt" else "Dodaj zapisnik", fontWeight = FontWeight.Black)
                 }
             },
             dismissButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(
-                        onClick = {
-                            if (selectableObjects.isNotEmpty()) {
+                    if (selectableObjects.isNotEmpty()) {
+                        TextButton(
+                            onClick = {
                                 val baseRecords = additionalRecords
                                 val newRecords = selectableObjects.mapIndexed { objectIndex, selected ->
                                     DocumentationAdditionalObjectRecord(
@@ -30718,11 +30759,11 @@ private fun WorkOrderDocumentationWizardDialog(
                                 }
                                 additionalRecordTarget = null
                                 additionalRecordObjectId = ""
-                            }
-                        },
-                        enabled = !formLoading && selectableObjects.isNotEmpty(),
-                    ) {
-                        Text("Dodaj sve")
+                            },
+                            enabled = !formLoading,
+                        ) {
+                            Text("Dodaj sve")
+                        }
                     }
                     TextButton(onClick = { additionalRecordTarget = null }, enabled = !formLoading) {
                         Text("Odustani")
@@ -31249,6 +31290,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         enabled = !formLoading,
                         onSelect = { value ->
                             if (value == "__add_new__") {
+                                newObjectAdditionalTarget = null
                                 newObjectName = "Objekt ${availableLocationObjects.size + 1}"
                                 newObjectDialogOpen = true
                             } else {
