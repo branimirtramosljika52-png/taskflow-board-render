@@ -31373,6 +31373,8 @@ private fun WorkOrderDocumentationWizardDialog(
                     DocumentationProcessToolbar(
                         flowTabs = flowTabs,
                         selectedService = selectedFlowService,
+                        companyName = workOrder.companyName,
+                        locationName = testingLocation.ifBlank { workOrder.objectName.ifBlank { activeSelectedObject?.name.orEmpty() } },
                         enabled = !formLoading,
                         compact = isDocumentationLandscape,
                         onSelectService = { selectedFlowService = it },
@@ -38131,6 +38133,8 @@ private fun DocumentationMeasurementPreviewContent(
 private fun DocumentationProcessToolbar(
     flowTabs: List<DocumentationFlowTab>,
     selectedService: String,
+    companyName: String,
+    locationName: String,
     enabled: Boolean,
     compact: Boolean = false,
     modifier: Modifier = Modifier,
@@ -38148,8 +38152,19 @@ private fun DocumentationProcessToolbar(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Rounded.Work, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                Text("Proces", fontWeight = FontWeight.Black, maxLines = 1)
+                Icon(Icons.Rounded.Business, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                Column(modifier = Modifier.widthIn(min = 120.dp, max = 220.dp)) {
+                    Text(companyName.ifBlank { "Tvrtka" }, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (locationName.isNotBlank()) {
+                        Text(
+                            locationName,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 Row(
                     modifier = Modifier
                         .weight(1f)
@@ -38175,8 +38190,19 @@ private fun DocumentationProcessToolbar(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Rounded.Work, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                    Text("Proces izrade", fontWeight = FontWeight.Black)
+                    Icon(Icons.Rounded.Business, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(companyName.ifBlank { "Tvrtka" }, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (locationName.isNotBlank()) {
+                            Text(
+                                locationName,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                 }
                 Row(
                     modifier = Modifier
@@ -40143,13 +40169,15 @@ private fun DocumentationSprStandardResourceChapterPanel(
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("${index + 1}. $title", fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        subtitle,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    if (subtitle.isNotBlank() && summaryChips.isEmpty()) {
+                        Text(
+                            subtitle,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     if (summaryChips.isNotEmpty()) {
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -40316,7 +40344,7 @@ private fun buildDocumentationSprTemplateSectionSummary(
     }
     if (isAssessmentSection) {
         return DocumentationSprChapterSummary(
-            text = "Zaključak i ocjena ispitivanja",
+            text = "",
             chips = buildDocumentationSprFinalGradeChips(entry, values, visibleBlocks),
         )
     }
@@ -40540,6 +40568,11 @@ private fun DocumentationSprTemplateSectionPanel(
         measurementSectionTables = measurementSectionTables,
         attachmentCount = attachmentFiles.size,
     )
+    val showSectionSummary = remember(entry.section.title, sectionSummary.text) {
+        val titleLookup = normalizeTemplateSectionLookup(entry.section.title)
+        val summaryLookup = normalizeTemplateSectionLookup(sectionSummary.text)
+        sectionSummary.text.isNotBlank() && summaryLookup.isNotBlank() && summaryLookup != titleLookup
+    }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -40572,13 +40605,15 @@ private fun DocumentationSprTemplateSectionPanel(
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("${(displayIndex.takeIf { it >= 0 } ?: entry.index) + 1}. ${entry.section.title}", fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        sectionSummary.text,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    if (showSectionSummary) {
+                        Text(
+                            sectionSummary.text,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     if (sectionSummary.chips.isNotEmpty()) {
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -41132,16 +41167,7 @@ private fun DocumentationAiAssistantSection(
             expanded = true
         }
     }
-    val templateMeta = selectedTemplate?.let { template ->
-        listOf(
-            if (template.aiFields.isNotEmpty()) "${template.aiFields.size} AI polja" else "",
-            if (template.aiMeasurementColumns.isNotEmpty()) "${template.aiMeasurementColumns.size} AI Excel kolona" else "",
-        ).filter { it.isNotBlank() }.joinToString(" · ")
-    }.orEmpty()
-    val summary = listOf(
-        templateMeta.ifBlank { "AI polja nisu označena" },
-        if (files.isEmpty()) "bez datoteka" else "${files.size} datoteka",
-    ).joinToString(" · ")
+    val summary = if (files.isEmpty()) "Bez datoteka" else "${files.size} datoteka"
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -43604,7 +43630,8 @@ private fun isDocumentationTechnicalDocumentationSection(section: TemplateBlockS
 private fun isDocumentationAssessmentSection(section: TemplateBlockSection): Boolean {
     val lookup = section.lookupText()
     return lookup.contains("ocjena rezultata") ||
-        (lookup.contains("ocjena") && lookup.contains("ispitivanja"))
+        (lookup.contains("ocjena") && lookup.contains("ispitivanja")) ||
+        (lookup.contains("zakljuc") && lookup.contains("ocjen"))
 }
 
 private fun isBasicStandardTemplateBlock(block: WorkOrderDocumentationTemplateBlock): Boolean {
