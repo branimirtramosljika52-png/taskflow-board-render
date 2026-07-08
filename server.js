@@ -15420,6 +15420,114 @@ function normalizeMobileDocumentRecordTemplateIdForStorage(templateId = "", temp
   return normalizeInputValue(templateId || template?.id);
 }
 
+function normalizeMobileDocumentationMeasurementPresetKeyPart(value = "") {
+  return normalizeInputValue(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function buildMobileDocumentationMeasurementPresetFieldKey({
+  serviceCode = "",
+  sheetKey = "",
+  objectId = "",
+} = {}) {
+  const servicePart = normalizeMobileDocumentationMeasurementPresetKeyPart(serviceCode) || "template";
+  const sheetPart = normalizeMobileDocumentationMeasurementPresetKeyPart(sheetKey) || "gridline";
+  const objectPart = normalizeMobileDocumentationMeasurementPresetKeyPart(objectId);
+  return objectPart
+    ? `documentation:${servicePart}:${sheetPart}:object:${objectPart}`
+    : `documentation:${servicePart}:${sheetPart}:location`;
+}
+
+function getMobileDocumentationMeasurementPresetTableKeys(table = {}, fallback = "") {
+  return [
+    table?.key,
+    table?.id,
+    table?.tokenKey,
+    table?.sourceSheet,
+    table?.label,
+    fallback,
+  ].map(normalizeInputValue).filter(Boolean);
+}
+
+function getMobileDocumentationMeasurementPresetServiceCode(template = {}, input = {}) {
+  return normalizeMobileNativeMeasurementServiceCode(
+    template?.serviceCode
+    || template?.code
+    || input?.serviceCode
+    || input?.activeServiceCode,
+  ) || getMobileTemplateNativeDocumentationServiceCode(template) || normalizeInputValue(input?.serviceCode || input?.activeServiceCode);
+}
+
+function getMobileDocumentationMeasurementPresetFieldKeysForTable(template = {}, table = {}, workOrder = {}) {
+  const serviceCode = getMobileDocumentationMeasurementPresetServiceCode(template);
+  const objectId = getMobileWorkOrderLocationObjectId(workOrder);
+  const tableKeys = getMobileDocumentationMeasurementPresetTableKeys(table);
+  return tableKeys.flatMap((sheetKey) => {
+    const scopedKey = buildMobileDocumentationMeasurementPresetFieldKey({ serviceCode, sheetKey, objectId });
+    const locationKey = buildMobileDocumentationMeasurementPresetFieldKey({ serviceCode, sheetKey });
+    return objectId ? [scopedKey, sheetKey] : [locationKey, sheetKey];
+  }).filter(Boolean);
+}
+
+function findMobileDocumentationMeasurementPreset({
+  template = {},
+  table = {},
+  workOrder = {},
+  scopedSnapshot = {},
+} = {}) {
+  const presets = Array.isArray(scopedSnapshot.measurementSheetPresets) ? scopedSnapshot.measurementSheetPresets : [];
+  if (presets.length === 0) {
+    return null;
+  }
+  const storageTemplateId = normalizeMobileDocumentRecordTemplateIdForStorage(template?.id, template);
+  const companyId = normalizeInputValue(workOrder?.companyId);
+  const locationId = normalizeInputValue(workOrder?.locationId);
+  const candidateKeys = getMobileDocumentationMeasurementPresetFieldKeysForTable(template, table, workOrder);
+
+  for (const fieldKey of candidateKeys) {
+    const preset = presets.find((item) => (
+      (!storageTemplateId || normalizeInputValue(item?.templateId) === storageTemplateId)
+      && (!companyId || normalizeInputValue(item?.companyId) === companyId)
+      && (!locationId || normalizeInputValue(item?.locationId) === locationId)
+      && normalizeInputValue(item?.fieldKey) === fieldKey
+      && normalizeWorkOrderMeasurementSheet(item?.sheet)
+    ));
+    if (preset) {
+      return normalizeWorkOrderMeasurementSheet(preset.sheet);
+    }
+  }
+
+  return null;
+}
+
+function buildMobileDocumentationMeasurementPresetDefaults(template = {}, workOrder = {}, scopedSnapshot = {}) {
+  const measurementTables = Array.isArray(template?.measurementTables) ? template.measurementTables : [];
+  const templateId = normalizeInputValue(template?.id);
+  const fieldSheets = {};
+  measurementTables.forEach((table, index) => {
+    const sheet = findMobileDocumentationMeasurementPreset({ template, table, workOrder, scopedSnapshot });
+    if (!sheet) {
+      return;
+    }
+    getMobileDocumentationMeasurementPresetTableKeys(table, `gridline-results-${index + 1}`)
+      .forEach((key) => {
+        fieldSheets[key] = sheet;
+      });
+  });
+
+  if (Object.keys(fieldSheets).length === 0) {
+    return {};
+  }
+  return {
+    fieldSheets,
+    templateFieldSheets: templateId ? { [templateId]: fieldSheets } : {},
+  };
+}
+
 function getGenericDocumentationSprRecordSheet(fieldSheets = {}) {
   const source = fieldSheets && typeof fieldSheets === "object" && !Array.isArray(fieldSheets)
     ? fieldSheets
@@ -15571,6 +15679,69 @@ async function persistWorkOrderDocumentRecordsFromRequest({
   return { savedRecords, warnings };
 }
 
+async function persistMobileDocumentationMeasurementPresets({
+  recordInput = {},
+  payload = {},
+  template = {},
+  workOrder = {},
+  scopedSnapshot = {},
+  user = null,
+} = {}) {
+  if (typeof domainRepository.saveMeasurementSheetPreset !== "function") {
+    return { savedPresets: [], warnings: [] };
+  }
+  const fieldSheets = payload?.fieldSheets && typeof payload.fieldSheets === "object" && !Array.isArray(payload.fieldSheets)
+    ? payload.fieldSheets
+    : {};
+  const entries = Object.entries(fieldSheets)
+    .map(([key, sheet]) => [normalizeInputValue(key), normalizeWorkOrderMeasurementSheet(sheet)])
+    .filter(([key, sheet]) => key && sheet);
+  if (entries.length === 0) {
+    return { savedPresets: [], warnings: [] };
+  }
+
+  const storageTemplateId = normalizeInputValue(payload.templateId);
+  const organizationId = normalizeInputValue(payload.organizationId || scopedSnapshot.activeOrganizationId || workOrder.organizationId);
+  const companyId = normalizeInputValue(payload.companyId || workOrder.companyId);
+  const locationId = normalizeInputValue(payload.locationId || workOrder.locationId);
+  if (!storageTemplateId || !organizationId || !companyId || !locationId) {
+    return { savedPresets: [], warnings: ["Gridline JSON nije spremljen jer nedostaje template/tvrtka/lokacija."] };
+  }
+
+  const serviceCode = getMobileDocumentationMeasurementPresetServiceCode(template, recordInput)
+    || getMobileDocumentRecordNativeDocumentationServiceCode(payload)
+    || normalizeInputValue(recordInput.serviceCode || recordInput.activeServiceCode || payload.serviceCode);
+  const objectId = normalizeInputValue(payload.objectId || getMobileWorkOrderLocationObjectId(workOrder));
+  const savedPresets = [];
+  const warnings = [];
+
+  for (const [sheetKey, sheet] of entries) {
+    const fieldKey = buildMobileDocumentationMeasurementPresetFieldKey({
+      serviceCode,
+      sheetKey,
+      objectId,
+    });
+    try {
+      const saved = await domainRepository.saveMeasurementSheetPreset({
+        organizationId,
+        templateId: storageTemplateId,
+        companyId,
+        locationId,
+        fieldKey,
+        title: normalizeInputValue(`${serviceCode || "Zapisnik"} - ${sheetKey}`),
+        sheet,
+      }, user);
+      if (saved) {
+        savedPresets.push(saved);
+      }
+    } catch (error) {
+      warnings.push(error?.message || `Gridline JSON nije spremljen za ${sheetKey}.`);
+    }
+  }
+
+  return { savedPresets, warnings };
+}
+
 function getMobileDocumentationDraftTemplateIds(body = {}, scopedSnapshot = {}) {
   const ids = new Set();
   [
@@ -15683,9 +15854,11 @@ async function persistMobileWorkOrderDocumentationDraft({
 } = {}) {
   const recordInputs = buildMobileDocumentationDraftRecordInputs(body, workOrder, scopedSnapshot);
   const savedRecords = [];
+  const savedPresets = [];
   const warnings = [];
 
   for (const recordInput of recordInputs) {
+    const template = resolveWorkOrderDocumentRecordTemplate(recordInput, workOrder, scopedSnapshot);
     const payload = buildWorkOrderDocumentRecordPayloadFromRequest(recordInput, workOrder, scopedSnapshot);
     if (!payload) {
       warnings.push("Nije pronađen povezani predložak za spremanje mobilnog drafta.");
@@ -15696,12 +15869,22 @@ async function persistMobileWorkOrderDocumentationDraft({
       if (saved) {
         savedRecords.push(saved);
       }
+      const presetResult = await persistMobileDocumentationMeasurementPresets({
+        recordInput,
+        payload,
+        template,
+        workOrder,
+        scopedSnapshot,
+        user,
+      });
+      savedPresets.push(...presetResult.savedPresets);
+      warnings.push(...presetResult.warnings);
     } catch (error) {
       warnings.push(error?.message || "Mobilni draft nije spremljen.");
     }
   }
 
-  return { savedRecords, warnings };
+  return { savedRecords, savedPresets, warnings };
 }
 
 function isSameGeneratedDocumentRecord(existing = {}, payload = {}, workOrder = {}) {
@@ -26523,8 +26706,43 @@ function mergeMobileDocumentContextRecords(scopedSnapshot = {}, freshRecords = [
   };
 }
 
+function mergeMobileMeasurementSheetPresets(scopedSnapshot = {}, freshPresets = []) {
+  const existingPresets = Array.isArray(scopedSnapshot.measurementSheetPresets)
+    ? scopedSnapshot.measurementSheetPresets
+    : [];
+  const mergedPresets = [];
+  const seenKeys = new Set();
+
+  [...(Array.isArray(freshPresets) ? freshPresets : []), ...existingPresets].forEach((preset) => {
+    if (!preset || typeof preset !== "object" || Array.isArray(preset)) {
+      return;
+    }
+    const key = normalizeInputValue(preset.id)
+      || [
+        preset.organizationId,
+        preset.templateId,
+        preset.companyId,
+        preset.locationId,
+        preset.fieldKey,
+      ].map(normalizeInputValue).join("::");
+    if (!key || seenKeys.has(key)) {
+      return;
+    }
+    seenKeys.add(key);
+    mergedPresets.push(preset);
+  });
+
+  return {
+    ...scopedSnapshot,
+    measurementSheetPresets: mergedPresets,
+  };
+}
+
 async function buildMobileDocumentationContextSnapshot(workOrder = {}, scopedSnapshot = {}) {
-  if (typeof domainRepository.listDocumentRecords !== "function") {
+  if (
+    typeof domainRepository.listDocumentRecords !== "function"
+    && typeof domainRepository.listMeasurementSheetPresets !== "function"
+  ) {
     return scopedSnapshot;
   }
 
@@ -26536,14 +26754,29 @@ async function buildMobileDocumentationContextSnapshot(workOrder = {}, scopedSna
   }
 
   try {
-    const freshRecords = await domainRepository.listDocumentRecords({
-      organizationId,
-      companyId,
-      locationId,
-      limit: 500,
-      periodics: true,
-    });
-    return mergeMobileDocumentContextRecords(scopedSnapshot, freshRecords);
+    const [freshRecords, freshPresets] = await Promise.all([
+      typeof domainRepository.listDocumentRecords === "function"
+        ? domainRepository.listDocumentRecords({
+          organizationId,
+          companyId,
+          locationId,
+          limit: 500,
+          periodics: true,
+        })
+        : [],
+      typeof domainRepository.listMeasurementSheetPresets === "function"
+        ? domainRepository.listMeasurementSheetPresets({
+          organizationId,
+          companyId,
+          locationId,
+          limit: 500,
+        })
+        : [],
+    ]);
+    return mergeMobileDocumentContextRecords(
+      mergeMobileMeasurementSheetPresets(scopedSnapshot, freshPresets),
+      freshRecords,
+    );
   } catch (error) {
     console.warn("[mobile-documentation-context] Ne mogu ucitati svjeze zapise dokumentacije.", error?.message || error);
     return scopedSnapshot;
@@ -28040,7 +28273,9 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     if (nativeTemplate) {
       const latestRecord = findLatestMobileDocumentRecordForTemplate(nativeTemplate, workOrder, scopedSnapshot);
       const dataSource = buildMobileDocumentTemplateDataSource(nativeTemplate, latestRecord);
+      const presetDefaults = buildMobileDocumentationMeasurementPresetDefaults(nativeTemplate, workOrder, scopedSnapshot);
       const recordDefaults = buildMobileDocumentRecordWizardDefaults(latestRecord, workOrder);
+      mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, presetDefaults, nativeTemplate);
       mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, recordDefaults, nativeTemplate);
       const templateServiceKey = `${serviceIndex}::native::${nativeTemplate.serviceCode}`;
       if (!seenTemplateKeys.has(templateServiceKey)) {
@@ -28066,9 +28301,13 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
       seenTemplateKeys.add(templateServiceKey);
       const latestRecord = findLatestMobileDocumentRecordForTemplate(template, workOrder, scopedSnapshot);
       const dataSource = buildMobileDocumentTemplateDataSource(template, latestRecord);
+      const presetDefaults = buildMobileDocumentationMeasurementPresetDefaults(template, workOrder, scopedSnapshot);
       const recordDefaults = buildMobileDocumentRecordWizardDefaults(latestRecord, workOrder);
+      let contextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(null, presetDefaults, template);
+      contextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(contextDefaults, recordDefaults, template) || recordDefaults;
+      mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, presetDefaults, template);
       mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, recordDefaults, template);
-      const common = normalizeMobileWorkOrderDocumentWizardInput(recordDefaults);
+      const common = normalizeMobileWorkOrderDocumentWizardInput(contextDefaults);
       const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, workOrder, service, scopedSnapshot, common);
       const measurementPlaceholders = buildMobileDocumentTemplateMeasurementPlaceholders(template, fieldSheets);
       const placeholders = {
@@ -38213,6 +38452,7 @@ async function handleApiRequest(request, response, url) {
       sendJson(response, 201, {
         ok: true,
         count: result.savedRecords.length,
+        presetCount: result.savedPresets.length,
         warnings: result.warnings,
         items: result.savedRecords.map((record) => ({
           ...record,

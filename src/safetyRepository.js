@@ -7823,7 +7823,7 @@ export class InMemorySafetyRepository {
     const companyId = dbString(filters.companyId);
     const locationId = dbString(filters.locationId);
     const fieldKey = dbString(filters.fieldKey);
-    const limit = Math.max(1, Math.min(50, Number.parseInt(filters.limit, 10) || 12));
+    const limit = Math.max(1, Math.min(500, Number.parseInt(filters.limit, 10) || 12));
 
     return (this.snapshot.measurementSheetPresets ?? [])
       .filter((item) => (
@@ -15491,7 +15491,7 @@ export class MySqlSafetyRepository {
       const companyId = Number(filters.companyId);
       const locationId = Number(filters.locationId);
       const fieldKey = dbString(filters.fieldKey);
-      const limit = Math.max(1, Math.min(50, Number.parseInt(filters.limit, 10) || 12));
+      const limit = Math.max(1, Math.min(500, Number.parseInt(filters.limit, 10) || 12));
 
       const conditions = [];
       const params = [];
