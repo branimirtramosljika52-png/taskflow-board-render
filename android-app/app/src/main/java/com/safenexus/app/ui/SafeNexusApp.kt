@@ -39486,6 +39486,37 @@ private fun DocumentationSprMobileWorkspace(
     }
     val standardChapterCount = 2
     val displayedChapterCount = menuEntries.size + standardChapterCount
+    val standardChapterInsertPosition = remember(menuEntries) {
+        val basicIndex = menuEntries.indexOfFirst { isBasicTemplateSection(it.section) }
+        if (basicIndex >= 0) basicIndex + 1 else 0
+    }
+    val selectedMeasurementEquipmentOptions = remember(
+        standardControls.measurementEquipmentOptions,
+        standardControls.selectedEquipmentIds,
+    ) {
+        standardControls.measurementEquipmentOptions.filter { it.id in standardControls.selectedEquipmentIds }
+    }
+    val cleanedLegalFrameworkOptions = remember(standardControls.legalFrameworkOptions) {
+        standardControls.legalFrameworkOptions.map { it.withoutGenericActiveStatus() }
+    }
+    val selectedLegalFrameworkOptions = remember(cleanedLegalFrameworkOptions, standardControls.selectedLegalFrameworkIds) {
+        cleanedLegalFrameworkOptions.filter { it.id in standardControls.selectedLegalFrameworkIds }
+    }
+    val measurementEquipmentSummaryChips = remember(selectedMeasurementEquipmentOptions) {
+        buildSprMeasurementEquipmentSummaryChips(selectedMeasurementEquipmentOptions)
+    }
+    val legalFrameworkSummaryChips = remember(selectedLegalFrameworkOptions) {
+        selectedLegalFrameworkOptions
+            .take(3)
+            .map { option -> DocumentationSprSummaryChipData(option.label, Color(0xFF0F766E)) }
+            .let { chips ->
+                if (selectedLegalFrameworkOptions.size > chips.size) {
+                    chips + DocumentationSprSummaryChipData("+${selectedLegalFrameworkOptions.size - chips.size}", Color(0xFF64748B))
+                } else {
+                    chips
+                }
+            }
+    }
 
     WizardSection(title = workspaceTitle, icon = Icons.Rounded.PictureAsPdf) {
         Surface(
@@ -39618,58 +39649,61 @@ private fun DocumentationSprMobileWorkspace(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    DocumentationSprStandardResourceChapterPanel(
-                        key = "spr_measurement_equipment",
-                        index = 0,
-                        icon = Icons.Rounded.Work,
-                        title = "Mjerna i ispitna oprema",
-                        subtitle = listOf(
-                            standardControls.measurementEquipmentGroup.ifBlank { "Bez grupe" },
-                            "${standardControls.selectedEquipmentIds.size} uređaja",
-                        ).joinToString(" · "),
-                        enabled = enabled,
-                    ) {
-                        WorkOrderSelectField(
-                            label = "Grupa mjerne opreme",
-                            value = standardControls.measurementEquipmentGroup,
-                            valueLabel = standardControls.measurementEquipmentGroup.ifBlank { "Bez odabira" },
-                            options = standardControls.measurementEquipmentGroupOptions,
-                            enabled = standardControls.enabled,
-                            onSelect = standardControls.onMeasurementEquipmentGroupChange,
-                        )
-                        DocumentationMultiSelectField(
-                            label = "Uređaji za zapisnik",
-                            options = standardControls.measurementEquipmentOptions,
-                            selectedIds = standardControls.selectedEquipmentIds,
-                            enabled = standardControls.enabled,
-                            emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
-                            onChange = standardControls.onSelectedEquipmentIdsChange,
-                        )
-                    }
-
-                    DocumentationSprStandardResourceChapterPanel(
-                        key = "spr_legal_frameworks",
-                        index = 1,
-                        icon = Icons.Rounded.Lock,
-                        title = "Propisi",
-                        subtitle = "${standardControls.selectedLegalFrameworkIds.size} odabrano",
-                        enabled = enabled,
-                    ) {
-                        DocumentationMultiSelectField(
-                            label = "Propisi iz web predloška",
-                            options = standardControls.legalFrameworkOptions,
-                            selectedIds = standardControls.selectedLegalFrameworkIds,
-                            enabled = standardControls.enabled,
-                            emptyText = "Nema propisa povezanih s predlošcima.",
-                            onChange = standardControls.onSelectedLegalFrameworkIdsChange,
-                        )
-                    }
-
+                    var chapterIndex = 0
                     if (menuEntries.isNotEmpty()) {
-                        menuEntries.forEach { entry ->
+                        menuEntries.forEachIndexed { entryPosition, entry ->
+                            if (entryPosition == standardChapterInsertPosition) {
+                                DocumentationSprStandardResourceChapterPanel(
+                                    key = "spr_measurement_equipment",
+                                    index = chapterIndex,
+                                    icon = Icons.Rounded.Work,
+                                    title = "Mjerna i ispitna oprema",
+                                    subtitle = if (selectedMeasurementEquipmentOptions.isEmpty()) {
+                                        "Odaberi uređaje za zapisnik"
+                                    } else {
+                                        "${selectedMeasurementEquipmentOptions.size} uređaja u zapisniku"
+                                    },
+                                    summaryChips = measurementEquipmentSummaryChips,
+                                    enabled = enabled,
+                                ) {
+                                    DocumentationMultiSelectField(
+                                        label = "Uređaji za zapisnik",
+                                        options = standardControls.measurementEquipmentOptions,
+                                        selectedIds = standardControls.selectedEquipmentIds,
+                                        enabled = standardControls.enabled,
+                                        emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
+                                        onChange = standardControls.onSelectedEquipmentIdsChange,
+                                    )
+                                }
+                                chapterIndex += 1
+
+                                DocumentationSprStandardResourceChapterPanel(
+                                    key = "spr_legal_frameworks",
+                                    index = chapterIndex,
+                                    icon = Icons.Rounded.Lock,
+                                    title = "Propisi",
+                                    subtitle = if (selectedLegalFrameworkOptions.isEmpty()) {
+                                        "Odaberi propise iz predloška"
+                                    } else {
+                                        "${selectedLegalFrameworkOptions.size} propisa u zapisniku"
+                                    },
+                                    summaryChips = legalFrameworkSummaryChips,
+                                    enabled = enabled,
+                                ) {
+                                    DocumentationMultiSelectField(
+                                        label = "Propisi iz web predloška",
+                                        options = cleanedLegalFrameworkOptions,
+                                        selectedIds = standardControls.selectedLegalFrameworkIds,
+                                        enabled = standardControls.enabled,
+                                        emptyText = "Nema propisa povezanih s predlošcima.",
+                                        onChange = standardControls.onSelectedLegalFrameworkIdsChange,
+                                    )
+                                }
+                                chapterIndex += 1
+                            }
                             DocumentationSprTemplateSectionPanel(
                                 entry = entry,
-                                indexOffset = standardChapterCount,
+                                displayIndex = chapterIndex,
                                 values = values,
                                 standardControls = standardControls,
                                 tableCount = tableCount,
@@ -39688,8 +39722,105 @@ private fun DocumentationSprMobileWorkspace(
                                 onFieldChange = onFieldChange,
                                 onSprVoicePreview = onSprVoicePreview,
                             )
+                            chapterIndex += 1
+                        }
+                        if (standardChapterInsertPosition >= menuEntries.size) {
+                            DocumentationSprStandardResourceChapterPanel(
+                                key = "spr_measurement_equipment",
+                                index = chapterIndex,
+                                icon = Icons.Rounded.Work,
+                                title = "Mjerna i ispitna oprema",
+                                subtitle = if (selectedMeasurementEquipmentOptions.isEmpty()) {
+                                    "Odaberi uređaje za zapisnik"
+                                } else {
+                                    "${selectedMeasurementEquipmentOptions.size} uređaja u zapisniku"
+                                },
+                                summaryChips = measurementEquipmentSummaryChips,
+                                enabled = enabled,
+                            ) {
+                                DocumentationMultiSelectField(
+                                    label = "Uređaji za zapisnik",
+                                    options = standardControls.measurementEquipmentOptions,
+                                    selectedIds = standardControls.selectedEquipmentIds,
+                                    enabled = standardControls.enabled,
+                                    emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
+                                    onChange = standardControls.onSelectedEquipmentIdsChange,
+                                )
+                            }
+                            chapterIndex += 1
+
+                            DocumentationSprStandardResourceChapterPanel(
+                                key = "spr_legal_frameworks",
+                                index = chapterIndex,
+                                icon = Icons.Rounded.Lock,
+                                title = "Propisi",
+                                subtitle = if (selectedLegalFrameworkOptions.isEmpty()) {
+                                    "Odaberi propise iz predloška"
+                                } else {
+                                    "${selectedLegalFrameworkOptions.size} propisa u zapisniku"
+                                },
+                                summaryChips = legalFrameworkSummaryChips,
+                                enabled = enabled,
+                            ) {
+                                DocumentationMultiSelectField(
+                                    label = "Propisi iz web predloška",
+                                    options = cleanedLegalFrameworkOptions,
+                                    selectedIds = standardControls.selectedLegalFrameworkIds,
+                                    enabled = standardControls.enabled,
+                                    emptyText = "Nema propisa povezanih s predlošcima.",
+                                    onChange = standardControls.onSelectedLegalFrameworkIdsChange,
+                                )
+                            }
                         }
                     } else if (fallbackFieldTemplates.isNotEmpty()) {
+                        DocumentationSprStandardResourceChapterPanel(
+                            key = "spr_measurement_equipment",
+                            index = chapterIndex,
+                            icon = Icons.Rounded.Work,
+                            title = "Mjerna i ispitna oprema",
+                            subtitle = if (selectedMeasurementEquipmentOptions.isEmpty()) {
+                                "Odaberi uređaje za zapisnik"
+                            } else {
+                                "${selectedMeasurementEquipmentOptions.size} uređaja u zapisniku"
+                            },
+                            summaryChips = measurementEquipmentSummaryChips,
+                            enabled = enabled,
+                        ) {
+                            DocumentationMultiSelectField(
+                                label = "Uređaji za zapisnik",
+                                options = standardControls.measurementEquipmentOptions,
+                                selectedIds = standardControls.selectedEquipmentIds,
+                                enabled = standardControls.enabled,
+                                emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
+                                onChange = standardControls.onSelectedEquipmentIdsChange,
+                            )
+                        }
+                        chapterIndex += 1
+
+                        DocumentationSprStandardResourceChapterPanel(
+                            key = "spr_legal_frameworks",
+                            index = chapterIndex,
+                            icon = Icons.Rounded.Lock,
+                            title = "Propisi",
+                            subtitle = if (selectedLegalFrameworkOptions.isEmpty()) {
+                                "Odaberi propise iz predloška"
+                            } else {
+                                "${selectedLegalFrameworkOptions.size} propisa u zapisniku"
+                            },
+                            summaryChips = legalFrameworkSummaryChips,
+                            enabled = enabled,
+                        ) {
+                            DocumentationMultiSelectField(
+                                label = "Propisi iz web predloška",
+                                options = cleanedLegalFrameworkOptions,
+                                selectedIds = standardControls.selectedLegalFrameworkIds,
+                                enabled = standardControls.enabled,
+                                emptyText = "Nema propisa povezanih s predlošcima.",
+                                onChange = standardControls.onSelectedLegalFrameworkIdsChange,
+                            )
+                        }
+                        chapterIndex += 1
+
                         fallbackFieldTemplates.forEach { template ->
                             TemplateFieldGroup(
                                 template = template,
@@ -39699,6 +39830,53 @@ private fun DocumentationSprMobileWorkspace(
                             )
                         }
                     } else {
+                        DocumentationSprStandardResourceChapterPanel(
+                            key = "spr_measurement_equipment",
+                            index = chapterIndex,
+                            icon = Icons.Rounded.Work,
+                            title = "Mjerna i ispitna oprema",
+                            subtitle = if (selectedMeasurementEquipmentOptions.isEmpty()) {
+                                "Odaberi uređaje za zapisnik"
+                            } else {
+                                "${selectedMeasurementEquipmentOptions.size} uređaja u zapisniku"
+                            },
+                            summaryChips = measurementEquipmentSummaryChips,
+                            enabled = enabled,
+                        ) {
+                            DocumentationMultiSelectField(
+                                label = "Uređaji za zapisnik",
+                                options = standardControls.measurementEquipmentOptions,
+                                selectedIds = standardControls.selectedEquipmentIds,
+                                enabled = standardControls.enabled,
+                                emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
+                                onChange = standardControls.onSelectedEquipmentIdsChange,
+                            )
+                        }
+                        chapterIndex += 1
+
+                        DocumentationSprStandardResourceChapterPanel(
+                            key = "spr_legal_frameworks",
+                            index = chapterIndex,
+                            icon = Icons.Rounded.Lock,
+                            title = "Propisi",
+                            subtitle = if (selectedLegalFrameworkOptions.isEmpty()) {
+                                "Odaberi propise iz predloška"
+                            } else {
+                                "${selectedLegalFrameworkOptions.size} propisa u zapisniku"
+                            },
+                            summaryChips = legalFrameworkSummaryChips,
+                            enabled = enabled,
+                        ) {
+                            DocumentationMultiSelectField(
+                                label = "Propisi iz web predloška",
+                                options = cleanedLegalFrameworkOptions,
+                                selectedIds = standardControls.selectedLegalFrameworkIds,
+                                enabled = standardControls.enabled,
+                                emptyText = "Nema propisa povezanih s predlošcima.",
+                                onChange = standardControls.onSelectedLegalFrameworkIdsChange,
+                            )
+                        }
+
                         Text(
                             "Nema dodatnih polja za mobilni unos u ovom predlošku.",
                             style = MaterialTheme.typography.bodySmall,
@@ -39718,6 +39896,7 @@ private fun DocumentationSprStandardResourceChapterPanel(
     icon: ImageVector,
     title: String,
     subtitle: String,
+    summaryChips: List<DocumentationSprSummaryChipData>,
     enabled: Boolean,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -39759,6 +39938,16 @@ private fun DocumentationSprStandardResourceChapterPanel(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    if (summaryChips.isNotEmpty()) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(5.dp),
+                        ) {
+                            summaryChips.forEach { chip ->
+                                DocumentationSprSummaryChip(chip.label, chip.accent)
+                            }
+                        }
+                    }
                 }
                 Icon(
                     if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
@@ -39775,6 +39964,202 @@ private fun DocumentationSprStandardResourceChapterPanel(
             }
         }
     }
+}
+
+private data class DocumentationSprSummaryChipData(
+    val label: String,
+    val accent: Color,
+)
+
+@Composable
+private fun DocumentationSprSummaryChip(label: String, accent: Color) {
+    Surface(shape = RoundedCornerShape(999.dp), color = accent.copy(alpha = 0.1f)) {
+        Text(
+            label,
+            modifier = Modifier
+                .widthIn(max = 220.dp)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            color = accent,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+private fun WorkOrderDocumentationOption.withoutGenericActiveStatus(): WorkOrderDocumentationOption {
+    fun clean(value: String): String {
+        val normalized = value.trim().lowercase(Locale.getDefault())
+        return if (normalized in setOf("active", "aktivan", "aktivno")) "" else value
+    }
+    return copy(
+        subtitle = clean(subtitle),
+        status = clean(status),
+    )
+}
+
+private fun buildSprMeasurementEquipmentSummaryChips(options: List<WorkOrderDocumentationOption>): List<DocumentationSprSummaryChipData> {
+    val chips = options.take(3).map { option ->
+        DocumentationSprSummaryChipData(option.sprMeasurementEquipmentChipLabel(), Color(0xFF7C3AED))
+    }
+    return if (options.size > chips.size) {
+        chips + DocumentationSprSummaryChipData("+${options.size - chips.size}", Color(0xFF64748B))
+    } else {
+        chips
+    }
+}
+
+private fun WorkOrderDocumentationOption.sprMeasurementEquipmentChipLabel(): String {
+    val inventory = listOf(
+        meta["inventoryNumber"].orEmpty(),
+        meta["inventory"].orEmpty(),
+        meta["inv"].orEmpty(),
+        Regex("""(?i)\bInv\.?\s*[:#-]?\s*([^·,;]+)""").find(subtitle)?.groupValues?.getOrNull(1).orEmpty(),
+    ).firstOrNull { it.trim().isNotBlank() }.orEmpty().trim()
+    if (inventory.isNotBlank()) {
+        return "Inv. $inventory"
+    }
+    val serial = listOf(
+        meta["serialNumber"].orEmpty(),
+        meta["serial"].orEmpty(),
+        Regex("""(?i)\bSer\.?\s*[:#-]?\s*([^·,;]+)""").find(subtitle)?.groupValues?.getOrNull(1).orEmpty(),
+    ).firstOrNull { it.trim().isNotBlank() }.orEmpty().trim()
+    if (serial.isNotBlank()) {
+        return "Ser. $serial"
+    }
+    return label
+}
+
+private data class DocumentationSprChapterSummary(
+    val text: String,
+    val chips: List<DocumentationSprSummaryChipData> = emptyList(),
+)
+
+private fun buildDocumentationSprTemplateSectionSummary(
+    entry: DocumentationSprMenuEntry,
+    values: Map<String, String>,
+    standardControls: DocumentationTemplateStandardControls,
+    visibleBlocks: List<WorkOrderDocumentationTemplateBlock>,
+    isBasicSection: Boolean,
+    isAttachmentSection: Boolean,
+    isResultsTextSection: Boolean,
+    isAssessmentSection: Boolean,
+    isMeasurementSection: Boolean,
+    measurementSectionTables: List<WorkOrderMeasurementTable>,
+    attachmentCount: Int,
+): DocumentationSprChapterSummary {
+    val headerSummary = entry.section.header?.summary.orEmpty().trim()
+    if (isBasicSection) {
+        val chips = listOfNotNull(
+            formatDatePickerLabel(standardControls.inspectionDate).takeIf { it.isNotBlank() }?.let {
+                DocumentationSprSummaryChipData("Ispitano $it", Color(0xFF2563EB))
+            },
+            standardControls.testingLocation.takeIf { it.isNotBlank() }?.let {
+                DocumentationSprSummaryChipData(shortSprSummaryLabel(it), Color(0xFF0F766E))
+            },
+        )
+        return DocumentationSprChapterSummary(
+            text = "Tvrtka, lokacija, datum i vrsta ispitivanja",
+            chips = chips,
+        )
+    }
+    if (isAttachmentSection) {
+        return DocumentationSprChapterSummary(
+            text = if (attachmentCount > 0) "Dokumenti i prilozi dodani u zapisnik" else "Dodaj dokumente i priloge",
+            chips = if (attachmentCount > 0) {
+                listOf(DocumentationSprSummaryChipData("$attachmentCount priloga", Color(0xFF7C3AED)))
+            } else {
+                emptyList()
+            },
+        )
+    }
+    if (isMeasurementSection) {
+        val chips = measurementSectionTables
+            .flatMap { table ->
+                val sheet = standardControls.measurementSheets[measurementSheetStateKey(entry.template, table)] ?: table.sheet
+                sheet.firstSprMeasurementSummaryValues()
+            }
+            .distinct()
+            .take(3)
+            .map { DocumentationSprSummaryChipData(shortSprSummaryLabel(it), Color(0xFF2563EB)) }
+        val tableNames = measurementSectionTables
+            .map { it.label.ifBlank { it.summary }.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .take(2)
+            .joinToString(" · ")
+        return DocumentationSprChapterSummary(
+            text = tableNames.ifBlank { headerSummary.ifBlank { "Mjerna mjesta i rezultati ispitivanja" } },
+            chips = chips,
+        )
+    }
+
+    val filledValues = visibleBlocks
+        .mapNotNull { block ->
+            val field = findTemplateFieldForBlock(entry.template, block) ?: return@mapNotNull null
+            val value = values[templateFieldStateKey(entry.template, field)].orEmpty().toSprSummaryPlainText()
+            if (value.isBlank()) null else block.label.ifBlank { field.label } to value
+        }
+    if (filledValues.isNotEmpty()) {
+        val chips = filledValues
+            .take(2)
+            .map { (label, value) ->
+                DocumentationSprSummaryChipData(shortSprSummaryLabel("${label.ifBlank { "Upis" }}: $value"), Color(0xFF7C3AED))
+            }
+        return DocumentationSprChapterSummary(
+            text = if (isResultsTextSection) {
+                "Upisan opis rezultata"
+            } else if (isAssessmentSection) {
+                "Upisana ocjena i zaključak"
+            } else {
+                "Upisani podaci poglavlja"
+            },
+            chips = chips,
+        )
+    }
+
+    val blockLabels = visibleBlocks
+        .map { it.label.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .take(2)
+        .joinToString(" · ")
+    val fallbackText = when {
+        isResultsTextSection -> "Opis rezultata prije ispitnih listova"
+        isAssessmentSection -> "Zaključak i ocjena ispitivanja"
+        blockLabels.isNotBlank() -> blockLabels
+        headerSummary.isNotBlank() -> headerSummary
+        else -> "Podaci poglavlja iz predloška"
+    }
+    return DocumentationSprChapterSummary(text = fallbackText)
+}
+
+private fun WorkOrderMeasurementSheet.firstSprMeasurementSummaryValues(limit: Int = 2): List<String> {
+    val visibleColumnIds = columns
+        .filterNot { column ->
+            val lookup = column.label.lowercase(Locale.getDefault())
+            lookup.contains("r.br") || lookup == "rbr" || lookup == "br." || lookup == "broj"
+        }
+        .map { it.id }
+        .ifEmpty { columns.map { it.id } }
+    return rows
+        .flatMap { row -> visibleColumnIds.mapNotNull { columnId -> row.cells[columnId].orEmpty().toSprSummaryPlainText().takeIf { it.isNotBlank() } } }
+        .filterNot { value ->
+            value == "-" || value.matches(Regex("""\d+([,.]\d+)?"""))
+        }
+        .distinct()
+        .take(limit)
+}
+
+private fun String.toSprSummaryPlainText(): String =
+    replace(Regex("<[^>]+>"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+private fun shortSprSummaryLabel(value: String, maxLength: Int = 34): String {
+    val cleaned = value.toSprSummaryPlainText()
+    return if (cleaned.length <= maxLength) cleaned else cleaned.take(maxLength - 1).trimEnd() + "…"
 }
 
 private data class DocumentationSprMenuEntry(
@@ -39850,7 +40235,7 @@ private fun DocumentationSprStandaloneAttachmentsSection(
 @Composable
 private fun DocumentationSprTemplateSectionPanel(
     entry: DocumentationSprMenuEntry,
-    indexOffset: Int = 0,
+    displayIndex: Int = -1,
     values: Map<String, String>,
     standardControls: DocumentationTemplateStandardControls,
     tableCount: Int,
@@ -39880,10 +40265,6 @@ private fun DocumentationSprTemplateSectionPanel(
     } else {
         emptyList()
     }
-    val measurementSectionRowCount = measurementSectionTables.sumOf { table ->
-        val sheet = standardControls.measurementSheets[measurementSheetStateKey(entry.template, table)] ?: table.sheet
-        sheet.rows.size
-    }
     val hideDefects = remember(entry.template, entry.section.blocks, values) {
         shouldHideDocumentationDefects(entry.template, entry.section.blocks, values)
     }
@@ -39894,6 +40275,19 @@ private fun DocumentationSprTemplateSectionPanel(
                 (block.type.equals("measurement_table", ignoreCase = true) && (isResultsTextSection || isAssessmentSection))
         }
     }
+    val sectionSummary = buildDocumentationSprTemplateSectionSummary(
+        entry = entry,
+        values = values,
+        standardControls = standardControls,
+        visibleBlocks = visibleBlocks,
+        isBasicSection = isBasicSection,
+        isAttachmentSection = isAttachmentSection,
+        isResultsTextSection = isResultsTextSection,
+        isAssessmentSection = isAssessmentSection,
+        isMeasurementSection = isMeasurementSection,
+        measurementSectionTables = measurementSectionTables,
+        attachmentCount = attachmentFiles.size,
+    )
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -39925,30 +40319,24 @@ private fun DocumentationSprTemplateSectionPanel(
                     )
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("${entry.index + 1 + indexOffset}. ${entry.section.title}", fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("${(displayIndex.takeIf { it >= 0 } ?: entry.index) + 1}. ${entry.section.title}", fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(
-                        listOf(
-                            if (isAttachmentSection) {
-                                "${attachmentFiles.size} prilog(a)"
-                            } else if (isResultsTextSection) {
-                                "Tekstualni opis"
-                            } else if (isAssessmentSection) {
-                                "Popis ocjena"
-                            } else if (isBasicSection) {
-                                "Osnovni podaci"
-                            } else if (isMeasurementSection) {
-                                "${measurementSectionTables.size.coerceAtLeast(1)} Gridline tablica · $measurementSectionRowCount redaka"
-                            } else if (visibleBlocks.isNotEmpty()) {
-                                "${visibleBlocks.size} polja"
-                            } else {
-                                "Nema polja"
-                            },
-                        ).filter { it.isNotBlank() }.joinToString(" · "),
+                        sectionSummary.text,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    if (sectionSummary.chips.isNotEmpty()) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(5.dp),
+                        ) {
+                            sectionSummary.chips.forEach { chip ->
+                                DocumentationSprSummaryChip(chip.label, chip.accent)
+                            }
+                        }
+                    }
                 }
                 Icon(
                     if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
@@ -42787,7 +43175,7 @@ private fun TemplateEquipmentControls(controls: DocumentationTemplateStandardCon
 private fun TemplateLegalControls(controls: DocumentationTemplateStandardControls) {
     DocumentationMultiSelectField(
         label = "Propisi iz web predloška",
-        options = controls.legalFrameworkOptions,
+        options = controls.legalFrameworkOptions.map { it.withoutGenericActiveStatus() },
         selectedIds = controls.selectedLegalFrameworkIds,
         enabled = controls.enabled,
         emptyText = "Nema propisa povezanih s predlošcima.",
