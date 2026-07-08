@@ -15408,6 +15408,16 @@ function getMobileNativeDocumentationRecordTemplateId(serviceCode = "") {
   return index >= 0 ? String(-900000 - index) : "";
 }
 
+function getMobileNativeDocumentationServiceCodeFromRecordTemplateId(templateId = "") {
+  const normalizedTemplateId = normalizeInputValue(templateId);
+  if (!/^-?\d+$/u.test(normalizedTemplateId)) {
+    return "";
+  }
+  const index = -900000 - Number(normalizedTemplateId);
+  const codes = [...MOBILE_NATIVE_MEASUREMENT_SERVICE_CODES].sort();
+  return Number.isInteger(index) && index >= 0 && index < codes.length ? codes[index] : "";
+}
+
 function normalizeMobileDocumentRecordTemplateIdForStorage(templateId = "", template = {}) {
   const nativeTemplateId = parseMobileNativeDocumentationTemplateId(templateId);
   if (nativeTemplateId) {
@@ -26161,6 +26171,7 @@ function getMobileDocumentRecordNativeDocumentationServiceCode(record = {}) {
   const directCode = normalizeMobileNativeMeasurementServiceCode(
     record?.serviceCode
     || record?.code
+    || getMobileNativeDocumentationServiceCodeFromRecordTemplateId(record?.templateId)
     || fieldValues.SERVICE_CODE
     || fieldValues.SIFRA_USLUGE
     || "",
@@ -26706,6 +26717,60 @@ function mergeMobileDocumentContextRecords(scopedSnapshot = {}, freshRecords = [
   };
 }
 
+function buildMobileMeasurementSheetPresetsFromDocumentRecords(records = []) {
+  return (Array.isArray(records) ? records : []).flatMap((record) => {
+    if (!record || typeof record !== "object" || Array.isArray(record)) {
+      return [];
+    }
+    const fieldSheets = record.fieldSheets && typeof record.fieldSheets === "object" && !Array.isArray(record.fieldSheets)
+      ? record.fieldSheets
+      : {};
+    const entries = Object.entries(fieldSheets)
+      .map(([sheetKey, sheet]) => [normalizeInputValue(sheetKey), normalizeWorkOrderMeasurementSheet(sheet)])
+      .filter(([sheetKey, sheet]) => sheetKey && sheet);
+    if (entries.length === 0) {
+      return [];
+    }
+
+    const organizationId = normalizeInputValue(record.organizationId);
+    const templateId = normalizeInputValue(record.templateId);
+    const companyId = normalizeInputValue(record.companyId);
+    const locationId = normalizeInputValue(record.locationId);
+    if (!organizationId || !templateId || !companyId || !locationId) {
+      return [];
+    }
+
+    const serviceCode = getMobileDocumentRecordNativeDocumentationServiceCode(record)
+      || normalizeInputValue(record.serviceCode || record.code || record.documentType || record.templateTitle);
+    const objectId = normalizeInputValue(record.objectId);
+    const recordId = normalizeInputValue(record.id) || [
+      templateId,
+      companyId,
+      locationId,
+      objectId,
+      record.updatedAt,
+      record.createdAt,
+    ].map(normalizeInputValue).join("::");
+
+    return entries.map(([sheetKey, sheet]) => ({
+      id: `record:${recordId}:${sheetKey}`,
+      organizationId,
+      templateId,
+      companyId,
+      locationId,
+      fieldKey: buildMobileDocumentationMeasurementPresetFieldKey({
+        serviceCode,
+        sheetKey,
+        objectId,
+      }),
+      title: normalizeInputValue(`${serviceCode || record.documentType || "Zapisnik"} - ${sheetKey}`),
+      sheet,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    }));
+  });
+}
+
 function mergeMobileMeasurementSheetPresets(scopedSnapshot = {}, freshPresets = []) {
   const existingPresets = Array.isArray(scopedSnapshot.measurementSheetPresets)
     ? scopedSnapshot.measurementSheetPresets
@@ -26773,8 +26838,9 @@ async function buildMobileDocumentationContextSnapshot(workOrder = {}, scopedSna
         })
         : [],
     ]);
+    const recordPresets = buildMobileMeasurementSheetPresetsFromDocumentRecords(freshRecords);
     return mergeMobileDocumentContextRecords(
-      mergeMobileMeasurementSheetPresets(scopedSnapshot, freshPresets),
+      mergeMobileMeasurementSheetPresets(scopedSnapshot, [...freshPresets, ...recordPresets]),
       freshRecords,
     );
   } catch (error) {
