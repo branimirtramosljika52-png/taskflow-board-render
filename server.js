@@ -26555,13 +26555,14 @@ function mergeMobileDocumentationObject(target = {}, source = {}) {
   };
 }
 
-function mergeMobileDocumentWizardDefaultsForTemplate(currentDefaults = null, recordDefaults = {}, template = {}) {
+function mergeMobileDocumentWizardDefaultsForTemplate(currentDefaults = null, recordDefaults = {}, template = {}, options = {}) {
   if (!hasMobileDocumentWizardDefaults(recordDefaults)) {
     return currentDefaults;
   }
 
   const next = isMobileDocumentationObject(currentDefaults) ? { ...currentDefaults } : {};
   const templateId = normalizeInputValue(template?.id);
+  const overwrite = options?.overwrite === true;
   const scalarKeys = [
     "inspectionDate",
     "issuedDate",
@@ -26590,7 +26591,7 @@ function mergeMobileDocumentWizardDefaultsForTemplate(currentDefaults = null, re
   ];
 
   scalarKeys.forEach((key) => {
-    if (!normalizeInputValue(next[key]) && normalizeInputValue(recordDefaults[key])) {
+    if ((overwrite || !normalizeInputValue(next[key])) && normalizeInputValue(recordDefaults[key])) {
       next[key] = recordDefaults[key];
     }
   });
@@ -26604,7 +26605,7 @@ function mergeMobileDocumentWizardDefaultsForTemplate(currentDefaults = null, re
     "electricalInspectorUserIds",
     "tipkaloInspectorUserIds",
   ].forEach((key) => {
-    if ((!Array.isArray(next[key]) || next[key].length === 0) && Array.isArray(recordDefaults[key]) && recordDefaults[key].length > 0) {
+    if ((overwrite || !Array.isArray(next[key]) || next[key].length === 0) && Array.isArray(recordDefaults[key]) && recordDefaults[key].length > 0) {
       next[key] = [...recordDefaults[key]];
     }
   });
@@ -26636,9 +26637,11 @@ function mergeMobileDocumentWizardDefaultsForTemplate(currentDefaults = null, re
 
   const fieldValues = isMobileDocumentationObject(recordDefaults.fieldValues) ? recordDefaults.fieldValues : {};
   if (mobileDocumentationObjectEntries(fieldValues).length > 0) {
-    if (!isMobileDocumentationObject(next.fieldValues) || mobileDocumentationObjectEntries(next.fieldValues).length === 0) {
-      next.fieldValues = { ...fieldValues };
-    }
+    next.fieldValues = overwrite
+      ? mergeMobileDocumentationObject(next.fieldValues, fieldValues)
+      : (!isMobileDocumentationObject(next.fieldValues) || mobileDocumentationObjectEntries(next.fieldValues).length === 0
+        ? { ...fieldValues }
+        : next.fieldValues);
     if (templateId) {
       next.templateFieldValues = mergeMobileDocumentationObject(next.templateFieldValues);
       next.templateFieldValues[templateId] = mergeMobileDocumentationObject(next.templateFieldValues[templateId], fieldValues);
@@ -26656,9 +26659,11 @@ function mergeMobileDocumentWizardDefaultsForTemplate(currentDefaults = null, re
 
   const fieldSheets = isMobileDocumentationObject(recordDefaults.fieldSheets) ? recordDefaults.fieldSheets : {};
   if (mobileDocumentationObjectEntries(fieldSheets).length > 0) {
-    if (!isMobileDocumentationObject(next.fieldSheets) || mobileDocumentationObjectEntries(next.fieldSheets).length === 0) {
-      next.fieldSheets = { ...fieldSheets };
-    }
+    next.fieldSheets = overwrite
+      ? mergeMobileDocumentationObject(next.fieldSheets, fieldSheets)
+      : (!isMobileDocumentationObject(next.fieldSheets) || mobileDocumentationObjectEntries(next.fieldSheets).length === 0
+        ? { ...fieldSheets }
+        : next.fieldSheets);
     if (templateId) {
       next.templateFieldSheets = mergeMobileDocumentationObject(next.templateFieldSheets);
       next.templateFieldSheets[templateId] = mergeMobileDocumentationObject(next.templateFieldSheets[templateId], fieldSheets);
@@ -26682,6 +26687,59 @@ function mergeMobileDocumentWizardDefaultsForTemplate(currentDefaults = null, re
   }
 
   return next;
+}
+
+function getMobileDocumentationDefaultFieldSheetsForTemplate(defaults = {}, template = {}) {
+  const templateId = normalizeInputValue(template?.id);
+  const commonSheets = defaults?.fieldSheets && typeof defaults.fieldSheets === "object" && !Array.isArray(defaults.fieldSheets)
+    ? defaults.fieldSheets
+    : {};
+  const templateSheets = templateId
+    && defaults?.templateFieldSheets?.[templateId]
+    && typeof defaults.templateFieldSheets[templateId] === "object"
+    && !Array.isArray(defaults.templateFieldSheets[templateId])
+    ? defaults.templateFieldSheets[templateId]
+    : {};
+  return {
+    ...commonSheets,
+    ...templateSheets,
+  };
+}
+
+function findMobileDocumentationDefaultSheetForTable(table = {}, index = 0, template = {}, defaults = {}) {
+  const fieldSheets = getMobileDocumentationDefaultFieldSheetsForTemplate(defaults, template);
+  if (mobileDocumentationObjectEntries(fieldSheets).length === 0) {
+    return null;
+  }
+  const keys = getMobileDocumentationMeasurementPresetTableKeys(table, `gridline-results-${index + 1}`);
+  for (const key of keys) {
+    const sheet = normalizeWorkOrderMeasurementSheet(fieldSheets[key]);
+    if (sheet) {
+      return sheet;
+    }
+  }
+  return null;
+}
+
+function applyMobileDocumentationDefaultSheetsToTemplate(template = {}, defaults = {}) {
+  if (!template || typeof template !== "object" || Array.isArray(template)) {
+    return template;
+  }
+  const measurementTables = Array.isArray(template.measurementTables)
+    ? template.measurementTables.map((table, index) => {
+      const sheet = findMobileDocumentationDefaultSheetForTable(table, index, template, defaults);
+      return sheet ? {
+        ...table,
+        sheet,
+        summary: getMobileMeasurementSheetSummary(sheet) || table.summary,
+        dataSourceType: "previous_inspection",
+      } : table;
+    })
+    : template.measurementTables;
+  return {
+    ...template,
+    measurementTables,
+  };
 }
 
 function mergeMobileDocumentContextRecords(scopedSnapshot = {}, freshRecords = []) {
@@ -28342,13 +28400,16 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
       const presetDefaults = buildMobileDocumentationMeasurementPresetDefaults(nativeTemplate, workOrder, scopedSnapshot);
       const recordDefaults = buildMobileDocumentRecordWizardDefaults(latestRecord, workOrder);
       mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, presetDefaults, nativeTemplate);
-      mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, recordDefaults, nativeTemplate);
+      mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, recordDefaults, nativeTemplate, { overwrite: true });
+      let nativeContextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(null, presetDefaults, nativeTemplate);
+      nativeContextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(nativeContextDefaults, recordDefaults, nativeTemplate, { overwrite: true }) || recordDefaults;
+      const contextNativeTemplate = applyMobileDocumentationDefaultSheetsToTemplate(nativeTemplate, nativeContextDefaults);
       const templateServiceKey = `${serviceIndex}::native::${nativeTemplate.serviceCode}`;
       if (!seenTemplateKeys.has(templateServiceKey)) {
         seenTemplateKeys.add(templateServiceKey);
-        nativeTemplate.signatureAreas.forEach((area) => signatureAreaKeys.add(area));
+        contextNativeTemplate.signatureAreas.forEach((area) => signatureAreaKeys.add(area));
         templates.push({
-          ...nativeTemplate,
+          ...contextNativeTemplate,
           ...dataSource,
         });
       }
@@ -28370,9 +28431,9 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
       const presetDefaults = buildMobileDocumentationMeasurementPresetDefaults(template, workOrder, scopedSnapshot);
       const recordDefaults = buildMobileDocumentRecordWizardDefaults(latestRecord, workOrder);
       let contextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(null, presetDefaults, template);
-      contextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(contextDefaults, recordDefaults, template) || recordDefaults;
+      contextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(contextDefaults, recordDefaults, template, { overwrite: true }) || recordDefaults;
       mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, presetDefaults, template);
-      mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, recordDefaults, template);
+      mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, recordDefaults, template, { overwrite: true });
       const common = normalizeMobileWorkOrderDocumentWizardInput(contextDefaults);
       const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, workOrder, service, scopedSnapshot, common);
       const measurementPlaceholders = buildMobileDocumentTemplateMeasurementPlaceholders(template, fieldSheets);
@@ -28401,7 +28462,10 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
         fields: buildMobileDocumentTemplatePromptFields(template, placeholders, common),
         fieldBlocks: buildMobileDocumentTemplateFieldBlocks(template, workOrder, service, scopedSnapshot, common, fieldSheets),
         inspectionTypeOptions: buildMobileDocumentTemplateInspectionTypeOptions(template),
-        measurementTables: buildMobileDocumentTemplateMeasurementTables(template, workOrder, service, scopedSnapshot, common),
+        measurementTables: applyMobileDocumentationDefaultSheetsToTemplate({
+          ...template,
+          measurementTables: buildMobileDocumentTemplateMeasurementTables(template, workOrder, service, scopedSnapshot, common),
+        }, contextDefaults).measurementTables,
         aiFields: buildMobileDocumentTemplateAiFields(template, documentTemplateAiSettings),
         aiMeasurementColumns: buildMobileDocumentTemplateAiMeasurementColumns(
           template,
