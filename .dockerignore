@@ -15,4 +15,4 @@ tmp
 tmp-android-*.log
 android-app
 assets/mobile/*.apk
-!assets/mobile/SafeNexus-0.1.377.apk
+!assets/mobile/SafeNexus-0.1.378.apk

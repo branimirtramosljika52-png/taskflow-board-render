@@ -326,6 +326,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Base64
 import java.util.Locale
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 private const val RO_ASSESSMENT_NOTE_MAX_LENGTH = 255
 
@@ -39798,15 +39799,10 @@ private fun DocumentationSprMobileWorkspace(
     }
     val legalFrameworkSummaryChips = remember(selectedLegalFrameworkOptions) {
         selectedLegalFrameworkOptions
-            .take(3)
-            .map { option -> DocumentationSprSummaryChipData(option.label, Color(0xFF0F766E)) }
-            .let { chips ->
-                if (selectedLegalFrameworkOptions.size > chips.size) {
-                    chips + DocumentationSprSummaryChipData("+${selectedLegalFrameworkOptions.size - chips.size}", Color(0xFF64748B))
-                } else {
-                    chips
-                }
-            }
+            .size
+            .takeIf { it > 0 }
+            ?.let { count -> listOf(DocumentationSprSummaryChipData("$count propisa", Color(0xFF0F766E))) }
+            ?: emptyList()
     }
 
     Column(
@@ -40216,17 +40212,19 @@ private fun WorkOrderDocumentationOption.withoutGenericActiveStatus(): WorkOrder
 }
 
 private fun buildSprMeasurementEquipmentSummaryChips(options: List<WorkOrderDocumentationOption>): List<DocumentationSprSummaryChipData> {
-    val chips = options.take(3).map { option ->
-        DocumentationSprSummaryChipData(option.sprMeasurementEquipmentChipLabel(), Color(0xFF7C3AED))
+    val inventoryLabels = options
+        .mapNotNull { option -> option.sprMeasurementEquipmentInventoryChipLabel().takeIf { it.isNotBlank() } }
+    val chips = inventoryLabels.take(3).map { label ->
+        DocumentationSprSummaryChipData(label, Color(0xFF7C3AED))
     }
-    return if (options.size > chips.size) {
-        chips + DocumentationSprSummaryChipData("+${options.size - chips.size}", Color(0xFF64748B))
+    return if (inventoryLabels.size > chips.size) {
+        chips + DocumentationSprSummaryChipData("+${inventoryLabels.size - chips.size}", Color(0xFF64748B))
     } else {
         chips
     }
 }
 
-private fun WorkOrderDocumentationOption.sprMeasurementEquipmentChipLabel(): String {
+private fun WorkOrderDocumentationOption.sprMeasurementEquipmentInventoryChipLabel(): String {
     val inventory = listOf(
         meta["inventoryNumber"].orEmpty(),
         meta["inventory"].orEmpty(),
@@ -40236,15 +40234,7 @@ private fun WorkOrderDocumentationOption.sprMeasurementEquipmentChipLabel(): Str
     if (inventory.isNotBlank()) {
         return "Inv. $inventory"
     }
-    val serial = listOf(
-        meta["serialNumber"].orEmpty(),
-        meta["serial"].orEmpty(),
-        Regex("""(?i)\bSer\.?\s*[:#-]?\s*([^·,;]+)""").find(subtitle)?.groupValues?.getOrNull(1).orEmpty(),
-    ).firstOrNull { it.trim().isNotBlank() }.orEmpty().trim()
-    if (serial.isNotBlank()) {
-        return "Ser. $serial"
-    }
-    return label
+    return ""
 }
 
 private data class DocumentationSprChapterSummary(
@@ -40271,12 +40261,12 @@ private fun buildDocumentationSprTemplateSectionSummary(
             formatDatePickerLabel(standardControls.inspectionDate).takeIf { it.isNotBlank() }?.let {
                 DocumentationSprSummaryChipData("Ispitano $it", Color(0xFF2563EB))
             },
-            standardControls.testingLocation.takeIf { it.isNotBlank() }?.let {
-                DocumentationSprSummaryChipData(shortSprSummaryLabel(it), Color(0xFF0F766E))
+            formatDatePickerLabel(standardControls.validUntil).takeIf { it.isNotBlank() }?.let {
+                DocumentationSprSummaryChipData("Vrijedi do $it", Color(0xFF0F766E))
             },
         )
         return DocumentationSprChapterSummary(
-            text = "Tvrtka, lokacija, datum i vrsta ispitivanja",
+            text = "Datum ispitivanja i rok važenja",
             chips = chips,
         )
     }
@@ -40291,14 +40281,16 @@ private fun buildDocumentationSprTemplateSectionSummary(
         )
     }
     if (isMeasurementSection) {
-        val chips = measurementSectionTables
-            .flatMap { table ->
-                val sheet = standardControls.measurementSheets[measurementSheetStateKey(entry.template, table)] ?: table.sheet
-                sheet.firstSprMeasurementSummaryValues()
+        val measurementTotal = measurementSectionTables.sumOf { table ->
+            val sheet = standardControls.measurementSheets[measurementSheetStateKey(entry.template, table)] ?: table.sheet
+            sheet.sprMeasurementColumnCTotal()
+        }
+        val chips = measurementTotal
+            .takeIf { it > 0.0 }
+            ?.let { total ->
+                listOf(DocumentationSprSummaryChipData("Ukupno ${formatSprMeasurementTotal(total)}", Color(0xFF2563EB)))
             }
-            .distinct()
-            .take(3)
-            .map { DocumentationSprSummaryChipData(shortSprSummaryLabel(it), Color(0xFF2563EB)) }
+            ?: emptyList()
         val tableNames = measurementSectionTables
             .map { it.label.ifBlank { it.summary }.trim() }
             .filter { it.isNotBlank() }
@@ -40308,6 +40300,24 @@ private fun buildDocumentationSprTemplateSectionSummary(
         return DocumentationSprChapterSummary(
             text = tableNames.ifBlank { headerSummary.ifBlank { "Mjerna mjesta i rezultati ispitivanja" } },
             chips = chips,
+        )
+    }
+    if (isDocumentationTechnicalDocumentationSection(entry.section)) {
+        return DocumentationSprChapterSummary(
+            text = "Tehnička dokumentacija",
+            chips = emptyList(),
+        )
+    }
+    if (isResultsTextSection) {
+        return DocumentationSprChapterSummary(
+            text = "Opis rezultata prije ispitnih listova",
+            chips = emptyList(),
+        )
+    }
+    if (isAssessmentSection) {
+        return DocumentationSprChapterSummary(
+            text = "Zaključak i ocjena ispitivanja",
+            chips = buildDocumentationSprFinalGradeChips(entry, values, visibleBlocks),
         )
     }
 
@@ -40351,21 +40361,47 @@ private fun buildDocumentationSprTemplateSectionSummary(
     return DocumentationSprChapterSummary(text = fallbackText)
 }
 
-private fun WorkOrderMeasurementSheet.firstSprMeasurementSummaryValues(limit: Int = 2): List<String> {
-    val visibleColumnIds = columns
-        .filterNot { column ->
-            val lookup = column.label.lowercase(Locale.getDefault())
-            lookup.contains("r.br") || lookup == "rbr" || lookup == "br." || lookup == "broj"
-        }
-        .map { it.id }
-        .ifEmpty { columns.map { it.id } }
-    return rows
-        .flatMap { row -> visibleColumnIds.mapNotNull { columnId -> row.cells[columnId].orEmpty().toSprSummaryPlainText().takeIf { it.isNotBlank() } } }
-        .filterNot { value ->
-            value == "-" || value.matches(Regex("""\d+([,.]\d+)?"""))
-        }
-        .distinct()
-        .take(limit)
+private fun WorkOrderMeasurementSheet.sprMeasurementColumnCTotal(): Double {
+    val columnId = columns.getOrNull(2)?.id.orEmpty()
+    if (columnId.isBlank()) return 0.0
+    return rows.sumOf { row ->
+        row.cells[columnId]
+            .orEmpty()
+            .toSprSummaryPlainText()
+            .replace(",", ".")
+            .let { value -> Regex("""-?\d+(?:\.\d+)?""").find(value)?.value?.toDoubleOrNull() ?: 0.0 }
+    }
+}
+
+private fun formatSprMeasurementTotal(total: Double): String =
+    if (abs(total - total.roundToInt()) < 0.0001) {
+        total.roundToInt().toString()
+    } else {
+        String.format(Locale.getDefault(), "%.2f", total).trimEnd('0').trimEnd(',', '.')
+    }
+
+private fun buildDocumentationSprFinalGradeChips(
+    entry: DocumentationSprMenuEntry,
+    values: Map<String, String>,
+    visibleBlocks: List<WorkOrderDocumentationTemplateBlock>,
+): List<DocumentationSprSummaryChipData> {
+    visibleBlocks.forEach { block ->
+        val field = findTemplateFieldForBlock(entry.template, block) ?: return@forEach
+        if (!isDocumentationSatisfactoryTemplateField(field, block)) return@forEach
+        val rawValue = values[templateFieldStateKey(entry.template, field)]
+            .orEmpty()
+            .ifBlank { field.defaultValue }
+            .trim()
+        if (rawValue.isBlank()) return@forEach
+        val positive = documentationSatisfactoryValueIsPositive(rawValue)
+        return listOf(
+            DocumentationSprSummaryChipData(
+                if (positive) "Zadovoljava" else "Ne zadovoljava",
+                if (positive) Color(0xFF0F766E) else Color(0xFFB91C1C),
+            ),
+        )
+    }
+    return emptyList()
 }
 
 private fun String.toSprSummaryPlainText(): String =
@@ -40857,8 +40893,8 @@ private fun DocumentationSprAttachmentPlusButton(
     compact: Boolean,
     onPickFiles: () -> Unit,
 ) {
-    val size = if (compact) 40.dp else 70.dp
-    val iconSize = if (compact) 22.dp else 34.dp
+    val size = if (compact) 34.dp else 48.dp
+    val iconSize = if (compact) 18.dp else 24.dp
     Surface(
         modifier = Modifier
             .size(size)
@@ -40875,7 +40911,7 @@ private fun DocumentationSprAttachmentPlusButton(
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
         },
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = if (enabled) 0.4f else 0.12f)),
-        shadowElevation = if (enabled && !compact) 4.dp else 0.dp,
+        shadowElevation = if (enabled && !compact) 2.dp else 0.dp,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
@@ -43557,6 +43593,12 @@ private fun isDocumentationResultsTextSection(section: TemplateBlockSection): Bo
     return lookup.contains("rezultati ispitivanja") &&
         !lookup.contains("ocjena rezultata") &&
         !lookup.contains("zakljuc")
+}
+
+private fun isDocumentationTechnicalDocumentationSection(section: TemplateBlockSection): Boolean {
+    val lookup = section.lookupText()
+    return lookup.contains("tehnicka dokumentacija") ||
+        (lookup.contains("tehnick") && lookup.contains("dokument"))
 }
 
 private fun isDocumentationAssessmentSection(section: TemplateBlockSection): Boolean {
