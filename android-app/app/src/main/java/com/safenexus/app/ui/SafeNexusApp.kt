@@ -38106,8 +38106,14 @@ private fun MeasurementTableEditor(
         return nextSheet
     }
     fun selectMeasurementCell(rowIndex: Int, columnIndex: Int) {
-        flushPendingCellValue()
-        selectedCell = MeasurementCellSelection(rowIndex, columnIndex)
+        val nextSheet = flushPendingCellValue()
+        val nextSelection = MeasurementCellSelection(rowIndex, columnIndex)
+        val nextRow = nextSheet.rows.getOrNull(rowIndex)
+        val nextColumn = nextSheet.columns.getOrNull(columnIndex)
+        selectedCell = nextSelection
+        editingRowId = nextRow?.id.orEmpty()
+        editingColumnId = nextColumn?.id.orEmpty()
+        editingValue = nextRow?.cells?.get(nextColumn?.id.orEmpty()).orEmpty()
     }
     LaunchedEffect(sheet.rows.size, sheet.columns.size) {
         val safeRow = selectedCell.rowIndex.coerceIn(0, (sheet.rows.size - 1).coerceAtLeast(0))
@@ -38163,13 +38169,18 @@ private fun MeasurementTableEditor(
     val columnHeaderHeight = measurementZoomedDp(if (tableOnly) 34.dp else if (expanded) 40.dp else 34.dp, safeZoomScale)
     val showColumnLabelRow = remember(sheet.columns) { sheet.hasMeaningfulMeasurementColumnLabels() }
     LaunchedEffect(selectedRow?.id.orEmpty(), selectedColumn?.id.orEmpty()) {
+        val nextRowId = selectedRow?.id.orEmpty()
+        val nextColumnId = selectedColumn?.id.orEmpty()
+        if (editingRowId == nextRowId && editingColumnId == nextColumnId) return@LaunchedEffect
         val nextSheet = sheetWithPendingCellValue(sheet)
         if (nextSheet != sheet) {
             commitSheetChange(nextSheet)
         }
-        editingRowId = selectedRow?.id.orEmpty()
-        editingColumnId = selectedColumn?.id.orEmpty()
-        editingValue = selectedRaw
+        val nextRow = nextSheet.rows.getOrNull(selectedCell.rowIndex)
+        val nextColumn = nextSheet.columns.getOrNull(selectedCell.columnIndex)
+        editingRowId = nextRow?.id.orEmpty()
+        editingColumnId = nextColumn?.id.orEmpty()
+        editingValue = nextRow?.cells?.get(nextColumn?.id.orEmpty()).orEmpty()
     }
     LaunchedEffect(editingRowId, editingColumnId, editingValue) {
         if (editingRowId.isBlank() || editingColumnId.isBlank()) return@LaunchedEffect
@@ -38695,7 +38706,10 @@ private fun MeasurementTableEditor(
                                 visibleColumns.forEachIndexed { columnIndex, column ->
                                     val absoluteColumnIndex = sheet.columns.indexOfFirst { it.id == column.id }.takeIf { it >= 0 }
                                         ?: (columnWindowStart + columnIndex)
+                                    val isSelectedCell = selectedCell.rowIndex == rowIndex && selectedCell.columnIndex == absoluteColumnIndex
+                                    val isEditingThisCell = editingRowId == row.id && editingColumnId == column.id
                                     MeasurementGridCell(
+                                        cellKey = "${row.id}:${column.id}",
                                         column = column,
                                         displayValue = sheet.measurementCellDisplay(
                                             rowIndex,
@@ -38703,14 +38717,14 @@ private fun MeasurementTableEditor(
                                             formulaContext = formulaContext,
                                             sheetEntry = formulaContext.current,
                                         ),
-                                        rawValue = if (selectedCell.rowIndex == rowIndex && selectedCell.columnIndex == absoluteColumnIndex) {
+                                        rawValue = if (isSelectedCell && isEditingThisCell) {
                                             editingValue
                                         } else {
                                             row.cells[column.id].orEmpty()
                                         },
                                         cellFormat = row.formats[column.id],
                                         headerRow = sheet.headerRows.contains(row.id),
-                                        selected = selectedCell.rowIndex == rowIndex && selectedCell.columnIndex == absoluteColumnIndex,
+                                        selected = isSelectedCell,
                                         enabled = enabled,
                                         onClick = {
                                             selectMeasurementCell(rowIndex, absoluteColumnIndex)
@@ -38728,6 +38742,8 @@ private fun MeasurementTableEditor(
                                         },
                                         onChange = { value ->
                                             if (!(requireSpaceSelection && column.isPhysicalFactorsSpaceSelectorColumn())) {
+                                                editingRowId = row.id
+                                                editingColumnId = column.id
                                                 editingValue = value
                                             }
                                         },
@@ -39081,6 +39097,7 @@ private fun MeasurementColumnLabelCell(
 
 @Composable
 private fun MeasurementGridCell(
+    cellKey: String,
     column: WorkOrderMeasurementColumn,
     displayValue: String,
     rawValue: String,
@@ -39143,9 +39160,9 @@ private fun MeasurementGridCell(
         else -> Modifier.padding(horizontal = 8.dp)
     }
     val keyboardController = LocalSoftwareKeyboardController.current
-    val focusRequester = remember { FocusRequester() }
-    var fieldValue by remember { mutableStateOf(TextFieldValue(rawValue, TextRange(rawValue.length))) }
-    LaunchedEffect(selected, editable, directEditable, enabled) {
+    val focusRequester = remember(cellKey) { FocusRequester() }
+    var fieldValue by remember(cellKey) { mutableStateOf(TextFieldValue(rawValue, TextRange(rawValue.length))) }
+    LaunchedEffect(cellKey, selected, editable, directEditable, enabled) {
         if (selected && editable && directEditable && enabled) {
             fieldValue = TextFieldValue(rawValue, TextRange(rawValue.length))
             delay(60)
