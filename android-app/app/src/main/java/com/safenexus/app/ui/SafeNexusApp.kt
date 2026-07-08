@@ -2588,6 +2588,39 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun recognizeWorkEquipmentFromText(
+        workOrder: WorkOrder,
+        equipment: IsznrManualWorkEquipment,
+        transcript: String,
+        isStrojeviTemplate: Boolean,
+        onSuccess: (WorkEquipmentImageRecognitionResult) -> Unit,
+        onFailure: (String) -> Unit,
+    ) {
+        if (workOrder.id.isBlank()) {
+            onFailure("RN nema ispravan ID za NexAI tekst radne opreme.")
+            return
+        }
+        val cleanTranscript = transcript.trim()
+        if (cleanTranscript.isBlank()) {
+            onFailure("Upiši ili izdiktiraj tekst koji NexAI treba obraditi.")
+            return
+        }
+        viewModelScope.launch {
+            api.recognizeWorkEquipmentFromText(
+                workOrder = workOrder,
+                equipment = equipment,
+                transcript = cleanTranscript,
+                isStrojeviTemplate = isStrojeviTemplate,
+                modelTier = "strong",
+            )
+                .onSuccess(onSuccess)
+                .onFailure { error ->
+                    val message = error.message ?: "NexAI trenutno ne može obraditi tekst radne opreme."
+                    onFailure(message)
+                }
+        }
+    }
+
     fun prepareSprVoiceMeasurementRows(
         workOrder: WorkOrder,
         template: WorkOrderDocumentationTemplate,
@@ -3765,6 +3798,16 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     workOrder = workOrder,
                     currentEquipments = currentEquipments,
                     files = files,
+                    onSuccess = onSuccess,
+                    onFailure = onFailure,
+                )
+            },
+            onRecognizeWorkEquipmentText = { equipment, transcript, isStrojeviTemplate, onSuccess, onFailure ->
+                viewModel.recognizeWorkEquipmentFromText(
+                    workOrder = workOrder,
+                    equipment = equipment,
+                    transcript = transcript,
+                    isStrojeviTemplate = isStrojeviTemplate,
                     onSuccess = onSuccess,
                     onFailure = onFailure,
                 )
@@ -11048,6 +11091,13 @@ private fun DocumentationWorkEquipmentOptionList(
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
+    onRecognizeWorkEquipmentText: (
+        IsznrManualWorkEquipment,
+        String,
+        Boolean,
+        (WorkEquipmentImageRecognitionResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
 ) {
     val today = remember { LocalDate.now() }
     var selectedFilter by remember(options) { mutableStateOf(DocumentationWorkEquipmentFilter.All) }
@@ -11318,6 +11368,9 @@ private fun DocumentationWorkEquipmentOptionList(
                     onRecognizeImages = { equipmentForRecognition, files, onSuccess, onFailure ->
                         onRecognizeWorkEquipmentImages(equipmentForRecognition, files, onSuccess, onFailure)
                     },
+                    onRecognizeText = { equipmentForRecognition, transcript, isStrojeviTemplate, onSuccess, onFailure ->
+                        onRecognizeWorkEquipmentText(equipmentForRecognition, transcript, isStrojeviTemplate, onSuccess, onFailure)
+                    },
                     onEquipmentChange = { updatedEquipment ->
                         onManualEquipmentsChange(
                             manualEquipments.mapIndexed { index, item ->
@@ -11390,6 +11443,13 @@ private fun DocumentationEquipmentInspectionLocalList(
     onRecognizeWorkEquipmentImages: (
         IsznrManualWorkEquipment,
         List<IsznrRoAttachmentFile>,
+        (WorkEquipmentImageRecognitionResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
+    onRecognizeWorkEquipmentText: (
+        IsznrManualWorkEquipment,
+        String,
+        Boolean,
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
@@ -11505,6 +11565,7 @@ private fun DocumentationEquipmentInspectionLocalList(
                     activeManualEquipmentIndex = (safeIndex - 1).coerceAtLeast(0)
                 },
                 onRecognizeImages = onRecognizeWorkEquipmentImages,
+                onRecognizeText = onRecognizeWorkEquipmentText,
                 onEquipmentChange = { updatedEquipment ->
                     onManualEquipmentsChange(
                         manualEquipments.mapIndexed { index, item ->
@@ -13508,6 +13569,13 @@ private fun ManualWorkEquipmentInlineEditor(
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
+    onRecognizeText: (
+        IsznrManualWorkEquipment,
+        String,
+        Boolean,
+        (WorkEquipmentImageRecognitionResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
     onEquipmentChange: (IsznrManualWorkEquipment) -> Unit,
 ) {
     val context = LocalContext.current
@@ -13517,6 +13585,10 @@ private fun ManualWorkEquipmentInlineEditor(
     var recognitionLoading by remember(equipment.attachments) { mutableStateOf(false) }
     var recognitionMessage by remember(equipment.attachments) { mutableStateOf("") }
     var recognitionPreview by remember(equipment.attachments) { mutableStateOf<WorkEquipmentImageRecognitionResult?>(null) }
+    var textAiInput by remember(columnIndex, equipment.name, equipment.manufacturer, equipment.model, isStrojeviTemplate) { mutableStateOf("") }
+    var textAiLoading by remember(columnIndex, equipment.name, equipment.manufacturer, equipment.model, isStrojeviTemplate) { mutableStateOf(false) }
+    var textAiVoiceError by remember { mutableStateOf("") }
+    var textAiPendingSpeechLaunch by remember { mutableStateOf(false) }
     var documentsLoading by remember(equipment.attachments) { mutableStateOf(false) }
     var reportTemplates by remember { mutableStateOf(context.loadWorkEquipmentReportTemplates()) }
     var templateMenuOpen by remember { mutableStateOf(false) }
@@ -13600,6 +13672,45 @@ private fun ManualWorkEquipmentInlineEditor(
                 }
             documentsLoading = false
         }
+    }
+    val textAiSpeechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+                .orEmpty()
+                .trim()
+            if (spoken.isNotBlank()) {
+                val separator = if (textAiInput.isBlank() || textAiInput.endsWith(" ") || textAiInput.endsWith("\n")) "" else " "
+                textAiInput += separator + spoken
+            }
+        }
+        textAiPendingSpeechLaunch = false
+    }
+    val textAiPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            textAiPendingSpeechLaunch = true
+        } else {
+            textAiVoiceError = "Mikrofon nije dopušten."
+        }
+    }
+
+    LaunchedEffect(textAiPendingSpeechLaunch) {
+        if (!textAiPendingSpeechLaunch) return@LaunchedEffect
+        val prompt = if (isStrojeviTemplate) {
+            "Diktiraj stroj i ispitne stavke za nadzor opreme."
+        } else {
+            "Diktiraj podatke i nalaze radne opreme."
+        }
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hr-HR")
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
+        runCatching { textAiSpeechLauncher.launch(intent) }
+            .onFailure {
+                textAiVoiceError = "Govorni unos nije dostupan na ovom uređaju."
+                textAiPendingSpeechLaunch = false
+            }
     }
 
     LaunchedEffect(isStrojeviTemplate, equipment.hasParts, equipment.parts.size) {
@@ -13714,7 +13825,7 @@ private fun ManualWorkEquipmentInlineEditor(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        result.message.ifBlank { "NexAI je pročitao slike stroja i pločice." },
+                        result.message.ifBlank { "NexAI je pripremio podatke za ovu opremu." },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
                     )
@@ -13763,7 +13874,7 @@ private fun ManualWorkEquipmentInlineEditor(
                     )
                     if (!result.hasRecognizedWorkEquipmentData()) {
                         Text(
-                            "Nema sigurnih polja za upis. Dodaj jasniju sliku cijelog stroja, komandi, priključka i pločice.",
+                            "Nema sigurnih polja za upis. Dodaj više teksta ili jasniju sliku cijelog stroja, komandi, priključka i pločice.",
                             color = Color(0xFFB45309),
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -13973,6 +14084,139 @@ private fun ManualWorkEquipmentInlineEditor(
                 }
             }
 
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = Color(0xFFF5F3FF),
+                border = BorderStroke(1.dp, Color(0xFFC4B5FD)),
+                tonalElevation = 0.dp,
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Surface(shape = CircleShape, color = Color(0xFFEDE9FE), modifier = Modifier.size(40.dp)) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = Color(0xFF6D28D9), modifier = Modifier.size(21.dp))
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text("NexAI tekst i diktat", fontWeight = FontWeight.Black, color = Color(0xFF312E81))
+                            Text(
+                                if (isStrojeviTemplate) {
+                                    "Diktiraj stroj i ispitne stavke. NexAI ih pretvara u redove tablice, ne samo u običan tekst."
+                                } else {
+                                    "Diktiraj podatke, nalaze, strojarski i elektro dio. NexAI ih prije upisa prikaže u pregledu."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF4C1D95),
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = textAiInput,
+                        onValueChange = {
+                            textAiInput = it
+                            textAiVoiceError = ""
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(if (isStrojeviTemplate) "Opis stroja i ispitne stavke" else "Opis opreme i nalazi") },
+                        placeholder = {
+                            Text(
+                                if (isStrojeviTemplate) {
+                                    "npr. Stolna bušilica, zaštitni poklopac ispravan, uključivanje tipkalom, kabel uredan, zadovoljava..."
+                                } else {
+                                    "npr. Kompresor 230 V, radni medij stlačeni zrak, kabel i utikač neoštećeni, zaštita ispravna..."
+                                },
+                            )
+                        },
+                        enabled = enabled && !textAiLoading,
+                        minLines = 3,
+                        maxLines = 7,
+                        shape = RoundedCornerShape(16.dp),
+                        trailingIcon = {
+                            IconButton(
+                                enabled = enabled && !textAiLoading,
+                                onClick = {
+                                    textAiVoiceError = ""
+                                    val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                                    if (granted) {
+                                        textAiPendingSpeechLaunch = true
+                                    } else {
+                                        textAiPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
+                                },
+                            ) {
+                                Icon(Icons.Rounded.Mic, contentDescription = "Diktiraj za NexAI")
+                            }
+                        },
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                textAiLoading = true
+                                recognitionMessage = "NexAI strukturira tekst..."
+                                onRecognizeText(
+                                    equipment,
+                                    textAiInput,
+                                    isStrojeviTemplate,
+                                    { result ->
+                                        textAiLoading = false
+                                        recognitionPreview = result
+                                        recognitionMessage = result.message.ifBlank {
+                                            if (isStrojeviTemplate) {
+                                                "Provjeri ispitne stavke prije primjene."
+                                            } else {
+                                                "Provjeri strukturirane podatke prije primjene."
+                                            }
+                                        }
+                                    },
+                                    { message ->
+                                        textAiLoading = false
+                                        recognitionMessage = message
+                                    },
+                                )
+                            },
+                            enabled = enabled && !textAiLoading && textAiInput.isNotBlank(),
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                        ) {
+                            if (textAiLoading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
+                            } else {
+                                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("NexAI obradi")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                textAiInput = ""
+                                textAiVoiceError = ""
+                                recognitionMessage = ""
+                            },
+                            enabled = enabled && !textAiLoading && textAiInput.isNotBlank(),
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                        ) {
+                            Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Očisti")
+                        }
+                    }
+                    listOf(textAiVoiceError, recognitionMessage).filter { it.isNotBlank() }.forEach { message ->
+                        Text(
+                            message,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (message.contains("ne", ignoreCase = true) || message.contains("greška", ignoreCase = true)) Color(0xFFB45309) else Color(0xFF0F766E),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+
             if (!isStrojeviTemplate) {
                 WorkEquipmentPartsToggle(
                     equipment = equipment,
@@ -14039,7 +14283,7 @@ private fun ManualWorkEquipmentInlineEditor(
                         )
                     }
                 }
-                listOf(attachmentMessage, recognitionMessage).filter { it.isNotBlank() }.forEach { message ->
+                listOf(attachmentMessage).filter { it.isNotBlank() }.forEach { message ->
                     Text(
                         message,
                         style = MaterialTheme.typography.labelSmall,
@@ -29062,6 +29306,13 @@ private fun WorkOrderDocumentationWizardDialog(
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
+    onRecognizeWorkEquipmentText: (
+        IsznrManualWorkEquipment,
+        String,
+        Boolean,
+        (WorkEquipmentImageRecognitionResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
     onSubmitIsznrWorkEquipment: (List<String>, List<IsznrManualWorkEquipment>) -> Unit,
     onSubmitIsznrPhysicalFactors: (List<String>, IsznrManualPhysicalFactors) -> Unit,
     onConfirmTraining: (String, List<String>, List<String>, Boolean, Boolean) -> Unit,
@@ -30747,6 +30998,7 @@ private fun WorkOrderDocumentationWizardDialog(
                             strainOptions = context.workEquipmentStrainOptions,
                             onManualEquipmentsChange = { manualEquipmentInspectionEquipments = it },
                             onRecognizeWorkEquipmentImages = onRecognizeWorkEquipmentImages,
+                            onRecognizeWorkEquipmentText = onRecognizeWorkEquipmentText,
                         )
                     }
                 } else if (workEquipmentFlowSelected) {
@@ -30770,6 +31022,7 @@ private fun WorkOrderDocumentationWizardDialog(
                             onManualEquipmentsChange = { manualWorkEquipments = it },
                             onRecognizeWorkEquipmentImages = onRecognizeWorkEquipmentImages,
                             onRecognizeWorkEquipmentBatchImages = onRecognizeWorkEquipmentBatchImages,
+                            onRecognizeWorkEquipmentText = onRecognizeWorkEquipmentText,
                         )
                     }
                 } else if (physicalFactorsFlowSelected) {

@@ -1733,6 +1733,154 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun recognizeWorkEquipmentFromText(
+        workOrder: WorkOrder,
+        equipment: IsznrManualWorkEquipment,
+        transcript: String,
+        isStrojeviTemplate: Boolean = false,
+        modelTier: String = "strong",
+    ): Result<WorkEquipmentImageRecognitionResult> = withContext(Dispatchers.IO) {
+        runCatching {
+            val fields = JSONArray(
+                listOf(
+                    JSONObject().put("id", "name").put("key", "name").put("label", "Naziv radne opreme")
+                        .put("instructions", "Iz diktata izdvoji stvarni naziv opreme ili stroja. Ako korisnik kaze samo opci opis, predlozi kratak naziv za zapisnik."),
+                    JSONObject().put("id", "manufacturer").put("key", "manufacturer").put("label", "Proizvodac")
+                        .put("instructions", "Popuni samo ako je proizvodac izrecen ili jasno naveden u tekstu."),
+                    JSONObject().put("id", "model").put("key", "model").put("label", "Tip / model")
+                        .put("instructions", "Popuni tip/model ako je izrecen kao tip, model, oznaka, serija ili slicno."),
+                    JSONObject().put("id", "serialNumber").put("key", "serialNumber").put("label", "Serijski broj")
+                        .put("instructions", "Popuni samo ako tekst sadrzi serijski broj, SN, tvornički broj ili slicnu oznaku."),
+                    JSONObject().put("id", "inventoryNumber").put("key", "inventoryNumber").put("label", "Inventarski broj")
+                        .put("instructions", "Popuni samo ako tekst sadrzi inventarski broj ili inv. oznaku."),
+                    JSONObject().put("id", "technicalData").put("key", "technicalData").put("label", "Tehnicki podaci")
+                        .put("instructions", "Sazmi nazivni napon, snagu, tlak, kapacitet, dimenzije, radni medij, godinu, CE i slicne tehnicke podatke ako su izreceni."),
+                    JSONObject().put("id", "purposeDescription").put("key", "purposeDescription").put("label", "Namjena")
+                        .put("instructions", "Iz teksta zakljuci namjenu opreme jednom do dvije recenice, kao gotovu vrijednost za zapisnik."),
+                    JSONObject().put("id", "workspacePosition").put("key", "workspacePosition").put("label", "Polozaj u radnom prostoru")
+                        .put("instructions", "Popuni mjesto uporabe, radno mjesto, prostor, agregat, radionicu, stanicu, servisni prostor ili polozaj ako je naveden."),
+                    JSONObject().put("id", "workingSubstancesAndRawMaterials").put("key", "workingSubstancesAndRawMaterials").put("label", "Radne tvari i sirovine")
+                        .put("instructions", "Pisi direktno: 'Radna tvar: UNP.', 'Radni medij: stlaceni zrak.', 'Radna tvar: hidraulicno ulje.' ili slicno. Ne pisi opis tipa na fotografiji se vidi."),
+                    JSONObject().put("id", "useAndMaintenance").put("key", "useAndMaintenance").put("label", "Uporaba i odrzavanje")
+                        .put("instructions", "Prevedi diktat u urednu napomenu o uporabi, rukovanju, odrzavanju, komandama, zastitama i uputama."),
+                    JSONObject().put("id", "methodsProceduresAndNorms").put("key", "methodsProceduresAndNorms").put("label", "Metode, postupci i norme")
+                        .put("instructions", "Predlozi postupak pregleda: vizualni pregled, funkcionalna proba, provjera zastita, elektro provjera ako je oprema prikljucna."),
+                    JSONObject().put("id", "deficiencies").put("key", "deficiencies").put("label", "Nedostaci")
+                        .put("instructions", "Formuliraj blago. Ako tekst kaze da nema uocenih nedostataka, vrati 'Bez uocenih nedostataka.'. Ako je naveden nedostatak, preformuliraj ga tehnicki bez pretjerivanja."),
+                    JSONObject().put("id", "measuresToEliminateDeficiencies").put("key", "measuresToEliminateDeficiencies").put("label", "Mjere")
+                        .put("instructions", "Ako nema nedostataka, vrati 'Nisu potrebne posebne mjere.'. Ako postoje napomene, predlozi primjerenu provjeru, otklanjanje ili dokumentiranje."),
+                    JSONObject().put("id", "mechanicalItems").put("key", "mechanicalItems").put("label", "Strojarski dio / ispitne stavke")
+                        .put("instructions", "Vrati konkretne stavke iz diktata kao mechanicalItems. Za STROJEVI predlozak svaka izrecena provjera ili prazna stavka ide kao zaseban red s label i customContent. Za RO vrati strojarske nalaze poput stabilnosti, zastita, komandi, pokretnih dijelova, pristupa, oznaka, odrzavanja."),
+                    JSONObject().put("id", "electricalItems").put("key", "electricalItems").put("label", "Elektro dio")
+                        .put("instructions", "Ako tekst spominje kabel, utikac, napajanje, sklopku, tipkalo, elektromotor, napon, uzemljenje ili elektro zastitu, vrati electricalItems s konkretnim customContent."),
+                    JSONObject().put("id", "riskRegisterIris").put("key", "hazardRegisterIris").put("label", "Opasnosti, stetnosti i napori")
+                        .put("instructions", "Prema tekstu i vrsti opreme vrati hazardRegisterIris, harmfulnessRegisterIris i strainRegisterIris kada je sigurno. UNP/plin/gorivo ukljucuje pozar/eksploziju i kemijske stetnosti; elektricna oprema elektricnu struju; pokretni dijelovi mehanicke opasnosti; rucno pomicanje napore."),
+                ),
+            )
+            val templateKind = if (isStrojeviTemplate) "STROJEVI" else "RO"
+            val body = JSONObject()
+                .put("purpose", "mobile-work-equipment-text-recognition")
+                .put("dryRun", false)
+                .put("modelTier", modelTier.ifBlank { "strong" })
+                .put("modelPreference", JSONObject().put("tier", modelTier.ifBlank { "strong" }))
+                .put("workOrderId", workOrder.id)
+                .put("workOrderNumber", workOrder.displayNumber)
+                .put("fields", fields)
+                .put(
+                    "context",
+                    JSONObject()
+                        .put("mode", "single-work-equipment")
+                        .put("inputKind", "text-dictation")
+                        .put("templateKind", templateKind)
+                        .put("transcript", transcript.trim())
+                        .put("companyName", workOrder.companyName)
+                        .put("locationName", workOrder.locationName)
+                        .put("currentEquipment", equipment.toJsonObject())
+                        .put("profiles", workEquipmentRoProfilesJson())
+                        .put("registers", workEquipmentRoRegisterGroupsJson())
+                        .put(
+                            "textRule",
+                            "Ovaj tekst je diktat ili rucni unos korisnika za trenutno otvoreni stupac opreme. Ne prepisuj tekst sirovo. Pretvori ga u strukturirane vrijednosti zapisnika. Ako korisnik kaze zadovoljava/ispravno/uredno, popuni meetsConditions=true. Ako kaze ne zadovoljava/neispravno/osteceno, popuni meetsConditions=false i stavi blag, tehnicki opis u customContent, deficiencies ili mjere.",
+                        )
+                        .put(
+                            "templateRule",
+                            if (isStrojeviTemplate) {
+                                "Ovo je STROJEVI/Nadzor opreme predlozak s proizvoljnim ispitnim stavkama. Glavni cilj je popuniti mechanicalItems kao redove tablice STROJEVI.2. Ako su u currentEquipment.mechanicalItems prazne stavke, dopuni ih prema diktatu. Ne stvaraj IS ZNR PDF tekst; vrati vrijednosti koje Android prikazuje u appu."
+                            } else {
+                                "Ovo je RO zapisnik. Popuni opisna polja, strojarski dio, elektro dio te registre opasnosti, stetnosti i napora prema diktatu i postojecim RO registrima. Ne stvaraj PDF tekst; vrati vrijednosti koje Android prikazuje u appu."
+                            },
+                        )
+                        .put(
+                            "assessmentRule",
+                            "Svaka vracena mechanicalItems/electricalItems stavka mora imati label i customContent do 255 znakova. Ne vracaj stavke bez napomene/vrijednosti. Ne pisi 'treba provjeriti' kao gotov nalaz; ako nesto treba potvrdu, vrati pitanje u verificationQuestions. Nedostatke i mjere formuliraj blago.",
+                        ),
+                )
+                .put(
+                    "expectedJsonShape",
+                    JSONObject()
+                        .put(
+                            "workEquipments",
+                            JSONArray().put(
+                                JSONObject()
+                                    .put("name", "naziv opreme")
+                                    .put("manufacturer", "proizvodac")
+                                    .put("model", "tip/model")
+                                    .put("serialNumber", "serijski broj")
+                                    .put("inventoryNumber", "inventarski broj")
+                                    .put("technicalData", "kljucni tehnicki podaci")
+                                    .put("purposeDescription", "namjena opreme")
+                                    .put("workspacePosition", "mjesto rada / polozaj")
+                                    .put("workingSubstancesAndRawMaterials", "radne tvari ili sirovine")
+                                    .put("useAndMaintenance", "koristenje i odrzavanje")
+                                    .put("methodsProceduresAndNorms", "metode, postupci i norme")
+                                    .put("deficiencies", "nedostaci ili bez uocenih nedostataka")
+                                    .put("measuresToEliminateDeficiencies", "mjere ili nisu potrebne posebne mjere")
+                                    .put("finalGrade", "1 ili 0")
+                                    .put("matchedSource", "izvor ako je primjenjivo")
+                                    .put("confidence", "high/medium/low")
+                                    .put("verificationQuestions", JSONArray().put("pitanje za korisnika kada treba potvrdu"))
+                                    .put(
+                                        "mechanicalItems",
+                                        JSONArray().put(
+                                            JSONObject()
+                                                .put("registerIri", "IRI ako je siguran ili prazno")
+                                                .put("label", "naziv ispitne/strojarske stavke")
+                                                .put("meetsConditions", true)
+                                                .put("customContent", "obavezna konkretna napomena ili vrijednost")
+                                                .put("measuredValue", "izmjerena vrijednost ako postoji"),
+                                        ),
+                                    )
+                                    .put(
+                                        "electricalItems",
+                                        JSONArray().put(
+                                            JSONObject()
+                                                .put("registerIri", "IRI ako je siguran ili prazno")
+                                                .put("label", "naziv elektro stavke")
+                                                .put("meetsConditions", true)
+                                                .put("customContent", "obavezna konkretna elektro napomena ili vrijednost")
+                                                .put("measuredValue", "izmjerena vrijednost ako postoji"),
+                                        ),
+                                    )
+                                    .put("hazardRegisterIris", JSONArray().put("IRI opasnosti ako je siguran"))
+                                    .put("harmfulnessRegisterIris", JSONArray().put("IRI stetnosti ako je siguran"))
+                                    .put("strainRegisterIris", JSONArray().put("IRI napora ako je siguran")),
+                            ),
+                        )
+                        .put("summary", "kratak sazetak obrade diktata"),
+                )
+                .toString()
+            val json = JSONObject(
+                request(
+                    "/api/ai/openai/prepare",
+                    method = "POST",
+                    body = body,
+                    readTimeoutMs = OPENAI_PREPARE_READ_TIMEOUT_MS,
+                ),
+            )
+            json.toWorkEquipmentImageRecognitionResult()
+        }
+    }
+
     suspend fun prepareSprVoiceMeasurementRows(
         workOrderId: String,
         workOrderNumber: String,

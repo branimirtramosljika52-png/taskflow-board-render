@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.355.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.356.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -8304,14 +8304,29 @@ function buildOpenAiResponseInputContent(body = {}, user = null, selectedModel =
 
 function buildOpenAiPurposeInstructions(body = {}) {
   const purpose = String(body?.purpose || "").trim();
-  if (purpose !== "mobile-work-equipment-image-recognition") {
+  if (
+    purpose !== "mobile-work-equipment-image-recognition" &&
+    purpose !== "mobile-work-equipment-text-recognition"
+  ) {
     return [];
   }
   const mode = String(body?.context?.mode || body?.mode || "").trim();
   const batchMode = mode === "batch-work-equipment";
+  const textMode = purpose === "mobile-work-equipment-text-recognition";
 
   return [
-    "Za mobile-work-equipment-image-recognition radi kao OCR i tehnicki asistent za radnu opremu.",
+    textMode
+      ? "Za mobile-work-equipment-text-recognition radi kao tehnicki asistent za radnu opremu koji strukturira diktirani ili upisani tekst, bez izmisljanja podataka koji nisu navedeni ili razumno zakljucivi iz teksta."
+      : "Za mobile-work-equipment-image-recognition radi kao OCR i tehnicki asistent za radnu opremu.",
+    textMode
+      ? "Ulaz je context.transcript. Nemoj ga prepisati kao sirovu napomenu; iz teksta izdvoji naziv opreme, proizvodaca, tip/model, serijski/inventarski broj, tehnicke podatke, namjenu, radnu tvar, nedostatke, mjere, strojarske stavke, elektro stavke i registre opasnosti/stetnosti/napora."
+      : "",
+    textMode
+      ? "Ako context.currentEquipment vec sadrzi prazne ili postojece stavke/predlozak, koristi tekst za popunjavanje tih stavki. Za STROJEVI/Nadzor opreme vrati mechanicalItems kao redove ispitnih stavki s label i customContent; svaka stavka mora biti gotova vrijednost za zapisnik."
+      : "",
+    textMode
+      ? "Prepoznaj govorne varijante i kratice: stroj/strojevi, nadzor opreme, mehanicki/strojarski, elektro, zadovoljava/ne zadovoljava, nema nedostataka, radna tvar, UNP/LPG, kompresor/stlaceni zrak, kabel/utikac, zastita, sklopka, tipkalo, blokada, pokretni dio, oslonac, kotac, sonda, agregat, plocica."
+      : "",
     "Uvijek prvo procitaj natpisnu plocicu, naljepnice i logotipe. Ne vracaj samo opis slike ako su vidljivi proizvodac, tip ili serijski broj.",
     "Ne stani na podacima s plocice. Nakon plocice obavezno analiziraj cijeli stroj, komande, prikljucke, kabel/utikac, zastite, pokretne dijelove, oslonce, sonde, kotače i radno okruzenje te popuni opisna RO polja, mechanicalItems, electricalItems i registre opasnosti/stetnosti/napora kada su relevantni.",
     "Za elektricnu ili elektricki napajanu opremu electricalItems ne smije ostati prazan ako se vide kabel, utikac, napajanje, elektromotor, elektronika, sonde ili U/F/P podaci na plocici. Vrati konkretne elektro nalaze kao customContent, npr. prikljucni kabel i utikac su neosteceni ili nazivni napon je procitan s plocice.",
