@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.358.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.359.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -25814,6 +25814,9 @@ function inferMobileNativeDocumentationServiceCode(value = "") {
   if (directCode) {
     return directCode;
   }
+  if (isMobileExeiNativeLookupText(lookup)) {
+    return "EXEI";
+  }
   const semanticMatch = MOBILE_NATIVE_DOCUMENTATION_SEMANTIC_MATCHERS.find((matcher) => matcher.matches(lookup));
   if (semanticMatch?.code) {
     return semanticMatch.code;
@@ -25861,8 +25864,11 @@ function inferMobileNativeDocumentationServiceCodeFromExplicitToken(value = "") 
   if (!lookup) {
     return "";
   }
+  if (isMobileExeiNativeLookupText(lookup)) {
+    return "EXEI";
+  }
   const tokens = lookup.split(/\s+/u).filter(Boolean);
-  return [...MOBILE_NATIVE_MEASUREMENT_SERVICE_CODES]
+  const tokenCode = [...MOBILE_NATIVE_MEASUREMENT_SERVICE_CODES]
     .sort((left, right) => right.length - left.length)
     .find((code) => {
       const normalizedCode = normalizeMobileSprLookupText(code);
@@ -25873,7 +25879,12 @@ function inferMobileNativeDocumentationServiceCodeFromExplicitToken(value = "") 
         token === normalizedCode
         || (token.startsWith(normalizedCode) && /^\d+(?:\d*)$/u.test(token.slice(normalizedCode.length)))
       ));
-    }) || "";
+    });
+  if (tokenCode) {
+    return tokenCode;
+  }
+  const semanticMatch = MOBILE_NATIVE_DOCUMENTATION_SEMANTIC_MATCHERS.find((matcher) => matcher.matches(lookup));
+  return semanticMatch?.code || "";
 }
 
 function getMobileDocumentRecordNativeDocumentationServiceCode(record = {}) {
@@ -26947,10 +26958,31 @@ const MOBILE_NATIVE_DOCUMENTATION_PRESETS = Object.freeze(
     documentType: preset.serviceName,
   })),
 );
+
+function isMobileExeiNativeLookupText(text = "") {
+  const lookup = normalizeMobileSprLookupText(text);
+  if (!lookup) {
+    return false;
+  }
+  const compact = lookup.replace(/\s+/gu, "");
+  const hasElectricalContext = lookup.includes("elektricn")
+    || lookup.includes("instalacij")
+    || lookup.includes("strujn")
+    || lookup.includes("motor")
+    || lookup.includes("oprem");
+  const looksLikeExseOnly = (lookup.includes("statick") || lookup.includes("uzemljen")) && !hasElectricalContext;
+  return compact.includes("exei")
+    || (!looksLikeExseOnly && lookup.includes("atex"))
+    || (
+      lookup.includes("ex")
+      && hasElectricalContext
+    );
+}
+
 const MOBILE_NATIVE_DOCUMENTATION_SEMANTIC_MATCHERS = Object.freeze([
   {
     code: "EXEI",
-    matches: (text) => text.includes("ex") && text.includes("elektricn"),
+    matches: (text) => isMobileExeiNativeLookupText(text),
   },
   {
     code: "EXSE",
@@ -27234,6 +27266,12 @@ function getMobileNativeDocumentationPresetForService(service = {}, serviceIndex
     .find((preset) => serviceTokens.has(normalizeMobileSprLookupText(preset.serviceCode)));
   if (codePreset) {
     return codePreset;
+  }
+
+  const semanticCode = inferMobileNativeDocumentationServiceCode(serviceText);
+  const semanticPreset = semanticCode ? getMobileNativeDocumentationPresetByCode(semanticCode) : null;
+  if (semanticPreset) {
+    return semanticPreset;
   }
 
   const namePreset = [...MOBILE_NATIVE_DOCUMENTATION_PRESETS]
