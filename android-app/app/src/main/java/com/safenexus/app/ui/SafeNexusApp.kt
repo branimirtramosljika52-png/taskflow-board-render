@@ -39564,6 +39564,8 @@ private fun DocumentationSprMobileWorkspace(
             }
         }
 
+        DocumentationSprStandardResourcesPanel(standardControls)
+
         AnimatedVisibility(visible = sprVoiceAiLoading || sprVoiceAiMessage.isNotBlank()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -39657,6 +39659,96 @@ private fun DocumentationSprMobileWorkspace(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DocumentationSprStandardResourcesPanel(controls: DocumentationTemplateStandardControls) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            DocumentationSprStandardResourcesHeader(
+                icon = Icons.Rounded.Work,
+                title = "Mjerna i ispitna oprema",
+                subtitle = "${controls.selectedEquipmentIds.size} odabrano",
+            )
+            WorkOrderSelectField(
+                label = "Grupa mjerne opreme",
+                value = controls.measurementEquipmentGroup,
+                valueLabel = controls.measurementEquipmentGroup.ifBlank { "Bez odabira" },
+                options = controls.measurementEquipmentGroupOptions,
+                enabled = controls.enabled,
+                onSelect = controls.onMeasurementEquipmentGroupChange,
+            )
+            DocumentationMultiSelectField(
+                label = "Uređaji za zapisnik",
+                options = controls.measurementEquipmentOptions,
+                selectedIds = controls.selectedEquipmentIds,
+                enabled = controls.enabled,
+                emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
+                onChange = controls.onSelectedEquipmentIdsChange,
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+            )
+
+            DocumentationSprStandardResourcesHeader(
+                icon = Icons.Rounded.Lock,
+                title = "Propisi",
+                subtitle = "${controls.selectedLegalFrameworkIds.size} odabrano",
+            )
+            DocumentationMultiSelectField(
+                label = "Propisi iz web predloška",
+                options = controls.legalFrameworkOptions,
+                selectedIds = controls.selectedLegalFrameworkIds,
+                enabled = controls.enabled,
+                emptyText = "Nema propisa povezanih s predlošcima.",
+                onChange = controls.onSelectedLegalFrameworkIdsChange,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DocumentationSprStandardResourcesHeader(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier
+                    .size(36.dp)
+                    .padding(8.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(title, fontWeight = FontWeight.Black)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            )
         }
     }
 }
