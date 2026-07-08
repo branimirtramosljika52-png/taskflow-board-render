@@ -5669,11 +5669,12 @@ private fun DocumentationMobileFieldShell(
     enabled: Boolean = true,
     minHeight: Dp = 76.dp,
     labelMaxLines: Int = 2,
+    compact: Boolean = false,
     onClick: (() -> Unit)? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val shape = RoundedCornerShape(17.dp)
+    val shape = RoundedCornerShape(if (compact) 14.dp else 17.dp)
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -5694,17 +5695,17 @@ private fun DocumentationMobileFieldShell(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = minHeight)
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(horizontal = if (compact) 11.dp else 14.dp, vertical = if (compact) 7.dp else 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
+                verticalArrangement = Arrangement.spacedBy(if (compact) 1.dp else 3.dp),
             ) {
                 Text(
                     label,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     maxLines = labelMaxLines.coerceAtLeast(1),
                     overflow = TextOverflow.Ellipsis,
@@ -5728,21 +5729,31 @@ private fun DocumentationMobileTextField(
     singleLine: Boolean = true,
     minLines: Int = 1,
     maxLines: Int = if (singleLine) 1 else 6,
+    compact: Boolean = false,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
 ) {
-    val valueStyle = if (singleLine) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium
+    val valueStyle = when {
+        compact && singleLine -> MaterialTheme.typography.bodyMedium
+        singleLine -> MaterialTheme.typography.bodyLarge
+        else -> MaterialTheme.typography.bodyMedium
+    }
     DocumentationMobileFieldShell(
         label = label,
         modifier = modifier,
         enabled = enabled,
-        minHeight = if (singleLine) 76.dp else 118.dp,
+        minHeight = if (compact) {
+            if (singleLine) 62.dp else 88.dp
+        } else {
+            if (singleLine) 76.dp else 118.dp
+        },
+        compact = compact,
     ) {
         BasicTextField(
             value = value,
             onValueChange = onChange,
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = if (singleLine) 26.dp else 78.dp),
+                .heightIn(min = if (singleLine) 24.dp else if (compact) 48.dp else 78.dp),
             enabled = enabled,
             singleLine = singleLine,
             minLines = minLines,
@@ -5767,6 +5778,37 @@ private fun DocumentationMobileTextField(
                     innerTextField()
                 }
             },
+        )
+    }
+}
+
+@Composable
+private fun DocumentationMobileReadonlyField(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    minLines: Int = 1,
+    maxLines: Int = 2,
+    compact: Boolean = false,
+) {
+    DocumentationMobileFieldShell(
+        label = label,
+        modifier = modifier,
+        minHeight = if (compact) {
+            if (minLines > 1) 82.dp else 62.dp
+        } else {
+            if (minLines > 1) 96.dp else 76.dp
+        },
+        compact = compact,
+    ) {
+        Text(
+            value.ifBlank { "-" },
+            style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold,
+            minLines = minLines,
+            maxLines = maxLines,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -6581,24 +6623,28 @@ private fun DocumentationMobileDatePickerField(
     onChange: (String) -> Unit,
     enabled: Boolean,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
     var openPicker by remember { mutableStateOf(false) }
     DocumentationMobileFieldShell(
         label = label,
         modifier = modifier,
         enabled = enabled,
+        minHeight = if (compact) 62.dp else 76.dp,
+        compact = compact,
         onClick = { openPicker = true },
         trailing = {
             Icon(
                 Icons.Rounded.CalendarMonth,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(if (compact) 21.dp else 24.dp),
             )
         },
     ) {
         Text(
             formatDatePickerLabel(value).ifBlank { "Odaberi datum" },
-            style = MaterialTheme.typography.bodyLarge,
+            style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Black,
             color = MaterialTheme.colorScheme.primary,
             maxLines = 1,
@@ -6640,26 +6686,33 @@ private fun DocumentationMobileSelectField(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
     labelMaxLines: Int = 3,
+    compact: Boolean = false,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box(modifier = modifier.fillMaxWidth()) {
         DocumentationMobileFieldShell(
             label = label,
             enabled = enabled && options.isNotEmpty(),
-            minHeight = if (labelMaxLines > 1) 88.dp else 76.dp,
+            minHeight = if (compact) {
+                if (labelMaxLines > 1) 70.dp else 62.dp
+            } else {
+                if (labelMaxLines > 1) 88.dp else 76.dp
+            },
             labelMaxLines = labelMaxLines,
+            compact = compact,
             onClick = { expanded = true },
             trailing = {
                 Icon(
                     Icons.Rounded.ExpandMore,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(if (compact) 21.dp else 24.dp),
                 )
             },
         ) {
             Text(
                 valueLabel.ifBlank { "Odaberi" },
-                style = MaterialTheme.typography.bodyLarge,
+                style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Black,
                 color = if (value.isBlank()) {
                     MaterialTheme.colorScheme.onSurface.copy(alpha = 0.46f)
@@ -29467,6 +29520,26 @@ private fun WorkOrderDocumentationDefaults.hasReusableDocumentationDefaults(): B
             measurementEquipmentGroup,
         ).any { it.isNotBlank() }
 
+private fun documentationTestingLocationLabel(value: String, region: String = ""): String {
+    var label = value
+        .replace('\n', ' ')
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    val normalizedRegion = region.trim()
+    if (normalizedRegion.isNotBlank()) {
+        label = label.replace(
+            Regex("""\s*[,;·-]\s*${Regex.escape(normalizedRegion)}\s*$""", RegexOption.IGNORE_CASE),
+            "",
+        )
+    }
+    label = label
+        .replace(Regex("""\s*,\s*Zagreb\s*-\s*(Istok|Zapad|Sjever|Jug|Centar)\s*$""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("""\s*,\s*Regija\s+[\p{L}\s-]+\s*$""", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("\\s+"), " ")
+        .trim(' ', ',', ';', '-', '·')
+    return label.ifBlank { value.trim() }
+}
+
 @Composable
 private fun WorkOrderDocumentationWizardDialog(
     workOrder: WorkOrder,
@@ -29771,10 +29844,16 @@ private fun WorkOrderDocumentationWizardDialog(
     }
     val defaults = context.defaults
     val reusedDocumentationDefaultsLoaded = remember(defaults) { defaults.hasReusableDocumentationDefaults() }
-    var inspectionDate by remember(workOrder.id, selectedObjectId, defaults.inspectionDate) { mutableStateOf(defaults.inspectionDate.ifBlank { today }) }
-    var issuedDate by remember(workOrder.id, selectedObjectId, defaults.issuedDate) { mutableStateOf(defaults.issuedDate.ifBlank { inspectionDate.ifBlank { today } }) }
-    var testingLocation by remember(workOrder.id, selectedObjectId, defaults.testingLocation) {
-        mutableStateOf(defaults.testingLocation.ifBlank { workOrder.locationName })
+    val initialInspectionDate = remember(workOrder.id, selectedObjectId, defaults.inspectionDate, workOrder.executionDate) {
+        defaults.inspectionDate.ifBlank { workOrder.executionDate.ifBlank { today } }
+    }
+    var inspectionDate by remember(workOrder.id, selectedObjectId, initialInspectionDate) { mutableStateOf(initialInspectionDate) }
+    val initialIssuedDate = remember(workOrder.id, selectedObjectId, defaults.issuedDate, initialInspectionDate) {
+        defaults.issuedDate.ifBlank { initialInspectionDate.ifBlank { today } }
+    }
+    var issuedDate by remember(workOrder.id, selectedObjectId, initialIssuedDate) { mutableStateOf(initialIssuedDate) }
+    var testingLocation by remember(workOrder.id, selectedObjectId, defaults.testingLocation, workOrder.locationName, workOrder.region) {
+        mutableStateOf(documentationTestingLocationLabel(defaults.testingLocation.ifBlank { workOrder.locationName }, workOrder.region))
     }
     val initialInspectionType = remember(defaults.inspectionType, defaultInspectionType, inspectionOptions) {
         chooseInspectionTypeValue(defaults.inspectionType, inspectionOptions, defaultInspectionType)
@@ -31233,7 +31312,6 @@ private fun WorkOrderDocumentationWizardDialog(
                         issuedDate = issuedDate,
                         onIssuedDateChange = { issuedDate = it },
                         testingLocation = testingLocation,
-                        onTestingLocationChange = { testingLocation = it },
                         measurementEquipmentGroup = measurementEquipmentGroup,
                         measurementEquipmentGroupOptions = measurementEquipmentGroupOptions,
                         onMeasurementEquipmentGroupChange = { measurementEquipmentGroup = it },
@@ -43112,7 +43190,6 @@ private fun DocumentationCoreBasicsContent(
     issuedDate: String,
     onIssuedDateChange: (String) -> Unit,
     testingLocation: String,
-    onTestingLocationChange: (String) -> Unit,
     measurementEquipmentGroup: String,
     measurementEquipmentGroupOptions: List<Pair<String, String>>,
     onMeasurementEquipmentGroupChange: (String) -> Unit,
@@ -43146,6 +43223,7 @@ private fun DocumentationCoreBasicsContent(
             onInspectionDateChange,
             enabled,
             modifier = Modifier.weight(1f),
+            compact = true,
         )
         DocumentationMobileDatePickerField(
             "Datum izdavanja",
@@ -43153,16 +43231,15 @@ private fun DocumentationCoreBasicsContent(
             onIssuedDateChange,
             enabled,
             modifier = Modifier.weight(1f),
+            compact = true,
         )
     }
-    DocumentationMobileTextField(
+    DocumentationMobileReadonlyField(
         "Mjesto ispitivanja",
         testingLocation,
-        onTestingLocationChange,
-        enabled,
-        singleLine = false,
         minLines = 2,
         maxLines = 2,
+        compact = true,
     )
 
     Text("Mjerna oprema", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
@@ -43173,6 +43250,7 @@ private fun DocumentationCoreBasicsContent(
         options = measurementEquipmentGroupOptions,
         enabled = enabled,
         onSelect = onMeasurementEquipmentGroupChange,
+        compact = true,
     )
     if (environmentVisibility.any) {
         Text("Vanjski utjecaji", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
@@ -43211,22 +43289,22 @@ private fun DocumentationCoreBasicsContent(
             }
         }
         if (environmentVisibility.outsideTemperature) {
-            DocumentationMobileTextField("Vanjska temperatura", outsideTemperature, onOutsideTemperatureChange, enabled)
+            DocumentationMobileTextField("Vanjska temperatura", outsideTemperature, onOutsideTemperatureChange, enabled, compact = true)
         }
         if (environmentVisibility.relativeHumidity) {
-            DocumentationMobileTextField("Relativna vlaga", relativeHumidity, onRelativeHumidityChange, enabled)
+            DocumentationMobileTextField("Relativna vlaga", relativeHumidity, onRelativeHumidityChange, enabled, compact = true)
         }
         if (environmentVisibility.airflowSpeed) {
-            DocumentationMobileTextField("Strujanje zraka", airflowSpeed, onAirflowSpeedChange, enabled)
+            DocumentationMobileTextField("Strujanje zraka", airflowSpeed, onAirflowSpeedChange, enabled, compact = true)
         }
         if (environmentVisibility.weather) {
-            DocumentationMobileTextField("Vremenski uvjeti", weather, onWeatherChange, enabled)
+            DocumentationMobileTextField("Vremenski uvjeti", weather, onWeatherChange, enabled, compact = true)
         }
         if (environmentVisibility.groundCondition) {
-            DocumentationMobileTextField("Stanje tla", groundCondition, onGroundConditionChange, enabled)
+            DocumentationMobileTextField("Stanje tla", groundCondition, onGroundConditionChange, enabled, compact = true)
         }
         if (environmentVisibility.groundResistance) {
-            DocumentationMobileTextField("Otpor tla", groundResistance, onGroundResistanceChange, enabled)
+            DocumentationMobileTextField("Otpor tla", groundResistance, onGroundResistanceChange, enabled, compact = true)
         }
     }
 }
@@ -43256,6 +43334,7 @@ private fun TemplateBasicControls(controls: DocumentationTemplateStandardControl
             controls.onInspectionDateChange,
             controls.enabled,
             modifier = Modifier.weight(1f),
+            compact = true,
         )
         DocumentationMobileDatePickerField(
             "Datum izdavanja",
@@ -43263,6 +43342,7 @@ private fun TemplateBasicControls(controls: DocumentationTemplateStandardControl
             controls.onIssuedDateChange,
             controls.enabled,
             modifier = Modifier.weight(1f),
+            compact = true,
         )
     }
     DocumentationMobileSelectField(
@@ -43274,15 +43354,14 @@ private fun TemplateBasicControls(controls: DocumentationTemplateStandardControl
         options = controls.inspectionOptions,
         enabled = controls.enabled,
         onSelect = controls.onInspectionTypeChange,
+        compact = true,
     )
-    DocumentationMobileTextField(
+    DocumentationMobileReadonlyField(
         "Mjesto ispitivanja",
-        controls.testingLocation,
-        controls.onTestingLocationChange,
-        controls.enabled,
-        singleLine = false,
+        documentationTestingLocationLabel(controls.testingLocation),
         minLines = 2,
         maxLines = 2,
+        compact = true,
     )
 }
 
