@@ -28115,6 +28115,37 @@ private val DOCUMENTATION_NATIVE_SERVICE_CODES = setOf(
 
 private val DOCUMENTATION_NATIVE_TAB_LABELS = DOCUMENTATION_NATIVE_SERVICE_CODES + setOf("RO", "FC", "KC")
 
+private val DOCUMENTATION_FLOW_TAB_ORDER = listOf(
+    "RO",
+    "NO",
+    "EIZ",
+    "EMM",
+    "SPR",
+    "SZOM",
+    "SZOMV",
+    "TZIN",
+    "VS",
+    "FC",
+    "KC",
+    "SVZ",
+    "HM",
+    "SGP",
+    "PPV",
+    "PPZ",
+    "SO",
+    "PJENA",
+    "EXEI",
+    "EXSE",
+    "EXOV",
+    "NPI",
+    "UNP",
+    "NNZD",
+)
+
+private val DOCUMENTATION_FLOW_TAB_ORDER_INDEX = DOCUMENTATION_FLOW_TAB_ORDER
+    .mapIndexed { index, code -> code to index }
+    .toMap()
+
 private fun DocumentationServiceFlowItem.serviceValidityKey(): String =
     listOf(serviceCode, serviceName, serviceKey)
         .firstOrNull { it.isNotBlank() }
@@ -28205,14 +28236,39 @@ private fun isDocumentationPhysicalFactorsText(value: String): Boolean {
         normalized.contains("radnog okolisa fizikal")
 }
 
+private fun isDocumentationChemicalFactorsText(value: String): Boolean {
+    val normalized = normalizeDocumentationWorkEquipmentText(value)
+    if (normalized.isBlank() || isDocumentationWorkEquipmentText(value) || isDocumentationEquipmentInspectionText(value)) return false
+    return normalized == "kc" ||
+        normalized == "rok" ||
+        normalized.startsWith("kc ") ||
+        normalized.startsWith("rok ") ||
+        Regex("\\bro\\s*k\\b").containsMatchIn(normalized) ||
+        normalized.contains("kemijski cimbenici") ||
+        normalized.contains("kemijskih cimbenika") ||
+        normalized.contains("radni okolis kemij") ||
+        normalized.contains("radnog okolisa kemij")
+}
+
 private fun isDocumentationPhysicalFactorsService(item: DocumentationServiceFlowItem): Boolean =
     isDocumentationPhysicalFactorsText(item.serviceName) ||
         isDocumentationPhysicalFactorsText(item.serviceCode) ||
         isDocumentationPhysicalFactorsText(item.serviceKey)
 
+private fun isDocumentationChemicalFactorsService(item: DocumentationServiceFlowItem): Boolean =
+    isDocumentationChemicalFactorsText(item.serviceName) ||
+        isDocumentationChemicalFactorsText(item.serviceCode) ||
+        isDocumentationChemicalFactorsText(item.serviceKey)
+
 private fun isDocumentationTrainingText(value: String): Boolean {
     val normalized = normalizeDocumentationWorkEquipmentText(value)
-    if (normalized.isBlank() || isDocumentationWorkEquipmentText(value) || isDocumentationEquipmentInspectionText(value) || isDocumentationPhysicalFactorsText(value)) return false
+    if (
+        normalized.isBlank() ||
+        isDocumentationWorkEquipmentText(value) ||
+        isDocumentationEquipmentInspectionText(value) ||
+        isDocumentationPhysicalFactorsText(value) ||
+        isDocumentationChemicalFactorsText(value)
+    ) return false
     if (documentationNativeServiceCodeForText(value).isNotBlank()) return false
     return normalized == "znr" ||
         normalized == "zos" ||
@@ -28435,6 +28491,56 @@ private fun WorkOrderDocumentationTemplate.matchesDocumentationServiceFlowItem(i
         (templateName == itemName || templateName.contains(itemName) || itemName.contains(templateName))
 }
 
+private fun normalizeDocumentationFlowTabCode(code: String): String {
+    val normalized = normalizeDocumentationServiceCodeToken(code)
+    return when (normalized) {
+        "RADNAOPREMA" -> "RO"
+        "STROJEVI" -> "NO"
+        "ROF" -> "FC"
+        "ROK" -> "KC"
+        "VES" -> "VS"
+        "NNZDPETROL" -> "NNZD"
+        "HMU", "HMV", "HMUV" -> "HM"
+        else -> normalized
+    }
+}
+
+private fun documentationFlowTabOrderIndex(code: String): Int =
+    DOCUMENTATION_FLOW_TAB_ORDER_INDEX[normalizeDocumentationFlowTabCode(code)] ?: Int.MAX_VALUE
+
+private fun DocumentationServiceFlowItem.documentationFlowTabCode(): String {
+    if (isDocumentationWorkEquipmentService(this)) return "RO"
+    if (isDocumentationEquipmentInspectionService(this)) return "NO"
+    if (isDocumentationPhysicalFactorsService(this)) return "FC"
+    if (isDocumentationChemicalFactorsService(this)) return "KC"
+    val nativeCode = documentationNativeServiceCodeForText(
+        listOf(serviceCode, serviceName, serviceKey)
+            .filter { it.isNotBlank() }
+            .joinToString(" "),
+    )
+    val explicitCode = serviceCode.ifBlank { nativeCode }
+    return normalizeDocumentationFlowTabCode(explicitCode.ifBlank { nativeCode })
+}
+
+private fun DocumentationAdditionalObjectRecord.documentationFlowTabCode(fallback: DocumentationServiceFlowItem): String =
+    normalizeDocumentationFlowTabCode(
+        serviceCode.ifBlank {
+            documentationNativeServiceCodeForText(serviceName.ifBlank { fallback.serviceName })
+                .ifBlank { fallback.documentationFlowTabCode() }
+        },
+    )
+
+private fun documentationFlowTabLabelForCode(code: String): String {
+    val normalized = normalizeDocumentationFlowTabCode(code)
+    return normalized.takeIf { it in DOCUMENTATION_NATIVE_TAB_LABELS || it in DOCUMENTATION_FLOW_TAB_ORDER_INDEX }.orEmpty()
+}
+
+private data class DocumentationFlowTabGroup(
+    val orderCode: String,
+    val originalIndex: Int,
+    val tabs: List<DocumentationFlowTab>,
+)
+
 private fun documentationAdditionalRecordFlowKey(record: DocumentationAdditionalObjectRecord, index: Int): String =
     "$DOCUMENTATION_EXTRA_FLOW_PREFIX:${record.serviceKey}:${record.objectId}:$index"
 
@@ -28451,35 +28557,37 @@ private fun buildDocumentationFlowTabs(
             label = "Osnovno",
         ),
     )
+    val tabGroups = mutableListOf<DocumentationFlowTabGroup>()
     flowItems.forEachIndexed { serviceIndex, item ->
-        val serviceLabel = when {
-            isDocumentationEquipmentInspectionService(item) -> item.serviceCode.ifBlank { "STROJEVI" }
-            isDocumentationWorkEquipmentService(item) -> "RO"
-            isDocumentationPhysicalFactorsService(item) -> "FC"
-            else -> item.serviceCode.ifBlank { item.serviceName.ifBlank { "Usluga" } }
-        }
-        val normalizedServiceLabel = serviceLabel.trim().uppercase(Locale.getDefault())
-        val tabLabel = if (normalizedServiceLabel in DOCUMENTATION_NATIVE_TAB_LABELS) {
+        val tabCode = item.documentationFlowTabCode()
+        val orderedLabel = documentationFlowTabLabelForCode(tabCode)
+        val serviceLabel = orderedLabel.ifBlank { item.serviceCode.ifBlank { item.serviceName.ifBlank { "Usluga" } } }
+        val normalizedServiceLabel = normalizeDocumentationFlowTabCode(serviceLabel)
+        val tabLabel = if (normalizedServiceLabel in DOCUMENTATION_NATIVE_TAB_LABELS || normalizedServiceLabel in DOCUMENTATION_FLOW_TAB_ORDER_INDEX) {
             normalizedServiceLabel
         } else {
             "${serviceIndex + 1}. $serviceLabel"
         }
-        tabs += DocumentationFlowTab(
-            key = item.serviceKey,
-            label = tabLabel,
-            serviceItem = item,
+        val groupTabs = mutableListOf(
+            DocumentationFlowTab(
+                key = item.serviceKey,
+                label = tabLabel,
+                serviceItem = item,
+            ),
         )
         additionalRecords.forEachIndexed { recordIndex, record ->
             if (record.serviceKey == item.serviceKey) {
-                val sequence = tabs.count { tab -> tab.serviceItem?.serviceKey == item.serviceKey } + 1
-                val recordLabel = record.serviceCode.ifBlank { item.serviceCode.ifBlank { "Usluga" } }.trim()
-                val normalizedRecordLabel = recordLabel.uppercase(Locale.getDefault())
-                val extraLabel = if (normalizedRecordLabel in DOCUMENTATION_NATIVE_TAB_LABELS) {
+                val sequence = groupTabs.size + 1
+                val recordCode = record.documentationFlowTabCode(item)
+                val recordCodeLabel = documentationFlowTabLabelForCode(recordCode)
+                val recordLabel = recordCodeLabel.ifBlank { record.serviceCode.ifBlank { item.serviceCode.ifBlank { "Usluga" } }.trim() }
+                val normalizedRecordLabel = normalizeDocumentationFlowTabCode(recordLabel)
+                val extraLabel = if (normalizedRecordLabel in DOCUMENTATION_NATIVE_TAB_LABELS || normalizedRecordLabel in DOCUMENTATION_FLOW_TAB_ORDER_INDEX) {
                     "$normalizedRecordLabel $sequence"
                 } else {
                     "$sequence. $recordLabel"
                 }
-                tabs += DocumentationFlowTab(
+                groupTabs += DocumentationFlowTab(
                     key = documentationAdditionalRecordFlowKey(record, recordIndex),
                     label = extraLabel,
                     serviceItem = item,
@@ -28487,25 +28595,50 @@ private fun buildDocumentationFlowTabs(
                 )
             }
         }
+        tabGroups += DocumentationFlowTabGroup(tabCode, serviceIndex, groupTabs)
     }
     if (includeWorkEquipmentTab && flowItems.none { isDocumentationWorkEquipmentService(it) }) {
-        tabs += DocumentationFlowTab(
-            key = DOCUMENTATION_WORK_EQUIPMENT_FLOW_KEY,
-            label = "RO",
+        tabGroups += DocumentationFlowTabGroup(
+            orderCode = "RO",
+            originalIndex = flowItems.size + tabGroups.size,
+            tabs = listOf(
+                DocumentationFlowTab(
+                    key = DOCUMENTATION_WORK_EQUIPMENT_FLOW_KEY,
+                    label = "RO",
+                ),
+            ),
         )
     }
     if (includeEquipmentInspectionTab && flowItems.none { isDocumentationEquipmentInspectionService(it) }) {
-        tabs += DocumentationFlowTab(
-            key = DOCUMENTATION_EQUIPMENT_INSPECTION_FLOW_KEY,
-            label = "STROJEVI",
+        tabGroups += DocumentationFlowTabGroup(
+            orderCode = "NO",
+            originalIndex = flowItems.size + tabGroups.size,
+            tabs = listOf(
+                DocumentationFlowTab(
+                    key = DOCUMENTATION_EQUIPMENT_INSPECTION_FLOW_KEY,
+                    label = "NO",
+                ),
+            ),
         )
     }
     if (includePhysicalFactorsTab && flowItems.none { isDocumentationPhysicalFactorsService(it) }) {
-        tabs += DocumentationFlowTab(
-            key = DOCUMENTATION_PHYSICAL_FACTORS_FLOW_KEY,
-            label = "FC",
+        tabGroups += DocumentationFlowTabGroup(
+            orderCode = "FC",
+            originalIndex = flowItems.size + tabGroups.size,
+            tabs = listOf(
+                DocumentationFlowTab(
+                    key = DOCUMENTATION_PHYSICAL_FACTORS_FLOW_KEY,
+                    label = "FC",
+                ),
+            ),
         )
     }
+    tabs += tabGroups
+        .sortedWith(
+            compareBy<DocumentationFlowTabGroup> { documentationFlowTabOrderIndex(it.orderCode) }
+                .thenBy { it.originalIndex },
+        )
+        .flatMap { it.tabs }
     tabs += DocumentationFlowTab(
         key = DOCUMENTATION_SUMMARY_FLOW_KEY,
         label = "Sažetak",

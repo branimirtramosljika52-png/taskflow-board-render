@@ -218,6 +218,7 @@ import {
   buildDocumentTemplateRuntimePdfPayloadFromEntry,
 } from "./features/documentTemplates/runtimeExport.js";
 import {
+  compareDocumentTemplateRuntimeServiceCodes,
   getDocumentTemplateRuntimeNativeServiceBadges,
   getDocumentTemplateRuntimeNativeServiceKind,
   getDocumentTemplateRuntimeNativeServiceShortLabel,
@@ -232,6 +233,7 @@ import {
   isWorkOrderDocumentPhysicalFactorsText,
   isWorkOrderDocumentWorkEquipmentService,
   isWorkOrderDocumentWorkEquipmentText,
+  normalizeDocumentTemplateRuntimeServiceCode,
   normalizeDocumentTemplateRuntimeNativeServiceKind,
   normalizeWorkOrderDocumentWorkEquipmentText,
   shouldShowWorkOrderDocumentChemicalFactorsSection,
@@ -59449,8 +59451,9 @@ function getDocumentationSprServiceBindingLabel(binding = null) {
   if (!normalized) {
     return "Bez vezane usluge";
   }
+  const displayCode = normalizeDocumentTemplateRuntimeServiceCode(normalized.serviceCode) || normalized.serviceCode || "";
   return [
-    normalized.serviceCode || "",
+    displayCode,
     normalized.serviceName || "",
   ].filter(Boolean).join(" - ") || normalized.serviceId || "Usluga";
 }
@@ -60866,30 +60869,42 @@ function getDocumentationSprBatchEntriesForWorkOrders(workOrders = []) {
   const entries = [];
   const seenPairs = new Set();
   sortWorkOrders(Array.isArray(workOrders) ? workOrders : []).forEach((workOrder) => {
-    getDocumentationSprInspectionServiceItems(workOrder).forEach((service, serviceIndex) => {
-      const serviceBinding = getDocumentationSprServiceBindingFromService(service);
-      const serviceKey = getDocumentationSprServiceBindingKey(serviceBinding) || `service:${serviceIndex + 1}`;
-      const workOrderId = String(workOrder?.id || workOrder?.workOrderNumber || "").trim();
-      const pairKey = `${workOrderId || "rn"}::${serviceKey}`;
-      if (seenPairs.has(pairKey)) {
-        return;
-      }
-      seenPairs.add(pairKey);
-      const template = getDocumentationSprTemplateForService(service);
-      entries.push({
-        id: pairKey,
-        workOrder,
-        workOrderId,
+    getDocumentationSprInspectionServiceItems(workOrder)
+      .map((service, serviceIndex) => ({
         service,
-        serviceBinding,
-        serviceKey,
-        serviceCode: serviceBinding?.serviceCode || service.serviceCode || "",
-        serviceName: serviceBinding?.serviceName || service.name || "",
-        templateId: template?.id || "",
-        templateName: template?.name || "",
-        hasTemplate: Boolean(template),
+        serviceIndex,
+        serviceBinding: getDocumentationSprServiceBindingFromService(service),
+      }))
+      .sort((left, right) => (
+        compareDocumentTemplateRuntimeServiceCodes(
+          left.serviceBinding?.serviceCode || left.service?.serviceCode || left.serviceBinding?.serviceName || left.service?.name || "",
+          right.serviceBinding?.serviceCode || right.service?.serviceCode || right.serviceBinding?.serviceName || right.service?.name || "",
+        )
+        || left.serviceIndex - right.serviceIndex
+      ))
+      .forEach(({ service, serviceIndex, serviceBinding }) => {
+        const serviceKey = getDocumentationSprServiceBindingKey(serviceBinding) || `service:${serviceIndex + 1}`;
+        const workOrderId = String(workOrder?.id || workOrder?.workOrderNumber || "").trim();
+        const pairKey = `${workOrderId || "rn"}::${serviceKey}`;
+        if (seenPairs.has(pairKey)) {
+          return;
+        }
+        seenPairs.add(pairKey);
+        const template = getDocumentationSprTemplateForService(service);
+        entries.push({
+          id: pairKey,
+          workOrder,
+          workOrderId,
+          service,
+          serviceBinding,
+          serviceKey,
+          serviceCode: serviceBinding?.serviceCode || service.serviceCode || "",
+          serviceName: serviceBinding?.serviceName || service.name || "",
+          templateId: template?.id || "",
+          templateName: template?.name || "",
+          hasTemplate: Boolean(template),
+        });
       });
-    });
   });
   return entries;
 }
@@ -60917,7 +60932,11 @@ function getDocumentationSprBatchGroupsFromEntries(entries = []) {
     groupMap.set(serviceKey, existing);
   });
   return [...groupMap.values()].sort((left, right) => (
-    String(left.serviceCode || left.serviceName || "").localeCompare(String(right.serviceCode || right.serviceName || ""), "hr")
+    compareDocumentTemplateRuntimeServiceCodes(
+      left.serviceCode || left.serviceName || "",
+      right.serviceCode || right.serviceName || "",
+    )
+    || String(left.serviceCode || left.serviceName || "").localeCompare(String(right.serviceCode || right.serviceName || ""), "hr")
   ));
 }
 
@@ -62037,7 +62056,7 @@ function getDocumentationSprBatchEntryServiceDisplay(entry = {}, model = {}) {
   const templateBinding = getDocumentationSprTemplateServiceBinding(template);
   const templateModel = template?.model && typeof template.model === "object" ? template.model : {};
   const templateCodeMatch = String(templateModel.templateCode || template?.name || "").match(/\b[A-ZČĆŽŠĐ]{2,8}\b/i);
-  const serviceCode = String(
+  const rawServiceCode = String(
     templateBinding?.serviceCode
     || templateModel.serviceCode
     || (templateCodeMatch ? templateCodeMatch[0].toUpperCase() : "")
@@ -62046,6 +62065,7 @@ function getDocumentationSprBatchEntryServiceDisplay(entry = {}, model = {}) {
     || entry.serviceCode
     || "",
   ).trim();
+  const serviceCode = normalizeDocumentTemplateRuntimeServiceCode(rawServiceCode) || rawServiceCode;
   const serviceName = String(
     templateBinding?.serviceName
     || templateModel.serviceName
@@ -62339,13 +62359,14 @@ function renderDocumentationSprBatchContext() {
     renderDocumentationSprRecordSourceCard();
     return;
   }
+  const activeEntryDisplay = getDocumentationSprBatchEntryServiceDisplay(activeEntry, activeEntry.model || {});
   if (documentationSprBatchKicker) {
     documentationSprBatchKicker.textContent = `${activeIndex + 1} / ${entries.length}`;
   }
   if (documentationSprBatchTitle) {
     documentationSprBatchTitle.textContent = [
       activeEntry.workOrder?.workOrderNumber ? `RN ${activeEntry.workOrder.workOrderNumber}` : "RN bez broja",
-      activeEntry.serviceCode || activeEntry.serviceName || "Usluga",
+      activeEntryDisplay.serviceCode || activeEntryDisplay.serviceName || "Usluga",
     ].filter(Boolean).join(" · ");
   }
   if (documentationSprBatchMeta) {
@@ -62365,9 +62386,10 @@ function renderDocumentationSprBatchContext() {
       const button = document.createElement("button");
       button.type = "button";
       button.className = `documentation-spr-batch-chip${index === activeIndex ? " is-active" : ""}`;
+      const entryDisplay = getDocumentationSprBatchEntryServiceDisplay(entry, entry.model || {});
       button.textContent = [
         entry.workOrder?.workOrderNumber || `RN ${index + 1}`,
-        entry.serviceCode || entry.serviceName || "",
+        entryDisplay.serviceCode || entryDisplay.serviceName || "",
       ].filter(Boolean).join(" · ");
       button.addEventListener("click", () => {
         applyDocumentationSprBatchEntry(index);
@@ -143874,7 +143896,7 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
     badges.className = "work-order-document-template-card-badges";
     badges.append(createBadge("Predložak", "document-template-meta-badge"));
     if (group.serviceCode) {
-      badges.append(createBadge(group.serviceCode, "document-template-meta-badge"));
+      badges.append(createBadge(normalizeDocumentTemplateRuntimeServiceCode(group.serviceCode) || group.serviceCode, "document-template-meta-badge"));
     }
     head.append(copy, badges);
 

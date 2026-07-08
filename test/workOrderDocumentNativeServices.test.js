@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  compareDocumentTemplateRuntimeServiceCodes,
+  getDocumentTemplateRuntimeTimelineLabel,
   isWorkOrderDocumentPhysicalFactorsText,
   isWorkOrderDocumentWorkEquipmentService,
   isWorkOrderDocumentWorkEquipmentText,
+  normalizeDocumentTemplateRuntimeServiceCode,
   shouldShowWorkOrderDocumentIsznrWorkEquipmentSection,
 } from "../src/features/workOrderDocuments/nativeServices.js";
 
@@ -26,4 +29,35 @@ test("native work equipment detection reads work order and nested service fields
     serviceName: "RadnaOprema",
     services: [{ shortLabel: "RO1" }],
   }, []), true);
+});
+
+test("documentation service codes normalize to the requested zapisnici tab labels", () => {
+  assert.equal(normalizeDocumentTemplateRuntimeServiceCode("RADNAOPREMA"), "RO");
+  assert.equal(normalizeDocumentTemplateRuntimeServiceCode("STROJEVI"), "NO");
+  assert.equal(normalizeDocumentTemplateRuntimeServiceCode("ROF"), "FC");
+  assert.equal(normalizeDocumentTemplateRuntimeServiceCode("ROK"), "KC");
+  assert.equal(normalizeDocumentTemplateRuntimeServiceCode("NNZDPETROL"), "NNZD");
+  assert.equal(normalizeDocumentTemplateRuntimeServiceCode("HMUV"), "HM");
+  assert.equal(normalizeDocumentTemplateRuntimeServiceCode("VES"), "VS");
+});
+
+test("documentation service code comparator follows the requested zapisnici tab order", () => {
+  const codes = ["EXSE", "SPR", "ROK", "STROJEVI", "ROF", "RADNAOPREMA", "EXEI", "NNZDPETROL"];
+  assert.deepEqual(codes.sort(compareDocumentTemplateRuntimeServiceCodes), [
+    "RADNAOPREMA",
+    "STROJEVI",
+    "SPR",
+    "ROF",
+    "ROK",
+    "EXEI",
+    "EXSE",
+    "NNZDPETROL",
+  ]);
+});
+
+test("documentation timeline labels keep ROF and ROK out of the RO tab", () => {
+  assert.equal(getDocumentTemplateRuntimeTimelineLabel({ serviceCode: "ROF" }), "FC");
+  assert.equal(getDocumentTemplateRuntimeTimelineLabel({ serviceCode: "ROK" }), "KC");
+  assert.equal(getDocumentTemplateRuntimeTimelineLabel({ templateTitle: "Predlozak ROF mjerenja" }), "FC");
+  assert.equal(getDocumentTemplateRuntimeTimelineLabel({ templateTitle: "Predlozak ROK kemijski cimbenici" }), "KC");
 });

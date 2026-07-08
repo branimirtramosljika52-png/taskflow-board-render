@@ -9,51 +9,141 @@ export function normalizeWorkOrderDocumentWorkEquipmentText(value = "") {
     .trim();
 }
 
+const DOCUMENTATION_NATIVE_TAB_ORDER = Object.freeze([
+  "RO",
+  "NO",
+  "EIZ",
+  "EMM",
+  "SPR",
+  "SZOM",
+  "SZOMV",
+  "TZIN",
+  "VS",
+  "FC",
+  "KC",
+  "SVZ",
+  "HM",
+  "SGP",
+  "PPV",
+  "PPZ",
+  "SO",
+  "PJENA",
+  "EXEI",
+  "EXSE",
+  "EXOV",
+  "NPI",
+  "UNP",
+  "NNZD",
+]);
+
+const DOCUMENTATION_NATIVE_TAB_ORDER_INDEX = new Map(
+  DOCUMENTATION_NATIVE_TAB_ORDER.map((code, index) => [code, index]),
+);
+
 const DOCUMENTATION_NATIVE_TIMELINE_LABELS = Object.freeze([
+  ...DOCUMENTATION_NATIVE_TAB_ORDER,
   "PLINSKAKOTLOVNICA",
   "NNZDPETROL",
   "RADNAOPREMA",
   "STROJEVI",
   "PPCAFFE",
-  "SZOMV",
-  "SZOM",
-  "TZIN",
-  "EIZ",
   "VES",
-  "EMM",
-  "SPR",
-  "SVZ",
-  "EXEI",
-  "EXSE",
-  "EXOV",
   "HMUV",
   "HMU",
   "HMV",
-  "HM",
-  "SGP",
   "SS",
-  "PJENA",
-  "SO",
   "PZP",
   "PZ",
-  "PPV",
-  "PPZ",
   "DS",
-  "NPI",
-  "UNP",
   "ROF",
   "ROK",
-  "NO",
   "PE",
-  "NNZD",
   "EOTP",
-  "FC",
-  "KC",
-  "RO",
   "ZNR",
   "TIPKALO",
   "PANIK",
 ]);
+
+function normalizeNativeServiceCodeToken(value = "") {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]+/g, "");
+}
+
+export function normalizeDocumentTemplateRuntimeServiceCode(value = "") {
+  const token = normalizeNativeServiceCodeToken(value);
+  if (!token) {
+    return "";
+  }
+  if (["RADNAOPREMA", "RADNEOPREME"].includes(token)) {
+    return "RO";
+  }
+  if (["STROJEVI"].includes(token)) {
+    return "NO";
+  }
+  if (["ROF", "FIZIKALNICIMBENICI", "FIZIKALNIHCIMBENIKA"].includes(token)) {
+    return "FC";
+  }
+  if (["ROK", "KEMIJSKICIMBENICI", "KEMIJSKIHCIMBENIKA"].includes(token)) {
+    return "KC";
+  }
+  if (["NNZDPETROL"].includes(token)) {
+    return "NNZD";
+  }
+  if (["HMU", "HMV", "HMUV"].includes(token)) {
+    return "HM";
+  }
+  if (["VES"].includes(token)) {
+    return "VS";
+  }
+  if (["TIPKALO"].includes(token)) {
+    return "TZIN";
+  }
+  if (["PANIK"].includes(token)) {
+    return "SPR";
+  }
+  if (isWorkOrderDocumentPhysicalFactorsText(value)) {
+    return "FC";
+  }
+  if (isWorkOrderDocumentChemicalFactorsText(value)) {
+    return "KC";
+  }
+  if (isWorkOrderDocumentWorkEquipmentText(value)) {
+    return "RO";
+  }
+  return token;
+}
+
+export function getDocumentTemplateRuntimeServiceCodeOrder(value = "") {
+  const normalized = normalizeDocumentTemplateRuntimeServiceCode(value);
+  return DOCUMENTATION_NATIVE_TAB_ORDER_INDEX.has(normalized)
+    ? DOCUMENTATION_NATIVE_TAB_ORDER_INDEX.get(normalized)
+    : Number.MAX_SAFE_INTEGER;
+}
+
+export function compareDocumentTemplateRuntimeServiceCodes(left = "", right = "") {
+  const leftCode = normalizeDocumentTemplateRuntimeServiceCode(left);
+  const rightCode = normalizeDocumentTemplateRuntimeServiceCode(right);
+  const orderDelta = getDocumentTemplateRuntimeServiceCodeOrder(leftCode) - getDocumentTemplateRuntimeServiceCodeOrder(rightCode);
+  if (orderDelta !== 0) {
+    return orderDelta;
+  }
+  return String(leftCode || left).localeCompare(String(rightCode || right), "hr", { numeric: true, sensitivity: "base" });
+}
+
+function titleContainsNativeTimelineLabel(upperTitle = "", compactTitle = "", label = "") {
+  const token = normalizeNativeServiceCodeToken(label);
+  if (!token) {
+    return false;
+  }
+  if (token.length <= 2) {
+    return new RegExp(`(^|[^A-Z0-9])${token}([^A-Z0-9]|$)`).test(upperTitle);
+  }
+  return compactTitle.includes(token);
+}
 
 export function isWorkOrderDocumentWorkEquipmentText(value = "") {
   const normalized = normalizeWorkOrderDocumentWorkEquipmentText(value);
@@ -310,7 +400,7 @@ export function getDocumentTemplateRuntimeTimelineLabel(entry = {}) {
   if (serviceCode) {
     const objectSequence = Number.parseInt(entry?.objectSequence, 10);
     const suffix = Number.isFinite(objectSequence) && objectSequence > 0 ? String(objectSequence) : "";
-    return `${serviceCode}${suffix}`;
+    return `${normalizeDocumentTemplateRuntimeServiceCode(serviceCode) || serviceCode}${suffix}`;
   }
 
   const rawTitle = String(entry?.templateTitle || "").trim();
@@ -319,11 +409,14 @@ export function getDocumentTemplateRuntimeTimelineLabel(entry = {}) {
   }
 
   const upperTitle = rawTitle.toUpperCase();
-  const matchedLabel = DOCUMENTATION_NATIVE_TIMELINE_LABELS.find((label) => upperTitle.includes(label));
+  const compactTitle = normalizeNativeServiceCodeToken(rawTitle);
+  const matchedLabel = [...DOCUMENTATION_NATIVE_TIMELINE_LABELS]
+    .sort((left, right) => normalizeNativeServiceCodeToken(right).length - normalizeNativeServiceCodeToken(left).length)
+    .find((label) => titleContainsNativeTimelineLabel(upperTitle, compactTitle, label));
   const objectSequence = Number.parseInt(entry?.objectSequence, 10);
   const suffix = Number.isFinite(objectSequence) && objectSequence > 0 ? String(objectSequence) : "";
   if (matchedLabel) {
-    return `${matchedLabel}${suffix}`;
+    return `${normalizeDocumentTemplateRuntimeServiceCode(matchedLabel) || matchedLabel}${suffix}`;
   }
 
   const sanitized = upperTitle
