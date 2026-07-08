@@ -39484,6 +39484,8 @@ private fun DocumentationSprMobileWorkspace(
             "$templateLabel zapisnik"
         }
     }
+    val standardChapterCount = 2
+    val displayedChapterCount = menuEntries.size + standardChapterCount
 
     WizardSection(title = workspaceTitle, icon = Icons.Rounded.PictureAsPdf) {
         Surface(
@@ -39564,8 +39566,6 @@ private fun DocumentationSprMobileWorkspace(
             }
         }
 
-        DocumentationSprStandardResourcesPanel(standardControls)
-
         AnimatedVisibility(visible = sprVoiceAiLoading || sprVoiceAiMessage.isNotBlank()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -39608,20 +39608,68 @@ private fun DocumentationSprMobileWorkspace(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Poglavlja zapisnika", fontWeight = FontWeight.Black)
                         Text(
-                            if (menuEntries.isEmpty()) "Ručna polja" else "${menuEntries.size} poglavlja",
+                            "$displayedChapterCount poglavlja",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                         )
                     }
                 }
-                if (menuEntries.isNotEmpty()) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    DocumentationSprStandardResourceChapterPanel(
+                        key = "spr_measurement_equipment",
+                        index = 0,
+                        icon = Icons.Rounded.Work,
+                        title = "Mjerna i ispitna oprema",
+                        subtitle = listOf(
+                            standardControls.measurementEquipmentGroup.ifBlank { "Bez grupe" },
+                            "${standardControls.selectedEquipmentIds.size} uređaja",
+                        ).joinToString(" · "),
+                        enabled = enabled,
                     ) {
+                        WorkOrderSelectField(
+                            label = "Grupa mjerne opreme",
+                            value = standardControls.measurementEquipmentGroup,
+                            valueLabel = standardControls.measurementEquipmentGroup.ifBlank { "Bez odabira" },
+                            options = standardControls.measurementEquipmentGroupOptions,
+                            enabled = standardControls.enabled,
+                            onSelect = standardControls.onMeasurementEquipmentGroupChange,
+                        )
+                        DocumentationMultiSelectField(
+                            label = "Uređaji za zapisnik",
+                            options = standardControls.measurementEquipmentOptions,
+                            selectedIds = standardControls.selectedEquipmentIds,
+                            enabled = standardControls.enabled,
+                            emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
+                            onChange = standardControls.onSelectedEquipmentIdsChange,
+                        )
+                    }
+
+                    DocumentationSprStandardResourceChapterPanel(
+                        key = "spr_legal_frameworks",
+                        index = 1,
+                        icon = Icons.Rounded.Lock,
+                        title = "Propisi",
+                        subtitle = "${standardControls.selectedLegalFrameworkIds.size} odabrano",
+                        enabled = enabled,
+                    ) {
+                        DocumentationMultiSelectField(
+                            label = "Propisi iz web predloška",
+                            options = standardControls.legalFrameworkOptions,
+                            selectedIds = standardControls.selectedLegalFrameworkIds,
+                            enabled = standardControls.enabled,
+                            emptyText = "Nema propisa povezanih s predlošcima.",
+                            onChange = standardControls.onSelectedLegalFrameworkIdsChange,
+                        )
+                    }
+
+                    if (menuEntries.isNotEmpty()) {
                         menuEntries.forEach { entry ->
                             DocumentationSprTemplateSectionPanel(
                                 entry = entry,
+                                indexOffset = standardChapterCount,
                                 values = values,
                                 standardControls = standardControls,
                                 tableCount = tableCount,
@@ -39641,22 +39689,22 @@ private fun DocumentationSprMobileWorkspace(
                                 onSprVoicePreview = onSprVoicePreview,
                             )
                         }
-                    }
-                } else if (fallbackFieldTemplates.isNotEmpty()) {
-                    fallbackFieldTemplates.forEach { template ->
-                        TemplateFieldGroup(
-                            template = template,
-                            values = values,
-                            enabled = enabled,
-                            onChange = { field, value -> onFieldChange(template, field, value, false) },
+                    } else if (fallbackFieldTemplates.isNotEmpty()) {
+                        fallbackFieldTemplates.forEach { template ->
+                            TemplateFieldGroup(
+                                template = template,
+                                values = values,
+                                enabled = enabled,
+                                onChange = { field, value -> onFieldChange(template, field, value, false) },
+                            )
+                        }
+                    } else {
+                        Text(
+                            "Nema dodatnih polja za mobilni unos u ovom predlošku.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
                         )
                     }
-                } else {
-                    Text(
-                        "Nema polja za mobilni unos u ovom predlošku.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
-                    )
                 }
             }
         }
@@ -39664,91 +39712,67 @@ private fun DocumentationSprMobileWorkspace(
 }
 
 @Composable
-private fun DocumentationSprStandardResourcesPanel(controls: DocumentationTemplateStandardControls) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            DocumentationSprStandardResourcesHeader(
-                icon = Icons.Rounded.Work,
-                title = "Mjerna i ispitna oprema",
-                subtitle = "${controls.selectedEquipmentIds.size} odabrano",
-            )
-            WorkOrderSelectField(
-                label = "Grupa mjerne opreme",
-                value = controls.measurementEquipmentGroup,
-                valueLabel = controls.measurementEquipmentGroup.ifBlank { "Bez odabira" },
-                options = controls.measurementEquipmentGroupOptions,
-                enabled = controls.enabled,
-                onSelect = controls.onMeasurementEquipmentGroupChange,
-            )
-            DocumentationMultiSelectField(
-                label = "Uređaji za zapisnik",
-                options = controls.measurementEquipmentOptions,
-                selectedIds = controls.selectedEquipmentIds,
-                enabled = controls.enabled,
-                emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
-                onChange = controls.onSelectedEquipmentIdsChange,
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
-            )
-
-            DocumentationSprStandardResourcesHeader(
-                icon = Icons.Rounded.Lock,
-                title = "Propisi",
-                subtitle = "${controls.selectedLegalFrameworkIds.size} odabrano",
-            )
-            DocumentationMultiSelectField(
-                label = "Propisi iz web predloška",
-                options = controls.legalFrameworkOptions,
-                selectedIds = controls.selectedLegalFrameworkIds,
-                enabled = controls.enabled,
-                emptyText = "Nema propisa povezanih s predlošcima.",
-                onChange = controls.onSelectedLegalFrameworkIdsChange,
-            )
-        }
-    }
-}
-
-@Composable
-private fun DocumentationSprStandardResourcesHeader(
+private fun DocumentationSprStandardResourceChapterPanel(
+    key: String,
+    index: Int,
     icon: ImageVector,
     title: String,
     subtitle: String,
+    enabled: Boolean,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
-    Row(
+    var expanded by rememberSaveable(key) { mutableStateOf(false) }
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)),
     ) {
-        Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) {
-            Icon(
-                icon,
-                contentDescription = null,
+        Column(
+            modifier = Modifier.padding(11.dp),
+            verticalArrangement = Arrangement.spacedBy(9.dp),
+        ) {
+            Row(
                 modifier = Modifier
-                    .size(36.dp)
-                    .padding(8.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-        }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(title, fontWeight = FontWeight.Black)
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-            )
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable(enabled = enabled) { expanded = !expanded },
+                horizontalArrangement = Arrangement.spacedBy(9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(shape = RoundedCornerShape(13.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .padding(8.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("${index + 1}. $title", fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Icon(
+                    if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                    contentDescription = if (expanded) "Sakrij poglavlje" else "Prikaži poglavlje",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+            if (expanded) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    content = content,
+                )
+            }
         }
     }
 }
@@ -39826,6 +39850,7 @@ private fun DocumentationSprStandaloneAttachmentsSection(
 @Composable
 private fun DocumentationSprTemplateSectionPanel(
     entry: DocumentationSprMenuEntry,
+    indexOffset: Int = 0,
     values: Map<String, String>,
     standardControls: DocumentationTemplateStandardControls,
     tableCount: Int,
@@ -39900,7 +39925,7 @@ private fun DocumentationSprTemplateSectionPanel(
                     )
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("${entry.index + 1}. ${entry.section.title}", fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("${entry.index + 1 + indexOffset}. ${entry.section.title}", fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(
                         listOf(
                             if (isAttachmentSection) {
