@@ -1397,10 +1397,24 @@ class SafeNexusApi(
                         .put("instructions", "Vrati samo ako je posebno oznacen kao inventarski broj, inv. broj ili naljepnica inventara."),
                     JSONObject().put("id", "technicalData").put("key", "technicalData").put("label", "Tehnicki podaci")
                         .put("instructions", "Sazmi Part number, MD/godinu, napon U[V], frekvenciju, snagu P[W], tlak, mjerni raspon i druge kljucne podatke s plocice."),
+                    JSONObject().put("id", "purposeDescription").put("key", "purposeDescription").put("label", "Namjena radne opreme")
+                        .put("instructions", "Iz slike cijelog stroja, komandi, prikljucaka i plocice zakljuci namjenu opreme. Ne ostavljaj prazno ako je vrsta stroja prepoznata."),
+                    JSONObject().put("id", "workspacePosition").put("key", "workspacePosition").put("label", "Polozaj u radnom prostoru")
+                        .put("instructions", "Opisi gdje je oprema postavljena ili kako se koristi u prostoru: samostojeca, na kotacima, na radnom mjestu, servisni uredaj, radni stol i slicno."),
+                    JSONObject().put("id", "workingSubstancesAndRawMaterials").put("key", "workingSubstancesAndRawMaterials").put("label", "Radne tvari i sirovine")
+                        .put("instructions", "Navedi radne tvari, medije ili materijale samo ako proizlaze iz stroja: zrak, ulje, gorivo, ispusni plinovi, elektricka energija, obradak, prasina i slicno."),
+                    JSONObject().put("id", "useAndMaintenance").put("key", "useAndMaintenance").put("label", "Uporaba i odrzavanje")
+                        .put("instructions", "Sazmi uporabu i odrzavanje prema vidljivim komandama, prikljuccima, sondama, kotačima, servisnim elementima i dokumentaciji; ne cekaj samo plocicu."),
+                    JSONObject().put("id", "methodsProceduresAndNorms").put("key", "methodsProceduresAndNorms").put("label", "Metode, postupci i norme")
+                        .put("instructions", "Predlozi opci postupak pregleda/ispitivanja za prepoznatu opremu: vizualni pregled, funkcionalna proba, provjera zastitnih naprava, elektro pregled ako je prikljucna oprema."),
+                    JSONObject().put("id", "deficiencies").put("key", "deficiencies").put("label", "Nedostaci")
+                        .put("instructions", "Ako nema jasnih nedostataka iz slika, vrati 'Bez vidljivih nedostataka na dostavljenim slikama.' Ne izmisljaj kvar."),
+                    JSONObject().put("id", "measuresToEliminateDeficiencies").put("key", "measuresToEliminateDeficiencies").put("label", "Mjere")
+                        .put("instructions", "Ako nema nedostataka, vrati 'Nisu potrebne posebne mjere prema dostavljenim slikama.' Ako vidis nedostatak, navedi konkretnu mjeru."),
                     JSONObject().put("id", "mechanicalItems").put("key", "mechanicalItems").put("label", "Strojarski dio")
-                        .put("instructions", "Vrati samo relevantne strojarske stavke za ovaj stroj. Ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati label, meetsConditions i obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke. U customContent ne pisi 'vidi se na fotografiji/slici'; pisi direktan nalaz."),
+                        .put("instructions", "Vrati relevantne strojarske stavke za ovaj stroj odmah iz slike cijelog stroja, komandi, zastita, pokretnih dijelova, stabilnosti i plocice. Ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati label, meetsConditions i obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke. U customContent ne pisi 'vidi se na fotografiji/slici'; pisi direktan nalaz."),
                     JSONObject().put("id", "electricalItems").put("key", "electricalItems").put("label", "Elektro dio")
-                        .put("instructions", "Vrati elektro stavke samo ako su relevantne za stroj ili plocicu. Svaka stavka mora imati obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke. U customContent ne pisi 'vidi se na fotografiji/slici'; pisi direktan nalaz."),
+                        .put("instructions", "Ako oprema ima kabel, utikac, napajanje, elektromotor, upravljacku elektroniku, sonde ili plocicu s U/F/P podacima, obavezno vrati relevantne elektro stavke. Ne ostavljaj elektro dio prazan za elektricnu opremu. Svaka stavka mora imati obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke. U customContent ne pisi 'vidi se na fotografiji/slici'; pisi direktan nalaz."),
                     JSONObject().put("id", "riskRegisterIris").put("key", "hazardRegisterIris").put("label", "Opasnosti, stetnosti i napori")
                         .put("instructions", "Vrati hazardRegisterIris, harmfulnessRegisterIris i strainRegisterIris za prepoznate opasnosti, stetnosti i napore. Ako IRI nije siguran, vrati opis u warnings ili customContent, ne izmisljaj IRI."),
                 ),
@@ -1437,7 +1451,7 @@ class SafeNexusApi(
                         )
                         .put(
                             "assessmentRule",
-                            "Za RO zapisnik biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Ne popunjavaj svaku mogucu stavku. Svaka vracena mehanicka/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do 255 znakova. measuredValue koristi samo ako postoji stvarno mjerenje. Ne vracaj stavku bez customContent. U customContent ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi', 'vidi se na fotografiji', 'na slici se vidi' ni slicno. Ako je nalaz siguran, napisi ga direktno kao cinjenicu. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Elektro dio vrati samo po potrebi. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili okruzenja.",
+                            "Za RO zapisnik ne staj na plocici. Nakon citanja plocice obavezno procijeni cijeli stroj: namjenu, polozaj, uporabu/odrzavanje, strojarski dio, elektro dio, opasnosti, stetnosti i napore. Biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Za opremu s napajanjem, kabelom, utikacem, elektromotorom, elektronikom ili U/F/P podacima obavezno vrati elektro stavke. Ne popunjavaj svaku mogucu stavku. Svaka vracena mehanicka/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do 255 znakova. measuredValue koristi samo ako postoji stvarno mjerenje. Ne vracaj stavku bez customContent. U customContent ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi', 'vidi se na fotografiji', 'na slici se vidi' ni slicno. Ako je nalaz siguran, napisi ga direktno kao cinjenicu. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili okruzenja.",
                         ),
                 )
                 .put(
@@ -1475,7 +1489,17 @@ class SafeNexusApi(
                                                 .put("measuredValue", "izmjerena vrijednost ako postoji"),
                                         ),
                                     )
-                                    .put("electricalItems", JSONArray())
+                                    .put(
+                                        "electricalItems",
+                                        JSONArray().put(
+                                            JSONObject()
+                                                .put("registerIri", "IRI ako je siguran ili prazno")
+                                                .put("label", "naziv relevantne elektro stavke")
+                                                .put("meetsConditions", true)
+                                                .put("customContent", "obavezna konkretna elektro napomena do 255 znakova")
+                                                .put("measuredValue", "izmjerena vrijednost ako postoji"),
+                                        ),
+                                    )
                                     .put("hazardRegisterIris", JSONArray().put("IRI opasnosti ako je siguran"))
                                     .put("harmfulnessRegisterIris", JSONArray().put("IRI stetnosti ako je siguran"))
                                     .put("strainRegisterIris", JSONArray().put("IRI napora ako je siguran")),
@@ -1533,10 +1557,24 @@ class SafeNexusApi(
                         .put("instructions", "Vrati samo ako je posebno oznacen kao inventarski broj, inv. broj ili naljepnica inventara."),
                     JSONObject().put("id", "technicalData").put("key", "technicalData").put("label", "Tehnicki podaci")
                         .put("instructions", "Sazmi Part number, MD/godinu, napon U[V], frekvenciju, snagu P[W], tlak, mjerni raspon i druge kljucne podatke s plocice."),
+                    JSONObject().put("id", "purposeDescription").put("key", "purposeDescription").put("label", "Namjena radne opreme")
+                        .put("instructions", "Za svaku prepoznatu opremu zakljuci namjenu iz slike cijelog stroja, komandi, prikljucaka i plocice. Ne ostavljaj prazno ako je vrsta stroja prepoznata."),
+                    JSONObject().put("id", "workspacePosition").put("key", "workspacePosition").put("label", "Polozaj u radnom prostoru")
+                        .put("instructions", "Opisi gdje je oprema postavljena ili kako se koristi u prostoru: samostojeca, na kotacima, na radnom mjestu, servisni uredaj, radni stol i slicno."),
+                    JSONObject().put("id", "workingSubstancesAndRawMaterials").put("key", "workingSubstancesAndRawMaterials").put("label", "Radne tvari i sirovine")
+                        .put("instructions", "Navedi radne tvari, medije ili materijale samo ako proizlaze iz stroja: zrak, ulje, gorivo, ispusni plinovi, elektricka energija, obradak, prasina i slicno."),
+                    JSONObject().put("id", "useAndMaintenance").put("key", "useAndMaintenance").put("label", "Uporaba i odrzavanje")
+                        .put("instructions", "Sazmi uporabu i odrzavanje prema vidljivim komandama, prikljuccima, sondama, kotacima, servisnim elementima i dokumentaciji; ne cekaj samo plocicu."),
+                    JSONObject().put("id", "methodsProceduresAndNorms").put("key", "methodsProceduresAndNorms").put("label", "Metode, postupci i norme")
+                        .put("instructions", "Predlozi opci postupak pregleda/ispitivanja za prepoznatu opremu: vizualni pregled, funkcionalna proba, provjera zastitnih naprava, elektro pregled ako je prikljucna oprema."),
+                    JSONObject().put("id", "deficiencies").put("key", "deficiencies").put("label", "Nedostaci")
+                        .put("instructions", "Ako nema jasnih nedostataka iz slika, vrati 'Bez vidljivih nedostataka na dostavljenim slikama.' Ne izmisljaj kvar."),
+                    JSONObject().put("id", "measuresToEliminateDeficiencies").put("key", "measuresToEliminateDeficiencies").put("label", "Mjere")
+                        .put("instructions", "Ako nema nedostataka, vrati 'Nisu potrebne posebne mjere prema dostavljenim slikama.' Ako vidis nedostatak, navedi konkretnu mjeru."),
                     JSONObject().put("id", "mechanicalItems").put("key", "mechanicalItems").put("label", "Strojarski dio")
-                        .put("instructions", "Za svaku prepoznatu opremu vrati samo relevantne strojarske stavke. Ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati label, meetsConditions i obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke. U customContent ne pisi 'vidi se na fotografiji/slici'; pisi direktan nalaz."),
+                        .put("instructions", "Za svaku prepoznatu opremu vrati relevantne strojarske stavke odmah iz slike cijelog stroja, komandi, zastita, pokretnih dijelova, stabilnosti i plocice. Ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati label, meetsConditions i obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke. U customContent ne pisi 'vidi se na fotografiji/slici'; pisi direktan nalaz."),
                     JSONObject().put("id", "electricalItems").put("key", "electricalItems").put("label", "Elektro dio")
-                        .put("instructions", "Vrati elektro stavke samo ako su relevantne za pojedinu opremu ili natpisnu plocicu. Svaka stavka mora imati obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke. U customContent ne pisi 'vidi se na fotografiji/slici'; pisi direktan nalaz."),
+                        .put("instructions", "Ako oprema ima kabel, utikac, napajanje, elektromotor, upravljacku elektroniku, sonde ili plocicu s U/F/P podacima, obavezno vrati relevantne elektro stavke. Ne ostavljaj elektro dio prazan za elektricnu opremu. Svaka stavka mora imati obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke. U customContent ne pisi 'vidi se na fotografiji/slici'; pisi direktan nalaz."),
                     JSONObject().put("id", "riskRegisterIris").put("key", "hazardRegisterIris").put("label", "Opasnosti, stetnosti i napori")
                         .put("instructions", "Vrati hazardRegisterIris, harmfulnessRegisterIris i strainRegisterIris za prepoznate opasnosti, stetnosti i napore. Ako IRI nije siguran, vrati opis u warnings ili customContent, ne izmisljaj IRI."),
                 ),
@@ -1570,7 +1608,7 @@ class SafeNexusApi(
                         )
                         .put(
                             "assessmentRule",
-                            "Za svaku RO opremu biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Ne popunjavaj svaku mogucu stavku. Svaka vracena mehanicka/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do 255 znakova. measuredValue koristi samo ako postoji stvarno mjerenje. Ne vracaj stavku bez customContent. U customContent ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi', 'vidi se na fotografiji', 'na slici se vidi' ni slicno. Ako je nalaz siguran, napisi ga direktno kao cinjenicu. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Elektro dio vrati samo po potrebi. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili okruzenja. Prve dvije slike grupe smatraj slikom stroja i slikom plocice te ih vrati kroz imageIndexes/sourceImageNames.",
+                            "Za svaku RO opremu ne staj na plocici. Nakon citanja plocice obavezno procijeni cijeli stroj: namjenu, polozaj, uporabu/odrzavanje, strojarski dio, elektro dio, opasnosti, stetnosti i napore. Biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Za opremu s napajanjem, kabelom, utikacem, elektromotorom, elektronikom ili U/F/P podacima obavezno vrati elektro stavke. Ne popunjavaj svaku mogucu stavku. Svaka vracena mehanicka/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do 255 znakova. measuredValue koristi samo ako postoji stvarno mjerenje. Ne vracaj stavku bez customContent. U customContent ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi', 'vidi se na fotografiji', 'na slici se vidi' ni slicno. Ako je nalaz siguran, napisi ga direktno kao cinjenicu. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili okruzenja. Prve dvije slike grupe smatraj slikom stroja i slikom plocice te ih vrati kroz imageIndexes/sourceImageNames.",
                         ),
                 )
                 .put(
@@ -1610,7 +1648,17 @@ class SafeNexusApi(
                                                 .put("measuredValue", "izmjerena vrijednost ako postoji"),
                                         ),
                                     )
-                                    .put("electricalItems", JSONArray())
+                                    .put(
+                                        "electricalItems",
+                                        JSONArray().put(
+                                            JSONObject()
+                                                .put("registerIri", "IRI ako je siguran ili prazno")
+                                                .put("label", "naziv relevantne elektro stavke")
+                                                .put("meetsConditions", true)
+                                                .put("customContent", "obavezna konkretna elektro napomena do 255 znakova")
+                                                .put("measuredValue", "izmjerena vrijednost ako postoji"),
+                                        ),
+                                    )
                                     .put("hazardRegisterIris", JSONArray().put("IRI opasnosti ako je siguran"))
                                     .put("harmfulnessRegisterIris", JSONArray().put("IRI stetnosti ako je siguran"))
                                     .put("strainRegisterIris", JSONArray().put("IRI napora ako je siguran")),

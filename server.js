@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.352.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.353.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -8313,6 +8313,9 @@ function buildOpenAiPurposeInstructions(body = {}) {
   return [
     "Za mobile-work-equipment-image-recognition radi kao OCR i tehnicki asistent za radnu opremu.",
     "Uvijek prvo procitaj natpisnu plocicu, naljepnice i logotipe. Ne vracaj samo opis slike ako su vidljivi proizvodac, tip ili serijski broj.",
+    "Ne stani na podacima s plocice. Nakon plocice obavezno analiziraj cijeli stroj, komande, prikljucke, kabel/utikac, zastite, pokretne dijelove, oslonce, sonde, kotače i radno okruzenje te popuni opisna RO polja, mechanicalItems, electricalItems i registre opasnosti/stetnosti/napora kada su relevantni.",
+    "Za elektricnu ili elektricki napajanu opremu electricalItems ne smije ostati prazan ako se vide kabel, utikac, napajanje, elektromotor, elektronika, sonde ili U/F/P podaci na plocici. Vrati konkretne elektro nalaze kao customContent, npr. prikljucni kabel i utikac su neosteceni ili nazivni napon je procitan s plocice.",
+    "Za strojarski dio ciljaj relevantne stavke iz vidljivih fizickih znacajki stroja: stabilnost, pristup, upravljanje, zastite, pokretni dijelovi, radni elementi, signalizacija, dokumentacija, buka/vibracije, tlak/hidraulika i radno opterecenje. Ne vracaj samo naziv/proizvodac/model.",
     batchMode
       ? "Vrati JSON u expectedJsonShape obliku s workEquipments[]. Za svaki prepoznati stroj vrati zaseban zapis i obavezno dodaj imageIndexes kao 1-based redne brojeve slika koje pripadaju tom stroju."
       : "Vrati JSON u expectedJsonShape obliku s workEquipments[0]. Popuni samo jednu trenutno otvorenu RO kolonu; ako je u slikama vise strojeva, odaberi najpouzdaniji za tu kolonu.",

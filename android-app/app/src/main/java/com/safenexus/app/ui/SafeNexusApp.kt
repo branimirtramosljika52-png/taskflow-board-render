@@ -13504,12 +13504,27 @@ private fun ManualWorkEquipmentInlineEditor(
                 serialNumber = result.serialNumber.ifBlank { equipment.serialNumber },
                 inventoryNumber = result.inventoryNumber.ifBlank { equipment.inventoryNumber },
                 technicalData = result.technicalData.ifBlank { equipment.technicalData },
+                purposeDescription = result.purposeDescription.ifBlank { equipment.purposeDescription },
+                workspacePosition = result.workspacePosition.ifBlank { equipment.workspacePosition },
+                workingSubstancesAndRawMaterials = result.workingSubstancesAndRawMaterials.ifBlank { equipment.workingSubstancesAndRawMaterials },
+                useAndMaintenance = result.useAndMaintenance.ifBlank { equipment.useAndMaintenance },
+                methodsProceduresAndNorms = result.methodsProceduresAndNorms.ifBlank { equipment.methodsProceduresAndNorms },
+                deficiencies = result.deficiencies.ifBlank { equipment.deficiencies },
+                measuresToEliminateDeficiencies = result.measuresToEliminateDeficiencies.ifBlank { equipment.measuresToEliminateDeficiencies },
+                finalGrade = result.finalGrade.ifBlank { equipment.finalGrade }.ifBlank { "1" },
+                mechanicalItems = mergeRoAssessmentItems(equipment.mechanicalItems, result.mechanicalItems),
+                electricalItems = mergeRoAssessmentItems(equipment.electricalItems, result.electricalItems),
+                hazardRegisterIris = mergeStringValues(equipment.hazardRegisterIris, result.hazardRegisterIris),
+                harmfulnessRegisterIris = mergeStringValues(equipment.harmfulnessRegisterIris, result.harmfulnessRegisterIris),
+                strainRegisterIris = mergeStringValues(equipment.strainRegisterIris, result.strainRegisterIris),
             ),
         )
         recognitionPreview = null
         recognitionMessage = listOf(
             result.message.ifBlank { "Prepoznati podaci su primijenjeni." },
             result.matchedSource.takeIf { it.isNotBlank() }?.let { "Baza: $it" }.orEmpty(),
+            (result.mechanicalItems.size + result.electricalItems.size).takeIf { it > 0 }?.let { "$it stručnih stavki" }.orEmpty(),
+            (result.hazardRegisterIris.size + result.harmfulnessRegisterIris.size + result.strainRegisterIris.size).takeIf { it > 0 }?.let { "$it rizika" }.orEmpty(),
             verificationAnswers.count { it.value.isNotBlank() }.takeIf { it > 0 }?.let { "$it potvrda uneseno" }.orEmpty(),
         ).filter { it.isNotBlank() }.joinToString(" ")
     }
@@ -13548,6 +13563,19 @@ private fun ManualWorkEquipmentInlineEditor(
                         "Serijski broj" to result.serialNumber,
                         "Inventarski broj" to result.inventoryNumber,
                         "Tehnički podaci" to result.technicalData,
+                        "Namjena" to result.purposeDescription,
+                        "Položaj" to result.workspacePosition,
+                        "Uporaba i održavanje" to result.useAndMaintenance,
+                        "Metode i norme" to result.methodsProceduresAndNorms,
+                        "Nedostaci" to result.deficiencies,
+                        "Mjere" to result.measuresToEliminateDeficiencies,
+                        "Strojarski dio" to result.mechanicalItems.size.takeIf { it > 0 }?.let { "$it stavki" }.orEmpty(),
+                        "Elektro dio" to result.electricalItems.size.takeIf { it > 0 }?.let { "$it stavki" }.orEmpty(),
+                        "Rizici" to listOf(
+                            result.hazardRegisterIris.size,
+                            result.harmfulnessRegisterIris.size,
+                            result.strainRegisterIris.size,
+                        ).sum().takeIf { it > 0 }?.let { "$it odabira" }.orEmpty(),
                         "Izvor / baza" to result.matchedSource,
                     ).filter { it.second.isNotBlank() }.forEach { (label, value) ->
                         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
@@ -13555,9 +13583,9 @@ private fun ManualWorkEquipmentInlineEditor(
                             Text(value, fontWeight = FontWeight.Bold)
                         }
                     }
-                    if (listOf(result.name, result.manufacturer, result.model, result.serialNumber, result.inventoryNumber, result.technicalData).all { it.isBlank() }) {
+                    if (!result.hasRecognizedWorkEquipmentData()) {
                         Text(
-                            "Nema sigurnih polja za upis. Dodaj jasniju sliku pločice ili stroja izdaleka.",
+                            "Nema sigurnih polja za upis. Dodaj jasniju sliku cijelog stroja, komandi, priključka i pločice.",
                             color = Color(0xFFB45309),
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -13567,7 +13595,7 @@ private fun ManualWorkEquipmentInlineEditor(
             confirmButton = {
                 Button(
                     onClick = { applyRecognition(result, verificationAnswers) },
-                    enabled = listOf(result.name, result.manufacturer, result.model, result.serialNumber, result.inventoryNumber, result.technicalData).any { it.isNotBlank() } && questionsAnswered,
+                    enabled = result.hasRecognizedWorkEquipmentData() && questionsAnswered,
                     shape = RoundedCornerShape(14.dp),
                 ) {
                     Text("Primijeni")
