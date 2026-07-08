@@ -452,6 +452,33 @@ class SafeNexusApi(
 
     fun currentAuthCookieHeader(): String = authCookieHeader
 
+    suspend fun documentationWeatherSuggestion(location: String): Result<DocumentationWeatherSuggestion> = withContext(Dispatchers.IO) {
+        runCatching {
+            val lookupCity = guessDocumentationWeatherCity(location)
+            if (lookupCity.isBlank()) {
+                throw IllegalStateException("Lokacija nije dovoljna za dohvat vremena.")
+            }
+            val encodedCity = URLEncoder.encode(lookupCity, "UTF-8")
+            val json = JSONObject(request("/api/weather?city=$encodedCity"))
+            val city = json.optJSONArray("cities")?.optJSONObject(0)
+                ?: throw IllegalStateException("Vrijeme za lokaciju nije pronađeno.")
+            val current = city.optJSONObject("current") ?: JSONObject()
+            val condition = current.optString("condition").trim()
+            val description = current.optString("description").trim()
+            DocumentationWeatherSuggestion(
+                city = listOf(city.optString("name").trim(), city.optString("country").trim())
+                    .filter { it.isNotBlank() }
+                    .joinToString(", "),
+                outsideTemperature = current.optFiniteDouble("temp")?.let { formatWeatherDecimal(it, " °C") }.orEmpty(),
+                relativeHumidity = current.optFiniteDouble("humidity")?.let { "${it.toInt()} %" }.orEmpty(),
+                airflowSpeed = current.optFiniteDouble("windSpeed")?.let { formatWeatherDecimal(it, " m/s") }.orEmpty(),
+                weather = description.ifBlank { localizedOpenWeatherCondition(condition) },
+                groundCondition = groundConditionFromOpenWeather(condition),
+                source = "OpenWeather",
+            )
+        }
+    }
+
     suspend fun login(email: String, password: String): Result<SafeNexusUser> = withContext(Dispatchers.IO) {
         runCatching {
             val payload = JSONObject()
@@ -2503,6 +2530,108 @@ private fun IsznrRoAttachmentFile.toJsonObject(): JSONObject =
         .put("role", role.trim().ifBlank { if (fileType.startsWith("application/pdf", ignoreCase = true)) "document" else "image" })
         .put("includeInReport", includeInReport)
         .put("note", note.trim())
+
+private val documentationWeatherPostalCityRegex = Regex("""\b\d{5}\s+([\p{L}][\p{L}\- ]{1,40})""")
+
+private val documentationWeatherKnownCities = listOf(
+    "Zagreb",
+    "Rijeka",
+    "Split",
+    "Osijek",
+    "Zadar",
+    "Pula",
+    "Slavonski Brod",
+    "Karlovac",
+    "Varaždin",
+    "Šibenik",
+    "Dubrovnik",
+    "Sisak",
+    "Vinkovci",
+    "Vukovar",
+    "Đakovo",
+    "Požega",
+    "Koprivnica",
+    "Bjelovar",
+    "Čakovec",
+    "Sesvete",
+    "Velika Gorica",
+    "Samobor",
+    "Zaprešić",
+    "Čavle",
+)
+
+private fun guessDocumentationWeatherCity(location: String): String {
+    val cleaned = location
+        .replace('\n', ' ')
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    if (cleaned.isBlank()) return ""
+
+    documentationWeatherPostalCityRegex.find(cleaned)?.groupValues?.getOrNull(1)
+        ?.trim(' ', ',', ';', '.', '-')
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return it }
+
+    val normalizedSearch = " ${cleaned.lowercase(Locale.getDefault())} "
+    documentationWeatherKnownCities.firstOrNull { city ->
+        Regex("(?i)(^|[^\\p{L}])${Regex.escape(city)}([^\\p{L}]|$)").containsMatchIn(cleaned)
+    }?.let { return it }
+
+    val parts = cleaned
+        .split(',', ';', '|', '·')
+        .map { part ->
+            part
+                .replace(Regex("(?i)\\b(pm|bp|benzinska postaja|petrol|ina|tifon|crodux)\\b"), " ")
+                .replace(Regex("\\b[A-Z]{1,3}\\b"), " ")
+                .replace(Regex("\\s+"), " ")
+                .trim(' ', '-', '.', ':')
+        }
+        .filter { it.length >= 3 }
+
+    parts.firstOrNull { part -> part.any { char -> char.isLetter() } }?.let { candidate ->
+        val words = candidate.split(Regex("\\s+")).filter { it.any { char -> char.isLetter() } }
+        return words.take(2).joinToString(" ").ifBlank { candidate }
+    }
+
+    return normalizedSearch.trim().ifBlank { cleaned }
+}
+
+private fun JSONObject.optFiniteDouble(key: String): Double? {
+    val parsed = when (val value = opt(key)) {
+        is Number -> value.toDouble()
+        is String -> value.trim().replace(',', '.').toDoubleOrNull()
+        else -> null
+    }
+    return parsed?.takeIf { !it.isNaN() && !it.isInfinite() }
+}
+
+private fun formatWeatherDecimal(value: Double, suffix: String): String {
+    val formatted = String.format(Locale.US, "%.1f", value)
+        .removeSuffix(".0")
+        .replace('.', ',')
+    return "$formatted$suffix"
+}
+
+private fun localizedOpenWeatherCondition(condition: String): String =
+    when (condition.lowercase(Locale.ROOT)) {
+        "clear" -> "Vedro"
+        "clouds" -> "Oblačno"
+        "rain" -> "Kiša"
+        "drizzle" -> "Slaba kiša"
+        "thunderstorm" -> "Grmljavina"
+        "snow" -> "Snijeg"
+        "mist", "fog", "haze" -> "Magla"
+        else -> ""
+    }
+
+private fun groundConditionFromOpenWeather(condition: String): String =
+    when (condition.lowercase(Locale.ROOT)) {
+        "rain", "drizzle", "thunderstorm" -> "Mokro"
+        "snow" -> "Snijeg"
+        "mist", "fog", "haze" -> "Vlažno"
+        "clear", "clouds" -> "Suho"
+        else -> ""
+    }
 
 private fun WorkOrderDocumentationOption.toJsonObject(): JSONObject =
     JSONObject()

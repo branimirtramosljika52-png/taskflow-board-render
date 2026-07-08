@@ -734,6 +734,16 @@ data class WorkOrderDocumentationDefaults(
     val templateAttachments: Map<String, List<WorkOrderDocumentationAiFile>> = emptyMap(),
 )
 
+data class DocumentationWeatherSuggestion(
+    val city: String = "",
+    val outsideTemperature: String = "",
+    val relativeHumidity: String = "",
+    val airflowSpeed: String = "",
+    val weather: String = "",
+    val groundCondition: String = "",
+    val source: String = "",
+)
+
 data class WorkOrderDocumentationOption(
     val id: String,
     val label: String,

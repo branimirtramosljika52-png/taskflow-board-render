@@ -236,6 +236,7 @@ import com.safenexus.app.data.ClientPortalRecordDraft
 import com.safenexus.app.data.ClientHomeSummary
 import com.safenexus.app.data.CoordinatePoint
 import com.safenexus.app.data.DashboardStats
+import com.safenexus.app.data.DocumentationWeatherSuggestion
 import com.safenexus.app.data.DownloadedDocument
 import com.safenexus.app.data.FieldInquiryDocumentDraft
 import com.safenexus.app.data.FieldInquiryDraft
@@ -2666,6 +2667,25 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun resolveDocumentationWeather(
+        location: String,
+        onSuccess: (DocumentationWeatherSuggestion) -> Unit,
+        onFailure: (String) -> Unit,
+    ) {
+        val normalizedLocation = location.trim()
+        if (normalizedLocation.isBlank()) {
+            onFailure("Lokacija nije upisana.")
+            return
+        }
+        viewModelScope.launch {
+            api.documentationWeatherSuggestion(normalizedLocation)
+                .onSuccess(onSuccess)
+                .onFailure { error ->
+                    onFailure(error.message ?: "Vrijeme trenutno nije dostupno.")
+                }
+        }
+    }
+
     fun uploadWorkOrderDocuments(
         context: Context,
         workOrder: WorkOrder,
@@ -3793,6 +3813,13 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     template = template,
                     voiceField = voiceField,
                     transcript = transcript,
+                    onSuccess = onSuccess,
+                    onFailure = onFailure,
+                )
+            },
+            onResolveWeather = { location, onSuccess, onFailure ->
+                viewModel.resolveDocumentationWeather(
+                    location = location,
                     onSuccess = onSuccess,
                     onFailure = onFailure,
                 )
@@ -29471,6 +29498,11 @@ private fun WorkOrderDocumentationWizardDialog(
         (SprVoiceAiResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
+    onResolveWeather: (
+        String,
+        (DocumentationWeatherSuggestion) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
     onRecognizeWorkEquipmentImages: (
         IsznrManualWorkEquipment,
         List<IsznrRoAttachmentFile>,
@@ -29960,6 +29992,60 @@ private fun WorkOrderDocumentationWizardDialog(
     }
     val environmentVisibility = remember(context.templates) {
         buildDocumentationEnvironmentVisibility(context.templates)
+    }
+    var weatherAutofillStatus by remember(workOrder.id, selectedObjectId) { mutableStateOf("") }
+    var weatherAutofillLoading by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
+    var weatherAutofillAttemptKey by remember(workOrder.id, selectedObjectId) { mutableStateOf("") }
+    LaunchedEffect(
+        basicsFlowSelected,
+        testingLocation,
+        environmentVisibility,
+        outsideTemperature,
+        relativeHumidity,
+        airflowSpeed,
+        weather,
+        groundCondition,
+    ) {
+        if (!basicsFlowSelected || !environmentVisibility.any || testingLocation.isBlank()) return@LaunchedEffect
+        val missing = buildList {
+            if (environmentVisibility.outsideTemperature && outsideTemperature.isBlank()) add("temperature")
+            if (environmentVisibility.relativeHumidity && relativeHumidity.isBlank()) add("humidity")
+            if (environmentVisibility.airflowSpeed && airflowSpeed.isBlank()) add("wind")
+            if (environmentVisibility.weather && weather.isBlank()) add("weather")
+            if (environmentVisibility.groundCondition && groundCondition.isBlank()) add("ground")
+        }
+        if (missing.isEmpty()) return@LaunchedEffect
+        val attemptKey = listOf(testingLocation.trim(), missing.joinToString(",")).joinToString("|")
+        if (weatherAutofillAttemptKey == attemptKey) return@LaunchedEffect
+        weatherAutofillAttemptKey = attemptKey
+        weatherAutofillLoading = true
+        weatherAutofillStatus = "Dohvaćam vremenske podatke prema lokaciji..."
+        onResolveWeather(
+            testingLocation,
+            { suggestion ->
+                if (environmentVisibility.outsideTemperature && outsideTemperature.isBlank() && suggestion.outsideTemperature.isNotBlank()) {
+                    outsideTemperature = suggestion.outsideTemperature
+                }
+                if (environmentVisibility.relativeHumidity && relativeHumidity.isBlank() && suggestion.relativeHumidity.isNotBlank()) {
+                    relativeHumidity = suggestion.relativeHumidity
+                }
+                if (environmentVisibility.airflowSpeed && airflowSpeed.isBlank() && suggestion.airflowSpeed.isNotBlank()) {
+                    airflowSpeed = suggestion.airflowSpeed
+                }
+                if (environmentVisibility.weather && weather.isBlank() && suggestion.weather.isNotBlank()) {
+                    weather = suggestion.weather
+                }
+                if (environmentVisibility.groundCondition && groundCondition.isBlank() && suggestion.groundCondition.isNotBlank()) {
+                    groundCondition = suggestion.groundCondition
+                }
+                weatherAutofillLoading = false
+                weatherAutofillStatus = "Automatski popunjeno: ${suggestion.city.ifBlank { suggestion.source.ifBlank { "vrijeme" } }}."
+            },
+            { message ->
+                weatherAutofillLoading = false
+                weatherAutofillStatus = "Vrijeme nije automatski popunjeno: $message"
+            },
+        )
     }
     var additionalRecordTarget by remember(workOrder.id) {
         mutableStateOf<DocumentationServiceFlowItem?>(null)
@@ -31164,6 +31250,8 @@ private fun WorkOrderDocumentationWizardDialog(
                         onGroundConditionChange = { groundCondition = it },
                         onGroundResistanceChange = { groundResistance = it },
                         environmentVisibility = environmentVisibility,
+                        weatherAutofillStatus = weatherAutofillStatus,
+                        weatherAutofillLoading = weatherAutofillLoading,
                         enabled = !formLoading,
                     )
                     DocumentationExecutorsEditor(
@@ -43041,14 +43129,41 @@ private fun DocumentationCoreBasicsContent(
     onGroundConditionChange: (String) -> Unit,
     onGroundResistanceChange: (String) -> Unit,
     environmentVisibility: DocumentationEnvironmentVisibility,
+    weatherAutofillStatus: String = "",
+    weatherAutofillLoading: Boolean = false,
     enabled: Boolean,
 ) {
     if (showDocumentNumber) {
         DocumentationNumberPreview(documentNumber = documentNumber, serviceName = serviceName)
     }
-    DocumentationMobileDatePickerField("Datum ispitivanja", inspectionDate, onInspectionDateChange, enabled)
-    DocumentationMobileDatePickerField("Datum izdavanja", issuedDate, onIssuedDateChange, enabled)
-    DocumentationMobileTextField("Mjesto ispitivanja", testingLocation, onTestingLocationChange, enabled)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        DocumentationMobileDatePickerField(
+            "Datum ispitivanja",
+            inspectionDate,
+            onInspectionDateChange,
+            enabled,
+            modifier = Modifier.weight(1f),
+        )
+        DocumentationMobileDatePickerField(
+            "Datum izdavanja",
+            issuedDate,
+            onIssuedDateChange,
+            enabled,
+            modifier = Modifier.weight(1f),
+        )
+    }
+    DocumentationMobileTextField(
+        "Mjesto ispitivanja",
+        testingLocation,
+        onTestingLocationChange,
+        enabled,
+        singleLine = false,
+        minLines = 2,
+        maxLines = 2,
+    )
 
     Text("Mjerna oprema", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
     DocumentationMobileSelectField(
@@ -43061,6 +43176,40 @@ private fun DocumentationCoreBasicsContent(
     )
     if (environmentVisibility.any) {
         Text("Vanjski utjecaji", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+        if (weatherAutofillStatus.isNotBlank() || weatherAutofillLoading) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (weatherAutofillLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    } else {
+                        Icon(
+                            Icons.Rounded.Refresh,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    Text(
+                        weatherAutofillStatus.ifBlank { "Automatsko popunjavanje vremena..." },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f),
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
         if (environmentVisibility.outsideTemperature) {
             DocumentationMobileTextField("Vanjska temperatura", outsideTemperature, onOutsideTemperatureChange, enabled)
         }
@@ -43097,18 +43246,25 @@ private fun TemplateBasicControls(controls: DocumentationTemplateStandardControl
         documentNumber = controls.documentNumber,
         serviceName = controls.serviceName,
     )
-    DocumentationMobileDatePickerField(
-        "Datum ispitivanja",
-        controls.inspectionDate,
-        controls.onInspectionDateChange,
-        controls.enabled,
-    )
-    DocumentationMobileDatePickerField(
-        "Datum izdavanja",
-        controls.issuedDate,
-        controls.onIssuedDateChange,
-        controls.enabled,
-    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        DocumentationMobileDatePickerField(
+            "Datum ispitivanja",
+            controls.inspectionDate,
+            controls.onInspectionDateChange,
+            controls.enabled,
+            modifier = Modifier.weight(1f),
+        )
+        DocumentationMobileDatePickerField(
+            "Datum izdavanja",
+            controls.issuedDate,
+            controls.onIssuedDateChange,
+            controls.enabled,
+            modifier = Modifier.weight(1f),
+        )
+    }
     DocumentationMobileSelectField(
         label = "Vrsta ispitivanja",
         value = controls.inspectionType,
@@ -43124,6 +43280,9 @@ private fun TemplateBasicControls(controls: DocumentationTemplateStandardControl
         controls.testingLocation,
         controls.onTestingLocationChange,
         controls.enabled,
+        singleLine = false,
+        minLines = 2,
+        maxLines = 2,
     )
 }
 
