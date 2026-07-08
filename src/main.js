@@ -133562,7 +133562,13 @@ function getWorkEquipmentAiRegisterPromptGroups(entry = {}) {
       .slice(0, 120)
       .map((item) => {
         const key = getWorkEquipmentAiRegisterKey(item, group);
-        const instruction = normalizeWorkEquipmentAiInstructionConfig(registryInstructions[key] || {});
+        const savedInstruction = normalizeWorkEquipmentAiInstructionConfig(registryInstructions[key] || {});
+        const instruction = hasWorkEquipmentAiInstructionConfig(savedInstruction)
+          ? savedInstruction
+          : buildWorkEquipmentAiRegisterDefaultInstruction(
+            getWorkEquipmentAiRegisterKindFromPath(group.path),
+            item,
+          );
         return {
           key,
           id: String(item.id || item["@id"] || item.iri || "").trim(),
@@ -164976,6 +164982,99 @@ const WORK_EQUIPMENT_AI_ELECTRICAL_HINT_RULES = Object.freeze([
   },
 ]);
 
+const WORK_EQUIPMENT_AI_HAZARD_HINT_RULES = Object.freeze([
+  {
+    match: /mehanic|pokretn|zahvat|gnjec|rez|posjek|ubod|udar|izbac|pad predmet/,
+    instruction: "Predlozi ovu opasnost kada oprema ima pokretne, rotirajuce, rezne, stezne, pogonske ili nosive dijelove koji mogu zahvatiti, prignjeciti, porezati, udariti ili izbaciti predmet.",
+    mustInclude: "izvor mehanicke opasnosti, dio opreme i zasto je opasnost primjenjiva",
+    avoid: "Ne dodavati za opremu bez pokretnih/nosivih dijelova ili bez dokumentirane mehanicke opasnosti.",
+    examples: "Pokretni pogonski dijelovi stvaraju mehanicku opasnost zahvata. / Rad s obratkom ukljucuje opasnost od izbacenih cestica.",
+  },
+  {
+    match: /elektric|struj|napon|dodir|kratki spoj|statick/,
+    instruction: "Predlozi ovu opasnost kada je oprema elektricna, ima prikljucak na mrezu, bateriju, upravljacki ormar, kabel, utikac, punjac ili dokumentirane elektricne instalacije.",
+    mustInclude: "napajanje ili elektricni dio opreme zbog kojeg postoji opasnost",
+    avoid: "Ne dodavati za neelektricnu opremu bez elektrickih dijelova.",
+    examples: "Elektricni prikljucak opreme ukljucuje opasnost od elektricne struje. / Baterijski pogon ukljucuje elektricnu opasnost pri punjenju.",
+  },
+  {
+    match: /pozar|eksploz|zapalj|plin|unp|lpg|goriv|para|iskr/,
+    instruction: "Predlozi ovu opasnost za UNP/LPG, gorivo, zapaljive tekucine, zapaljive plinove, pare, izvore paljenja, vruce dijelove ili opremu u Ex prostoru.",
+    mustInclude: "radna tvar ili izvor paljenja i veza s pozarom/eksplozijom",
+    avoid: "Ne dodavati ako nema goriva, plina, zapaljive tvari, Ex prostora ili izvora paljenja.",
+    examples: "Radna tvar UNP ukljucuje opasnost od pozara i eksplozije. / Spremnik goriva ukljucuje opasnost od zapaljivih para.",
+  },
+  {
+    match: /toplin|vruc|hlad|opeklin|temperatur/,
+    instruction: "Predlozi ovu opasnost kada oprema ima vruce ili hladne povrsine, paru, grijace, motorne dijelove, rashladne elemente ili radne tvari koje mogu uzrokovati opeklinu ili pothladivanje.",
+    mustInclude: "izvor temperature i moguci kontakt radnika",
+    avoid: "Ne dodavati bez vidljivog ili dokumentiranog toplinskog/hladnog izvora.",
+    examples: "Vruce povrsine motora stvaraju opasnost od opeklina. / Rashladni medij stvara opasnost pri kontaktu.",
+  },
+  {
+    match: /tlak|tlac|hidraulic|pneumatic|kompres|posuda/,
+    instruction: "Predlozi ovu opasnost za opremu pod tlakom, pneumatske/hidraulicke sustave, kompresore, spremnike, crijeva, ventile i sigurnosne elemente.",
+    mustInclude: "tlačni dio opreme, medij i moguca posljedica",
+    avoid: "Ne dodavati ako nema tlačnog medija ili dokumentiranog tlačnog sustava.",
+    examples: "Spremnik pod tlakom ukljucuje opasnost od nekontroliranog ispustanja medija. / Hidraulicki sklop ukljucuje opasnost od curenja pod tlakom.",
+  },
+  {
+    match: /pad|kliz|spotican|visin/,
+    instruction: "Predlozi ovu opasnost kada oprema zahtijeva penjanje, pristup s platforme, rad na visini, hodne povrsine, stepenice ili postoji rizik klizanja i spoticanja oko opreme.",
+    mustInclude: "mjesto ili radnja zbog koje postoji pad, klizanje ili spoticanje",
+    avoid: "Ne dodavati ako pristup i kretanje oko opreme nisu vidljivi ni opisani.",
+    examples: "Pristup opremi ukljucuje opasnost od spoticanja na cijevi. / Rad na povisenom mjestu ukljucuje opasnost od pada.",
+  },
+]);
+
+const WORK_EQUIPMENT_AI_HARMFULNESS_HINT_RULES = Object.freeze([
+  {
+    match: /kemij|plin|para|pras|aerosol|dim|goriv|ulje|unp|lpg|otapal|ispu/,
+    instruction: "Predlozi ovu stetnost kada oprema koristi ili stvara kemijske tvari, UNP/LPG, gorivo, ulje, ispusne plinove, pare, prasinu, aerosol ili drugi medij koji radnik moze udahnuti ili dodirnuti.",
+    mustInclude: "naziv ili vrsta stetne tvari i kako nastaje iz rada opreme",
+    avoid: "Ne dodavati ako nema radne tvari, emisije, prasine, pare ili dokumentiranog kemijskog izvora.",
+    examples: "Radna tvar UNP predstavlja kemijsku stetnost pri istjecanju. / Ispusni plinovi motora predstavljaju kemijsku stetnost.",
+  },
+  {
+    match: /buka|vibracij|toplin|hlad|temperatur|zracen|osvjet|mikroklim/,
+    instruction: "Predlozi ovu stetnost kada oprema stvara buku, vibracije, toplinu, hladnocu, neodgovarajucu mikroklimu, zracenje ili zahtijeva posebne uvjete osvjetljenja.",
+    mustInclude: "fizikalni izvor stetnosti i kada se pojavljuje",
+    avoid: "Ne dodavati za mirnu uredsku opremu bez motora, vibracija, temperature ili drugog fizikalnog izvora.",
+    examples: "Rad motora moze stvarati buku i vibracije. / Grijani dio opreme moze stvarati toplinsko opterecenje.",
+  },
+  {
+    match: /biolos|mikroorgan|bakter|virus|otpad|infektiv/,
+    instruction: "Predlozi ovu stetnost samo kada vrsta rada ili dokument jasno ukljucuje bioloski materijal, otpad, kontaminirane povrsine ili infektivni rizik.",
+    mustInclude: "bioloski izvor i nacin izlaganja",
+    avoid: "Ne dodavati bioloske stetnosti ako oprema nema veze s bioloskim materijalom.",
+    examples: "Oprema za obradu otpada moze ukljuciti biolosku stetnost. / Kontaminirani materijal zahtijeva biolosku zastitu.",
+  },
+]);
+
+const WORK_EQUIPMENT_AI_STRAIN_HINT_RULES = Object.freeze([
+  {
+    match: /statodinam|dizanj|nos|gur|vuc|prisil|polozaj|stajan|sjed|rucn|teret/,
+    instruction: "Predlozi ovaj napor kada rad s opremom ukljucuje dizanje, nosenje, guranje, vucenje, dugotrajno stajanje/sjedenje, ponavljajuce pokrete ili prisilan polozaj tijela.",
+    mustInclude: "radna radnja i dio tijela ili napor koji se opterecuje",
+    avoid: "Ne dodavati ako nacin rada s opremom nije vidljiv ni opisan.",
+    examples: "Rucno premjestanje dijelova opreme ukljucuje statodinamicki napor. / Upravljanje opremom zahtijeva dugotrajno stajanje.",
+  },
+  {
+    match: /vid|zaslon|monitor|precizan|kontrol|ocit|rasvjet/,
+    instruction: "Predlozi ovaj napor kada radnik mora citati zaslone, ocitanja, manometre, sitne oznake ili obavljati precizan vizualni nadzor opreme.",
+    mustInclude: "sto se mora vizualno pratiti ili ocitavati",
+    avoid: "Ne dodavati ako nema zaslona, ocitanja, preciznog rada ili vizualnog nadzora.",
+    examples: "Radnik prati kontrolni zaslon i ocitanja instrumenta. / Ocitanje manometra ukljucuje vidni napor.",
+  },
+  {
+    match: /psihofiz|stres|monoton|odgovornost|noc|smjen|tempo|paznj/,
+    instruction: "Predlozi ovaj napor kada rad ukljucuje povisenu paznju, odgovornost, rad u smjenama, nocni rad, monotoniju, brz tempo ili nadzor opasnog procesa.",
+    mustInclude: "organizacijski ili psihofizioloski uvjet rada",
+    avoid: "Ne dodavati ako nema opisa organizacije rada ili zahtjeva povisene paznje.",
+    examples: "Nadzor opreme pod tlakom zahtijeva povisenu paznju. / Smjenski rad moze ukljuciti psihofizioloski napor.",
+  },
+]);
+
 function normalizeWorkEquipmentAiHintText(value = "") {
   return String(value || "")
     .normalize("NFD")
@@ -164984,24 +165083,86 @@ function normalizeWorkEquipmentAiHintText(value = "") {
     .toLocaleLowerCase("hr");
 }
 
+function getWorkEquipmentAiRegisterKindFromPath(path = "") {
+  const normalizedPath = normalizeWorkEquipmentAiHintText(path);
+  if (/ro_electrical|electrical/.test(normalizedPath)) {
+    return "electrical";
+  }
+  if (/hazard/.test(normalizedPath)) {
+    return "hazard";
+  }
+  if (/harmfulness/.test(normalizedPath)) {
+    return "harmfulness";
+  }
+  if (/strain/.test(normalizedPath)) {
+    return "strain";
+  }
+  return "mechanical";
+}
+
+function isWorkEquipmentAiRiskRegisterKind(kind = "") {
+  return ["hazard", "harmfulness", "strain"].includes(String(kind || "").trim());
+}
+
 function getWorkEquipmentAiRegisterDefaultRule(kind = "mechanical", label = "") {
   const text = normalizeWorkEquipmentAiHintText(label);
-  const rules = kind === "electrical" ? WORK_EQUIPMENT_AI_ELECTRICAL_HINT_RULES : WORK_EQUIPMENT_AI_MECHANICAL_HINT_RULES;
-  return rules.find((rule) => rule.match.test(text)) || {
-    instruction: kind === "electrical"
-      ? "Predloži ovu elektro stavku samo kada fotografija, pločica, mjerenje ili dokument jasno pokazuju da je relevantna za pregledanu radnu opremu."
-      : "Predloži ovu strojarsku stavku samo kada fotografija, pločica, dokument ili vidljivo stanje opreme jasno pokazuju da je relevantna.",
-    mustInclude: "konkretan nalaz, stanje, zaključak zadovoljava/ne zadovoljava",
-    avoid: "Ne popunjavati automatski bez jasnog izvora; ne dodavati samo zato što stavka postoji u šifrarniku.",
-    examples: "Upravljanje je dostupno rukovatelju. / Zastitni pokrov je postavljen na radnom elementu.",
+  const normalizedKind = String(kind || "mechanical").trim();
+  const rulesByKind = {
+    mechanical: WORK_EQUIPMENT_AI_MECHANICAL_HINT_RULES,
+    electrical: WORK_EQUIPMENT_AI_ELECTRICAL_HINT_RULES,
+    hazard: WORK_EQUIPMENT_AI_HAZARD_HINT_RULES,
+    harmfulness: WORK_EQUIPMENT_AI_HARMFULNESS_HINT_RULES,
+    strain: WORK_EQUIPMENT_AI_STRAIN_HINT_RULES,
   };
+  const fallbackByKind = {
+    electrical: {
+      instruction: "Predloži ovu elektro stavku samo kada fotografija, pločica, mjerenje ili dokument jasno pokazuju da je relevantna za pregledanu radnu opremu.",
+      mustInclude: "konkretan elektro nalaz, stanje, zaključak zadovoljava/ne zadovoljava",
+      avoid: "Ne popunjavati automatski bez jasnog izvora; ne dodavati samo zato što stavka postoji u šifrarniku.",
+      examples: "Elektricni prikljucak je izveden ispravno. / Kabel ima vidljivo ostecenje izolacije.",
+    },
+    hazard: {
+      instruction: "Predlozi ovu opasnost samo kada proizlazi iz vrste radne opreme, radne tvari, nacina rada, fotografije, starog zapisnika ili dokumenta.",
+      mustInclude: "izvor opasnosti, veza s opremom/radnom tvari i razlog odabira",
+      avoid: "Ne dodavati opasnost bez vidljivog ili dokumentiranog izvora.",
+      examples: "Radna tvar UNP ukljucuje opasnost od pozara i eksplozije. / Elektricni prikljucak ukljucuje opasnost od elektricne struje.",
+    },
+    harmfulness: {
+      instruction: "Predlozi ovu stetnost samo kada oprema ili radna tvar stvarno moze stvarati kemijsku, fizikalnu ili biolosku stetnost.",
+      mustInclude: "vrsta stetnosti, izvor i nacin izlaganja radnika",
+      avoid: "Ne dodavati stetnost bez radne tvari, emisije, buke, vibracija, temperature, zracenja ili drugog jasnog izvora.",
+      examples: "Ispusni plinovi motora predstavljaju kemijsku stetnost. / Rad motora moze stvarati buku i vibracije.",
+    },
+    strain: {
+      instruction: "Predlozi ovaj napor samo kada nacin rada s opremom ukljucuje fizicki, vidni ili psihofizioloski napor.",
+      mustInclude: "radna radnja, izvor napora i okolnost u kojoj nastaje",
+      avoid: "Ne dodavati napor ako nacin rada s opremom nije vidljiv ili opisan.",
+      examples: "Rucno premjestanje dijelova ukljucuje statodinamicki napor. / Ocitanje zaslona ukljucuje vidni napor.",
+    },
+    mechanical: {
+      instruction: "Predloži ovu strojarsku stavku samo kada fotografija, pločica, dokument ili vidljivo stanje opreme jasno pokazuju da je relevantna.",
+      mustInclude: "konkretan nalaz, stanje, zaključak zadovoljava/ne zadovoljava",
+      avoid: "Ne popunjavati automatski bez jasnog izvora; ne dodavati samo zato što stavka postoji u šifrarniku.",
+      examples: "Upravljanje je dostupno rukovatelju. / Zastitni pokrov je postavljen na radnom elementu.",
+    },
+  };
+  const rules = rulesByKind[normalizedKind] || WORK_EQUIPMENT_AI_MECHANICAL_HINT_RULES;
+  return rules.find((rule) => rule.match.test(text)) || fallbackByKind[normalizedKind] || fallbackByKind.mechanical;
 }
 
 function buildWorkEquipmentAiRegisterDefaultInstruction(kind = "mechanical", item = {}) {
+  const normalizedKind = String(kind || "mechanical").trim();
   const label = String(item.label || item.name || item.description || "").trim();
-  const rule = getWorkEquipmentAiRegisterDefaultRule(kind, label);
+  const rule = getWorkEquipmentAiRegisterDefaultRule(normalizedKind, label);
+  const riskRegister = isWorkEquipmentAiRiskRegisterKind(normalizedKind);
   return normalizeWorkEquipmentAiInstructionConfig({
-    instruction: [
+    instruction: riskRegister ? [
+      `Stavka: ${label}.`,
+      rule.instruction,
+      "Ovo je IS ZNR rizicna stavka za RO zapisnik; NexAI smije vratiti njezin IRI samo ako postoji jasna veza s opremom, radnom tvari, nacinom rada, fotografijom, starim zapisnikom ili dokumentom.",
+      "Ne izmisljaj opasnosti, stetnosti ni napore. Ako podatak nije dovoljno siguran, ne vracaj IRI nego dodaj pitanje u verificationQuestions.",
+      "Za UNP/LPG, gorivo, plin i zapaljive pare obavezno razmotri pozar/eksploziju i kemijske stetnosti; za elektricnu opremu razmotri elektricnu struju; za rucno rukovanje razmotri statodinamicke napore.",
+    ].filter(Boolean).join(" ") : [
       `Stavka: ${label}.`,
       rule.instruction,
       "NexAI ju smije predložiti samo ako postoji veza s vrstom opreme, fotografijom, natpisnom pločicom, starim zapisnikom ili dokumentom.",
@@ -165010,31 +165171,38 @@ function buildWorkEquipmentAiRegisterDefaultInstruction(kind = "mechanical", ite
       "Ako postoji stvarno mjerenje, upiši ga u measuredValue, ali customContent svejedno mora objasniti nalaz.",
       "Ako je stavka relevantna i nema vidljivih nedostataka, meetsConditions je true; ako je vidljiv nedostatak, meetsConditions je false i napiši razlog.",
     ].filter(Boolean).join(" "),
-    mustInclude: [rule.mustInclude, "konkretna napomena/vrijednost za ovu stavku"].filter(Boolean).join("; "),
+    mustInclude: [rule.mustInclude, riskRegister ? "jasan dokaz zasto se IRI smije odabrati" : "konkretna napomena/vrijednost za ovu stavku"].filter(Boolean).join("; "),
     avoid: rule.avoid,
     style: "professional",
-    confidenceRequired: kind === "electrical" ? "high" : "medium",
-    textLength: `customContent: 1 konkretna rečenica do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova; measuredValue samo za stvarno mjerenje.`,
-    fallbackValue: "Ako nema dovoljno dokaza, ne predlaži ovu stavku kao nalaz; dodaj kratko pitanje u verificationQuestions.",
+    confidenceRequired: normalizedKind === "electrical" ? "high" : "medium",
+    textLength: riskRegister
+      ? "Vrati samo IRI odabir za ovu rizicnu stavku; bez opisnog teksta osim kratkog pitanja ako nisi siguran."
+      : `customContent: 1 konkretna rečenica do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova; measuredValue samo za stvarno mjerenje.`,
+    fallbackValue: riskRegister
+      ? "Ako nema dovoljno dokaza, ne odabiri ovu rizicnu stavku; dodaj kratko pitanje u verificationQuestions."
+      : "Ako nema dovoljno dokaza, ne predlaži ovu stavku kao nalaz; dodaj kratko pitanje u verificationQuestions.",
     examples: rule.examples,
   });
 }
 
 function createDefaultWorkEquipmentAiRegistryInstructions() {
   const defaults = {};
-  WORK_ORDER_DOCUMENT_RO_MECHANICAL_ITEMS.forEach((item) => {
-    const id = String(item.iri || "").split("/").filter(Boolean).pop();
-    const key = id ? `ro_mechanical_engineering_registers:${id}` : "";
+  const addDefault = (path = "", kind = "mechanical", item = {}) => {
+    const group = { path, label: path };
+    const key = getWorkEquipmentAiRegisterKey(item, group);
     if (key) {
-      defaults[key] = buildWorkEquipmentAiRegisterDefaultInstruction("mechanical", item);
+      defaults[key] = buildWorkEquipmentAiRegisterDefaultInstruction(kind, item);
     }
+  };
+  WORK_ORDER_DOCUMENT_RO_MECHANICAL_ITEMS.forEach((item) => {
+    addDefault("ro_mechanical_engineering_registers", "mechanical", item);
   });
   WORK_ORDER_DOCUMENT_RO_ELECTRICAL_ITEMS.forEach((item) => {
-    const id = String(item.iri || "").split("/").filter(Boolean).pop();
-    const key = id ? `ro_electrical_registers:${id}` : "";
-    if (key) {
-      defaults[key] = buildWorkEquipmentAiRegisterDefaultInstruction("electrical", item);
-    }
+    addDefault("ro_electrical_registers", "electrical", item);
+  });
+  WORK_ORDER_DOCUMENT_RO_RISK_ITEMS.forEach((item) => {
+    const path = getWorkEquipmentAiStaticRegisterPath(item);
+    addDefault(path, getWorkEquipmentAiRegisterKindFromPath(path), item);
   });
   return defaults;
 }
@@ -165445,7 +165613,6 @@ function normalizeWorkEquipmentAiSettings(value = {}) {
     ? (value.find((entry) => String(entry?.organizationId ?? "") === String(state.activeOrganizationId ?? "")) ?? value[0] ?? {})
     : (value && typeof value === "object" ? value : {});
   const autoFillMode = String(source.autoFillMode || "").trim();
-  const defaultRegistryInstructions = createDefaultWorkEquipmentAiRegistryInstructions();
   return {
     organizationId: String(source.organizationId ?? state.activeOrganizationId ?? "").trim(),
     generalInstruction: String(source.generalInstruction || "").trim().slice(0, 8000),
@@ -165454,10 +165621,7 @@ function normalizeWorkEquipmentAiSettings(value = {}) {
     reviewInstruction: String(source.reviewInstruction || "").trim().slice(0, 4000),
     autoFillMode: ["suggest", "fill_empty", "fill_all"].includes(autoFillMode) ? autoFillMode : "fill_empty",
     fieldInstructions: normalizeWorkEquipmentAiInstructionMap(source.fieldInstructions),
-    registryInstructions: normalizeWorkEquipmentAiInstructionMap({
-      ...defaultRegistryInstructions,
-      ...(source.registryInstructions || {}),
-    }),
+    registryInstructions: normalizeWorkEquipmentAiInstructionMap(source.registryInstructions),
     registers: normalizeWorkEquipmentAiRegisterGroupsCache(source.registers || source.registryGroups || source.registerGroups),
     profiles: mergeDefaultWorkEquipmentAiProfiles(source.profiles),
   };
@@ -166903,13 +167067,41 @@ function getSettingsWorkEquipmentAiRegisterDefinition(key = "") {
   return null;
 }
 
+function getWorkEquipmentAiDefaultInstructionForRegisterKey(key = "") {
+  const normalizedKey = String(key || "").trim();
+  if (!normalizedKey) {
+    return normalizeWorkEquipmentAiInstructionConfig();
+  }
+  const definition = getSettingsWorkEquipmentAiRegisterDefinition(normalizedKey);
+  if (definition?.item && definition?.group) {
+    return buildWorkEquipmentAiRegisterDefaultInstruction(
+      getWorkEquipmentAiRegisterKindFromPath(definition.group.path),
+      {
+        ...definition.item,
+        label: definition.label || definition.item.label,
+        name: definition.label || definition.item.name,
+      },
+    );
+  }
+  const defaults = createDefaultWorkEquipmentAiRegistryInstructions();
+  return normalizeWorkEquipmentAiInstructionConfig(defaults[normalizedKey] || {});
+}
+
+function areWorkEquipmentAiInstructionConfigsEqual(first = {}, second = {}) {
+  const normalizedFirst = normalizeWorkEquipmentAiInstructionConfig(first);
+  const normalizedSecond = normalizeWorkEquipmentAiInstructionConfig(second);
+  return Object.keys(normalizedFirst).every((key) => normalizedFirst[key] === normalizedSecond[key]);
+}
+
 function getSettingsWorkEquipmentAiDraftConfig(kind = "field", key = "") {
   const normalizedKey = String(key || "").trim();
-  return normalizeWorkEquipmentAiInstructionConfig(
-    kind === "register"
-      ? settingsWorkEquipmentAiRegisterDrafts[normalizedKey]
-      : settingsWorkEquipmentAiFieldDrafts[normalizedKey],
-  );
+  if (kind === "register") {
+    const customConfig = normalizeWorkEquipmentAiInstructionConfig(settingsWorkEquipmentAiRegisterDrafts[normalizedKey]);
+    return hasWorkEquipmentAiInstructionConfig(customConfig)
+      ? customConfig
+      : getWorkEquipmentAiDefaultInstructionForRegisterKey(normalizedKey);
+  }
+  return normalizeWorkEquipmentAiInstructionConfig(settingsWorkEquipmentAiFieldDrafts[normalizedKey]);
 }
 
 function setSettingsWorkEquipmentAiInstructionDraft(kind = "field", key = "", config = {}) {
@@ -166919,6 +167111,13 @@ function setSettingsWorkEquipmentAiInstructionDraft(kind = "field", key = "", co
   }
   const normalizedConfig = normalizeWorkEquipmentAiInstructionConfig(config);
   const draftMap = kind === "register" ? settingsWorkEquipmentAiRegisterDrafts : settingsWorkEquipmentAiFieldDrafts;
+  if (kind === "register") {
+    const defaultConfig = getWorkEquipmentAiDefaultInstructionForRegisterKey(normalizedKey);
+    if (hasWorkEquipmentAiInstructionConfig(defaultConfig) && areWorkEquipmentAiInstructionConfigsEqual(normalizedConfig, defaultConfig)) {
+      delete draftMap[normalizedKey];
+      return;
+    }
+  }
   if (hasWorkEquipmentAiInstructionConfig(normalizedConfig)) {
     draftMap[normalizedKey] = normalizedConfig;
   } else {
@@ -167646,7 +167845,11 @@ function refreshSettingsWorkEquipmentAiCardStatuses() {
     if (!kind || !key) {
       return;
     }
-    const config = getSettingsWorkEquipmentAiDraftConfig(kind, key);
+    const config = normalizeWorkEquipmentAiInstructionConfig(
+      kind === "register"
+        ? settingsWorkEquipmentAiRegisterDrafts[key]
+        : settingsWorkEquipmentAiFieldDrafts[key],
+    );
     const configured = hasWorkEquipmentAiInstructionConfig(config);
     card.classList.toggle("is-configured", configured);
     const status = card.querySelector(".settings-work-equipment-ai-card-status");
