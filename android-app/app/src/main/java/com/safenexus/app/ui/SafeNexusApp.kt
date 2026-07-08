@@ -38453,6 +38453,13 @@ private fun MeasurementTableEditor(
         redoStack = emptyList()
         onSheetChange(nextSheet)
     }
+    fun applyLiveCellValue(rowId: String, columnId: String, value: String) {
+        if (rowId.isBlank() || columnId.isBlank()) return
+        val nextSheet = updateMeasurementSheetCell(sheet, rowId, columnId, value)
+        if (nextSheet != sheet) {
+            onSheetChange(nextSheet)
+        }
+    }
     fun undoSheetChange() {
         val previous = undoStack.lastOrNull() ?: return
         undoStack = undoStack.dropLast(1)
@@ -38593,7 +38600,9 @@ private fun MeasurementTableEditor(
     val rowHeaderWidth = measurementZoomedDp(if (tableOnly) 46.dp else if (expanded) 54.dp else 46.dp, safeZoomScale)
     val rowHeight = measurementZoomedDp(if (tableOnly) 42.dp else if (expanded) 52.dp else 44.dp, safeZoomScale)
     val columnHeaderHeight = measurementZoomedDp(if (tableOnly) 34.dp else if (expanded) 40.dp else 34.dp, safeZoomScale)
-    val showColumnLabelRow = remember(sheet.columns) { sheet.hasMeaningfulMeasurementColumnLabels() }
+    val showColumnLabelRow = remember(sheet.columns, sheet.rows, sheet.headerRows) {
+        sheet.hasMeaningfulMeasurementColumnLabels() && !sheet.hasEmbeddedMeasurementHeaderRows()
+    }
     LaunchedEffect(selectedRow?.id.orEmpty(), selectedColumn?.id.orEmpty()) {
         val nextRowId = selectedRow?.id.orEmpty()
         val nextColumnId = selectedColumn?.id.orEmpty()
@@ -38845,6 +38854,11 @@ private fun MeasurementTableEditor(
                                 onValueChange = { value ->
                                     if (selectedEditable) {
                                         editingValue = value
+                                        val row = selectedRow
+                                        val column = selectedColumn
+                                        if (row != null && column != null) {
+                                            applyLiveCellValue(row.id, column.id, value)
+                                        }
                                     }
                                 },
                                 modifier = Modifier.weight(1f),
@@ -39171,6 +39185,7 @@ private fun MeasurementTableEditor(
                                                 editingRowId = row.id
                                                 editingColumnId = column.id
                                                 editingValue = value
+                                                applyLiveCellValue(row.id, column.id, value)
                                             }
                                         },
                                         rowHeight = rowHeight,
@@ -39444,6 +39459,28 @@ private fun WorkOrderMeasurementSheet.hasMeaningfulMeasurementColumnLabels(): Bo
             !label.equals(column.id, ignoreCase = true) &&
             !label.equals("Kolona ${index + 1}", ignoreCase = true)
     }
+
+private fun normalizeMeasurementHeaderText(value: String): String =
+    value.trim()
+        .lowercase(Locale.getDefault())
+        .replace(Regex("[^\\p{L}\\p{N}]+"), "")
+
+private fun WorkOrderMeasurementSheet.hasEmbeddedMeasurementHeaderRows(): Boolean {
+    if (headerRows.any { headerRowId -> rows.any { row -> row.id == headerRowId } }) {
+        return true
+    }
+    val firstRow = rows.firstOrNull() ?: return false
+    val comparableColumns = columns
+        .filter { column -> column.label.trim().isNotBlank() }
+        .take(8)
+    if (comparableColumns.size < 2) return false
+    val matchCount = comparableColumns.count { column ->
+        val headerLabel = normalizeMeasurementHeaderText(column.label)
+        val rowValue = normalizeMeasurementHeaderText(firstRow.cells[column.id].orEmpty())
+        headerLabel.isNotBlank() && rowValue == headerLabel
+    }
+    return matchCount >= 2 && matchCount * 2 >= comparableColumns.size
+}
 
 @Composable
 private fun MeasurementHeaderCell(
