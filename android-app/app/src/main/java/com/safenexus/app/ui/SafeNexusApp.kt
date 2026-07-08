@@ -37566,28 +37566,6 @@ private fun DocumentationMeasurementFullscreenDialog(
                         .fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(1.dp),
-                    ) {
-                        Text(
-                            "Mjerenja",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Black,
-                            maxLines = 1,
-                        )
-                        Text(
-                            listOf("RN ${workOrder.displayNumber}", selectedLabel, workOrder.companyName)
-                                .filter { it.isNotBlank() }
-                                .joinToString(" · "),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
                     DocumentationMeasurementPreviewContent(
                         measurementTemplates = measurementTemplates,
                         measurementSheets = measurementSheets,
@@ -37696,32 +37674,9 @@ private fun DocumentationMeasurementPreviewContent(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .fillMaxHeight(if (fullscreen) 1f else 0.82f)
-            .measurementPinchZoom(fullscreen) { zoomDelta ->
-                zoomScale = normalizeMeasurementGridZoom(zoomScale * zoomDelta)
-            },
+            .fillMaxHeight(if (fullscreen) 1f else 0.82f),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (fullscreen) {
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
-                verticalArrangement = Arrangement.spacedBy(7.dp),
-            ) {
-                AssistChip(
-                    onClick = { zoomScale = 1f },
-                    label = { Text("${kotlin.math.round(safeZoomScale * 100).toInt()}%") },
-                )
-                AssistChip(
-                    onClick = { zoomScale = normalizeMeasurementGridZoom(zoomScale * 0.88f) },
-                    label = { Text("-") },
-                )
-                AssistChip(
-                    onClick = { zoomScale = normalizeMeasurementGridZoom(zoomScale * 1.14f) },
-                    label = { Text("+") },
-                )
-            }
-        }
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
@@ -37743,8 +37698,14 @@ private fun DocumentationMeasurementPreviewContent(
                     enabled = enabled,
                     expanded = true,
                     tableOnly = true,
+                    showIncludedToggle = false,
                     zoomScale = safeZoomScale,
                     measurementSheets = measurementSheets,
+                    onPinchZoom = if (fullscreen) {
+                        { zoomDelta: Float -> zoomScale = normalizeMeasurementGridZoom(zoomScale * zoomDelta) }
+                    } else {
+                        null
+                    },
                     onSheetChange = { nextSheet -> onSheetChange(stateKey, nextSheet) },
                     onTableIncludedChange = { included -> onTableIncludedChange(usageKey, included) },
                 )
@@ -38007,6 +37968,7 @@ private fun MeasurementTableEditor(
     zoomScale: Float = 1f,
     measurementSheets: Map<String, WorkOrderMeasurementSheet> = emptyMap(),
     onOpenFullscreen: (() -> Unit)? = null,
+    onPinchZoom: ((Float) -> Unit)? = null,
     onSheetChange: (WorkOrderMeasurementSheet) -> Unit,
     onTableIncludedChange: (Boolean) -> Unit = {},
 ) {
@@ -38298,7 +38260,7 @@ private fun MeasurementTableEditor(
                     }
                 }
             }
-            if (showIncludedToggle && table.includeInReport) {
+            if (!tableOnly && showIncludedToggle && table.includeInReport) {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -38343,76 +38305,78 @@ private fun MeasurementTableEditor(
             if (visibleColumns.isEmpty() || visibleRows.isEmpty()) {
                 Text("Excel tablica nema dostupnih ćelija za unos.")
             } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Surface(
-                        modifier = Modifier
-                            .width(64.dp)
-                            .height(46.dp)
-                            .border(1.dp, gridLine, RoundedCornerShape(6.dp)),
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+                if (!tableOnly) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                measurementCellReference(selectedCell.rowIndex, selectedCell.columnIndex),
-                                fontWeight = FontWeight.Black,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
+                        Surface(
+                            modifier = Modifier
+                                .width(64.dp)
+                                .height(46.dp)
+                                .border(1.dp, gridLine, RoundedCornerShape(6.dp)),
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    measurementCellReference(selectedCell.rowIndex, selectedCell.columnIndex),
+                                    fontWeight = FontWeight.Black,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
                         }
-                    }
-                    Surface(
-                        modifier = Modifier
-                            .width(42.dp)
-                            .height(46.dp)
-                            .border(1.dp, gridLine, RoundedCornerShape(6.dp)),
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text("fx", fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+                        Surface(
+                            modifier = Modifier
+                                .width(42.dp)
+                                .height(46.dp)
+                                .border(1.dp, gridLine, RoundedCornerShape(6.dp)),
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("fx", fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+                            }
                         }
-                    }
-                    if (selectedRequiresSpaceSelection) {
-                        Box(modifier = Modifier.weight(1f)) {
-                            WorkOrderSelectField(
-                                label = selectedColumn?.label?.ifBlank { "Prostor" } ?: "Prostor",
-                                value = selectedRaw,
-                                valueLabel = selectedRaw.ifBlank {
-                                    if (spaceOptions.isEmpty()) "Prvo dodaj prostor" else "Odaberi prostor"
-                                },
-                                options = spaceOptions,
-                                enabled = enabled && selectedEditable && spaceOptions.isNotEmpty(),
-                                onSelect = { value ->
-                                    val row = selectedRow
-                                    val column = selectedColumn
-                                    if (row != null && column != null) {
+                        if (selectedRequiresSpaceSelection) {
+                            Box(modifier = Modifier.weight(1f)) {
+                                WorkOrderSelectField(
+                                    label = selectedColumn?.label?.ifBlank { "Prostor" } ?: "Prostor",
+                                    value = selectedRaw,
+                                    valueLabel = selectedRaw.ifBlank {
+                                        if (spaceOptions.isEmpty()) "Prvo dodaj prostor" else "Odaberi prostor"
+                                    },
+                                    options = spaceOptions,
+                                    enabled = enabled && selectedEditable && spaceOptions.isNotEmpty(),
+                                    onSelect = { value ->
+                                        val row = selectedRow
+                                        val column = selectedColumn
+                                        if (row != null && column != null) {
+                                            editingValue = value
+                                            commitSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
+                                        }
+                                    },
+                                )
+                            }
+                        } else {
+                            OutlinedTextField(
+                                value = editingValue,
+                                onValueChange = { value ->
+                                    if (selectedEditable) {
                                         editingValue = value
-                                        commitSheetChange(updateMeasurementSheetCell(sheet, row.id, column.id, value))
                                     }
                                 },
+                                modifier = Modifier.weight(1f),
+                                placeholder = { Text(if (selectedDisplay.isNotBlank()) selectedDisplay else "Vrijednost ili formula") },
+                                singleLine = true,
+                                enabled = enabled && selectedEditable,
+                                shape = RoundedCornerShape(6.dp),
                             )
                         }
-                    } else {
-                        OutlinedTextField(
-                            value = editingValue,
-                            onValueChange = { value ->
-                                if (selectedEditable) {
-                                    editingValue = value
-                                }
-                            },
-                            modifier = Modifier.weight(1f),
-                            placeholder = { Text(if (selectedDisplay.isNotBlank()) selectedDisplay else "Vrijednost ili formula") },
-                            singleLine = true,
-                            enabled = enabled && selectedEditable,
-                            shape = RoundedCornerShape(6.dp),
-                        )
                     }
                 }
-                if (selectedRow != null && selectedColumn != null && selectedEditable) {
+                if (!tableOnly && selectedRow != null && selectedColumn != null && selectedEditable) {
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -38448,59 +38412,61 @@ private fun MeasurementTableEditor(
                         )
                     }
                 }
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
-                    verticalArrangement = Arrangement.spacedBy(7.dp),
-                ) {
-                    AssistChip(
-                        onClick = { commitSheetChange(appendBlankMeasurementRows(sheetWithPendingCellValue(sheet), 1)) },
-                        enabled = enabled,
-                        label = { Text("+ Red") },
-                    )
-                    AssistChip(
-                        onClick = { commitSheetChange(appendBlankMeasurementRows(sheetWithPendingCellValue(sheet), 5)) },
-                        enabled = enabled,
-                        label = { Text("+ 5") },
-                    )
-                    AssistChip(
-                        onClick = {
-                            flushPendingCellValue()
-                            quickFillOpen = true
-                        },
-                        enabled = enabled && visibleColumns.any { it.isEditableMeasurementColumn() },
-                        label = { Text("Brzi unos") },
-                    )
-                    AssistChip(
-                        onClick = { commitSheetChange(duplicateLastMeasurementRow(sheetWithPendingCellValue(sheet))) },
-                        enabled = enabled,
-                        label = { Text("Kopiraj zadnji") },
-                    )
-                    AssistChip(
-                        onClick = { commitSheetChange(fillMeasurementRowNumbers(sheetWithPendingCellValue(sheet))) },
-                        enabled = enabled,
-                        label = { Text("R.br.") },
-                    )
-                    AssistChip(
-                        onClick = { commitSheetChange(fillMeasurementCellDown(sheetWithPendingCellValue(sheet), selectedCell)) },
-                        enabled = enabled && selectedEditable && selectedRaw.isNotBlank() && selectedCell.rowIndex < sheet.rows.lastIndex,
-                        label = { Text("Popuni dolje") },
-                    )
-                    AssistChip(
-                        onClick = { commitSheetChange(appendMeasurementColumn(sheetWithPendingCellValue(sheet))) },
-                        enabled = enabled,
-                        label = { Text("+ Kolona") },
-                    )
-                    AssistChip(
-                        onClick = { undoSheetChange() },
-                        enabled = enabled && undoStack.isNotEmpty(),
-                        label = { Text("Undo") },
-                    )
-                    AssistChip(
-                        onClick = { redoSheetChange() },
-                        enabled = enabled && redoStack.isNotEmpty(),
-                        label = { Text("Redo") },
-                    )
+                if (!tableOnly) {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
+                        AssistChip(
+                            onClick = { commitSheetChange(appendBlankMeasurementRows(sheetWithPendingCellValue(sheet), 1)) },
+                            enabled = enabled,
+                            label = { Text("+ Red") },
+                        )
+                        AssistChip(
+                            onClick = { commitSheetChange(appendBlankMeasurementRows(sheetWithPendingCellValue(sheet), 5)) },
+                            enabled = enabled,
+                            label = { Text("+ 5") },
+                        )
+                        AssistChip(
+                            onClick = {
+                                flushPendingCellValue()
+                                quickFillOpen = true
+                            },
+                            enabled = enabled && visibleColumns.any { it.isEditableMeasurementColumn() },
+                            label = { Text("Brzi unos") },
+                        )
+                        AssistChip(
+                            onClick = { commitSheetChange(duplicateLastMeasurementRow(sheetWithPendingCellValue(sheet))) },
+                            enabled = enabled,
+                            label = { Text("Kopiraj zadnji") },
+                        )
+                        AssistChip(
+                            onClick = { commitSheetChange(fillMeasurementRowNumbers(sheetWithPendingCellValue(sheet))) },
+                            enabled = enabled,
+                            label = { Text("R.br.") },
+                        )
+                        AssistChip(
+                            onClick = { commitSheetChange(fillMeasurementCellDown(sheetWithPendingCellValue(sheet), selectedCell)) },
+                            enabled = enabled && selectedEditable && selectedRaw.isNotBlank() && selectedCell.rowIndex < sheet.rows.lastIndex,
+                            label = { Text("Popuni dolje") },
+                        )
+                        AssistChip(
+                            onClick = { commitSheetChange(appendMeasurementColumn(sheetWithPendingCellValue(sheet))) },
+                            enabled = enabled,
+                            label = { Text("+ Kolona") },
+                        )
+                        AssistChip(
+                            onClick = { undoSheetChange() },
+                            enabled = enabled && undoStack.isNotEmpty(),
+                            label = { Text("Undo") },
+                        )
+                        AssistChip(
+                            onClick = { redoSheetChange() },
+                            enabled = enabled && redoStack.isNotEmpty(),
+                            label = { Text("Redo") },
+                        )
+                    }
                 }
                 if (!tableOnly && selectedRow != null && selectedColumn != null && selectedEditable && !selectedRequiresSpaceSelection) {
                     val formulaSeeds = listOf("SUM", "AVERAGE", "IF", "IFERROR", "COUNTIF", "TEXTAFTER", "VLOOKUP", "RANDBETWEEN")
@@ -38561,7 +38527,7 @@ private fun MeasurementTableEditor(
                         }
                     }
                 }
-                if (selectedRow != null && selectedColumn != null && selectedEditable) {
+                if (!tableOnly && selectedRow != null && selectedColumn != null && selectedEditable) {
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -38609,10 +38575,13 @@ private fun MeasurementTableEditor(
                     .fillMaxWidth()
                     .border(1.dp, gridLine, RoundedCornerShape(6.dp))
                     .clip(RoundedCornerShape(6.dp))
+                    .measurementPinchZoom(onPinchZoom != null) { zoomDelta ->
+                        onPinchZoom?.invoke(zoomDelta)
+                    }
                     .let { baseModifier ->
                         if (tableOnly) {
                             baseModifier
-                                .heightIn(max = if (expanded) 440.dp else 360.dp)
+                                .heightIn(max = if (expanded) 520.dp else 360.dp)
                                 .verticalScroll(gridScrollState)
                         } else {
                             baseModifier
