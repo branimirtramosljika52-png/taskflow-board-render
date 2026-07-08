@@ -32,6 +32,8 @@ import android.webkit.MimeTypeMap
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.view.ViewGroup
+import android.view.WindowManager
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Color as AndroidColor
 import android.graphics.Paint as AndroidPaint
@@ -196,6 +198,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -211,6 +214,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -30042,9 +30046,34 @@ private fun WorkOrderDocumentationWizardDialog(
             .filter { it.measurementTables.isNotEmpty() }
     }
     var measurementPreviewOpen by rememberSaveable(workOrder.id, selectedObjectId) { mutableStateOf(false) }
+    var measurementPreviewOpening by rememberSaveable(workOrder.id, selectedObjectId) { mutableStateOf(false) }
+    fun releaseMeasurementPreviewOrientation() {
+        androidContext.findFragmentActivity()?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    }
+    fun openMeasurementPreviewFullscreen() {
+        if (measurementTemplates.isEmpty() || measurementPreviewOpen || measurementPreviewOpening) return
+        androidContext.findFragmentActivity()?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        measurementPreviewOpening = true
+    }
+    fun closeMeasurementPreviewFullscreen() {
+        measurementPreviewOpening = false
+        measurementPreviewOpen = false
+        releaseMeasurementPreviewOrientation()
+    }
+    LaunchedEffect(measurementPreviewOpening, measurementTemplates.size) {
+        if (!measurementPreviewOpening) return@LaunchedEffect
+        if (measurementTemplates.isEmpty()) {
+            closeMeasurementPreviewFullscreen()
+            return@LaunchedEffect
+        }
+        androidContext.findFragmentActivity()?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        delay(220)
+        measurementPreviewOpen = true
+        measurementPreviewOpening = false
+    }
     LaunchedEffect(selectedFlowService, measurementTemplates.size) {
         if (measurementTemplates.isEmpty()) {
-            measurementPreviewOpen = false
+            closeMeasurementPreviewFullscreen()
         }
     }
     val measurementDefaultsKey = remember(allMeasurementTemplates) {
@@ -30792,8 +30821,8 @@ private fun WorkOrderDocumentationWizardDialog(
                     includedMeasurementTableKeys - key
                 }
             },
-            onDismiss = { measurementPreviewOpen = false },
-            onDone = { measurementPreviewOpen = false },
+            onDismiss = { closeMeasurementPreviewFullscreen() },
+            onDone = { closeMeasurementPreviewFullscreen() },
         )
     }
 
@@ -30903,7 +30932,7 @@ private fun WorkOrderDocumentationWizardDialog(
                 DocumentationMeasurementPreviewHeader(
                     workOrder = workOrder,
                     selectedLabel = selectedFlowTab?.label ?: selectedFlowItem?.serviceCode ?: "Mjerenja",
-                    onDone = { measurementPreviewOpen = false },
+                    onDone = { closeMeasurementPreviewFullscreen() },
                 )
             } else if (isDocumentationLandscape && serviceFlowItems.isNotEmpty()) {
                 Row(
@@ -31383,7 +31412,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     measurementSheets = measurementSheets,
                     onMeasurementSheetChange = { key, sheet -> measurementSheets = measurementSheets + (key to sheet) },
                     standardValues = standardValues,
-                    onOpenMeasurements = { measurementPreviewOpen = true },
+                    onOpenMeasurements = { openMeasurementPreviewFullscreen() },
                     signatureAreaOptions = context.signaturePersonOptions,
                     selectedInspectorIdsByArea = mapOf(
                         "elektro" to electricalInspectorUserIds,
@@ -31495,7 +31524,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         sprVoiceAiMessage = sprVoiceAiMessage,
                         sprVoicePreviewRows = sprVoicePreviewRows,
                         enabled = !formLoading,
-                        onOpenMeasurements = { measurementPreviewOpen = true },
+                        onOpenMeasurements = { openMeasurementPreviewFullscreen() },
                         onPickAttachments = {
                             pendingDocumentationAttachmentTemplateKey = documentationAttachmentTargetKey
                             documentationAttachmentUploadSourceDialogOpen = true
@@ -31703,7 +31732,7 @@ private fun WorkOrderDocumentationWizardDialog(
                                     measurementTemplates = measurementTemplates,
                                     measurementSheets = measurementSheets,
                                     enabled = !formLoading,
-                                    onOpen = { measurementPreviewOpen = true },
+                                    onOpen = { openMeasurementPreviewFullscreen() },
                                 )
                             }
                         }
@@ -37546,6 +37575,15 @@ private fun DocumentationMeasurementFullscreenDialog(
             decorFitsSystemWindows = false,
         ),
     ) {
+        val dialogView = LocalView.current
+        SideEffect {
+            val window = (dialogView.parent as? DialogWindowProvider)?.window
+            window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            window?.setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                    WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED,
+            )
+        }
         Surface(
             modifier = Modifier
                 .fillMaxSize()
