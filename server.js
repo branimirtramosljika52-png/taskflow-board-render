@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.379.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.380.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -15557,7 +15557,23 @@ function getMobileDocumentationDraftTemplateIds(body = {}, scopedSnapshot = {}) 
       .filter(Boolean),
   );
 
-  return Array.from(ids).filter((id) => validIds.has(id));
+  return Array.from(ids).filter((id) => validIds.has(id) || Boolean(parseMobileNativeDocumentationTemplateId(id)));
+}
+
+function parseMobileNativeDocumentationTemplateId(templateId = "") {
+  const normalizedTemplateId = normalizeInputValue(templateId);
+  const nativeIdMatch = normalizedTemplateId.match(/^native-([a-z0-9]+)-(\d+)$/i);
+  if (!nativeIdMatch) {
+    return null;
+  }
+  const serviceCode = normalizeMobileNativeMeasurementServiceCode(nativeIdMatch[1]?.toUpperCase());
+  if (!serviceCode) {
+    return null;
+  }
+  return {
+    serviceCode,
+    serviceIndex: Math.max(0, Number.parseInt(nativeIdMatch[2] || "0", 10) || 0),
+  };
 }
 
 function buildMobileDocumentationDraftRecordInputs(body = {}, workOrder = {}, scopedSnapshot = {}) {
@@ -15592,21 +15608,29 @@ function buildMobileDocumentationDraftRecordInputs(body = {}, workOrder = {}, sc
     const templateSheets = templateFieldSheets[templateId] && typeof templateFieldSheets[templateId] === "object" && !Array.isArray(templateFieldSheets[templateId])
       ? templateFieldSheets[templateId]
       : {};
+    const nativeTemplate = parseMobileNativeDocumentationTemplateId(templateId);
+    const nativeServiceCode = normalizeInputValue(nativeTemplate?.serviceCode);
+    const scopedFieldSheets = mobileDocumentationObjectEntries(templateSheets).length > 0
+      ? templateSheets
+      : commonFieldSheets;
     return {
       ...body,
       templateId,
+      serviceCode: normalizeInputValue(body.serviceCode || body.activeServiceCode || nativeServiceCode),
+      serviceName: normalizeInputValue(body.serviceName || body.activeServiceName || nativeServiceCode),
+      serviceIndex: nativeTemplate?.serviceIndex ?? body.serviceIndex,
       fieldValues: {
         ...commonFieldValues,
         ...templateValues,
+        ...(nativeServiceCode && !normalizeInputValue(commonFieldValues.SERVICE_SUMMARY || templateValues.SERVICE_SUMMARY)
+          ? { SERVICE_SUMMARY: nativeServiceCode, USLUGA: nativeServiceCode }
+          : {}),
         [MOBILE_DOCUMENTATION_DRAFT_MARKER_KEY]: "1",
         [MOBILE_DOCUMENTATION_DRAFT_WORK_ORDER_ID_KEY]: workOrderId,
         [MOBILE_DOCUMENTATION_DRAFT_WORK_ORDER_NUMBER_KEY]: workOrderNumber,
         [MOBILE_DOCUMENTATION_DRAFT_UPDATED_AT_KEY]: nowIso,
       },
-      fieldSheets: {
-        ...commonFieldSheets,
-        ...templateSheets,
-      },
+      fieldSheets: scopedFieldSheets,
       templateAttachments: body.templateAttachments,
       attachments: body.attachments,
     };
@@ -27954,7 +27978,10 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
   services.forEach((service, serviceIndex) => {
     const nativeTemplate = buildMobileNativeDocumentationTemplate(service, serviceIndex, workOrder, scopedSnapshot);
     if (nativeTemplate) {
-      const dataSource = buildMobileDocumentTemplateDataSource(nativeTemplate, null);
+      const latestRecord = findLatestMobileDocumentRecordForTemplate(nativeTemplate, workOrder, scopedSnapshot);
+      const dataSource = buildMobileDocumentTemplateDataSource(nativeTemplate, latestRecord);
+      const recordDefaults = buildMobileDocumentRecordWizardDefaults(latestRecord, workOrder);
+      mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, recordDefaults, nativeTemplate);
       const templateServiceKey = `${serviceIndex}::native::${nativeTemplate.serviceCode}`;
       if (!seenTemplateKeys.has(templateServiceKey)) {
         seenTemplateKeys.add(templateServiceKey);

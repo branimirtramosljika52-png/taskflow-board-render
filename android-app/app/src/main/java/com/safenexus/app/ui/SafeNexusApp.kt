@@ -32358,6 +32358,45 @@ private fun normalizedMeasurementSheetMap(values: Map<String, WorkOrderMeasureme
         }
     }
 
+private fun findSavedMeasurementSheetByKeys(
+    sheets: Map<String, WorkOrderMeasurementSheet>,
+    candidates: List<String>,
+): WorkOrderMeasurementSheet? {
+    if (sheets.isEmpty()) return null
+    val candidateLookups = candidates
+        .flatMap { key ->
+            listOf(
+                key,
+                key.substringAfterLast("::"),
+            )
+        }
+        .map(::normalizeTemplateFieldLookup)
+        .filter { it.isNotBlank() }
+        .toSet()
+    if (candidateLookups.isEmpty()) return null
+
+    for (key in candidates) {
+        sheets[key]?.takeIf { it.columns.isNotEmpty() }?.let { return it }
+    }
+
+    val normalizedSheets = normalizedMeasurementSheetMap(sheets)
+    for (lookup in candidateLookups) {
+        normalizedSheets[lookup]?.takeIf { it.columns.isNotEmpty() }?.let { return it }
+    }
+
+    sheets.forEach { (key, sheet) ->
+        if (sheet.columns.isEmpty()) return@forEach
+        val keyLookups = listOf(key, key.substringAfterLast("::"))
+            .map(::normalizeTemplateFieldLookup)
+            .filter { it.isNotBlank() }
+        if (keyLookups.any { it in candidateLookups }) {
+            return sheet
+        }
+    }
+
+    return null
+}
+
 private fun normalizeTemplateFieldLookup(value: String): String =
     value.trim()
         .replace("_", " ")
@@ -34745,21 +34784,13 @@ private fun resolveSavedMeasurementSheet(
     template: WorkOrderDocumentationTemplate,
     table: WorkOrderMeasurementTable,
 ): WorkOrderMeasurementSheet? {
-    val candidates = measurementTableCandidateKeys(table)
+    val candidates = (measurementTableCandidateKeys(table) + measurementSheetStateKey(template, table))
+        .distinctBy { it.lowercase(Locale.getDefault()) }
     val templateSheets = defaults.templateFieldSheets[template.id].orEmpty()
-    for (key in candidates) {
-        templateSheets[key]?.takeIf { it.columns.isNotEmpty() }?.let { return it }
-    }
-    val normalizedTemplateSheets = normalizedMeasurementSheetMap(templateSheets)
-    for (key in candidates) {
-        normalizedTemplateSheets[normalizeTemplateFieldLookup(key)]?.takeIf { it.columns.isNotEmpty() }?.let { return it }
-    }
-    for (key in candidates) {
-        defaults.fieldSheets[key]?.takeIf { it.columns.isNotEmpty() }?.let { return it }
-    }
-    val normalizedFieldSheets = normalizedMeasurementSheetMap(defaults.fieldSheets)
-    for (key in candidates) {
-        normalizedFieldSheets[normalizeTemplateFieldLookup(key)]?.takeIf { it.columns.isNotEmpty() }?.let { return it }
+    findSavedMeasurementSheetByKeys(templateSheets, candidates)?.let { return it }
+    findSavedMeasurementSheetByKeys(defaults.fieldSheets, candidates)?.let { return it }
+    defaults.templateFieldSheets.values.forEach { sheets ->
+        findSavedMeasurementSheetByKeys(sheets, candidates)?.let { return it }
     }
     return null
 }
