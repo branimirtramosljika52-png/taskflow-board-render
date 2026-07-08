@@ -31383,6 +31383,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     measurementSheets = measurementSheets,
                     onMeasurementSheetChange = { key, sheet -> measurementSheets = measurementSheets + (key to sheet) },
                     standardValues = standardValues,
+                    onOpenMeasurements = { measurementPreviewOpen = true },
                     signatureAreaOptions = context.signaturePersonOptions,
                     selectedInspectorIdsByArea = mapOf(
                         "elektro" to electricalInspectorUserIds,
@@ -38005,6 +38006,7 @@ private fun MeasurementTableEditor(
     showIncludedToggle: Boolean = true,
     zoomScale: Float = 1f,
     measurementSheets: Map<String, WorkOrderMeasurementSheet> = emptyMap(),
+    onOpenFullscreen: (() -> Unit)? = null,
     onSheetChange: (WorkOrderMeasurementSheet) -> Unit,
     onTableIncludedChange: (Boolean) -> Unit = {},
 ) {
@@ -38262,19 +38264,37 @@ private fun MeasurementTableEditor(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (!tableOnly) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(table.label, fontWeight = FontWeight.Black)
-                    Text(
-                        listOf(template.title, table.summary).filter { it.isNotBlank() }.joinToString(" - "),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
-                    )
-                    if (table.helpText.isNotBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(table.label, fontWeight = FontWeight.Black)
                         Text(
-                            table.helpText,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f),
+                            listOf(template.title, table.summary).filter { it.isNotBlank() }.joinToString(" - "),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
                         )
+                        if (table.helpText.isNotBlank()) {
+                            Text(
+                                table.helpText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f),
+                            )
+                        }
+                    }
+                    if (onOpenFullscreen != null) {
+                        OutlinedButton(
+                            onClick = onOpenFullscreen,
+                            enabled = enabled,
+                            shape = RoundedCornerShape(13.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 7.dp),
+                        ) {
+                            Icon(Icons.Rounded.ScreenRotation, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Okreni", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -39412,6 +39432,14 @@ private fun DocumentationSprMobileWorkspace(
             }
             if (tableCount > 0) {
                 DocumentationSprStatusChip(Icons.Rounded.ListAlt, "Gridline", "$tableCount / $rowCount")
+                AssistChip(
+                    onClick = onOpenMeasurements,
+                    enabled = enabled,
+                    leadingIcon = {
+                        Icon(Icons.Rounded.ScreenRotation, contentDescription = null, modifier = Modifier.size(16.dp))
+                    },
+                    label = { Text("Okreni", fontWeight = FontWeight.Bold) },
+                )
             }
         }
 
@@ -39766,6 +39794,7 @@ private fun DocumentationSprTemplateSectionPanel(
                                             enabled = enabled,
                                             showIncludedToggle = false,
                                             measurementSheets = standardControls.measurementSheets,
+                                            onOpenFullscreen = onOpenMeasurements,
                                             onSheetChange = { nextSheet ->
                                                 standardControls.onMeasurementSheetChange(stateKey, nextSheet)
                                             },
@@ -39844,7 +39873,7 @@ private fun DocumentationSprGridlineInlineCard(
             ) {
                 Icon(Icons.Rounded.ScreenRotation, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(7.dp))
-                Text("Tablica", fontWeight = FontWeight.Bold)
+                Text("Okreni", fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -40135,6 +40164,7 @@ private data class DocumentationTemplateStandardControls(
     val measurementSheets: Map<String, WorkOrderMeasurementSheet>,
     val onMeasurementSheetChange: (String, WorkOrderMeasurementSheet) -> Unit,
     val standardValues: DocumentationStandardValues,
+    val onOpenMeasurements: (() -> Unit)? = null,
     val signatureAreaOptions: List<WorkOrderDocumentationSignatureAreaOptions> = emptyList(),
     val selectedInspectorIdsByArea: Map<String, Set<String>> = emptyMap(),
     val selectedAuthorizationIdByArea: Map<String, String> = emptyMap(),
@@ -41035,6 +41065,7 @@ private fun TemplateBlockSectionCard(
                                 sheet = standardControls.measurementSheets[stateKey] ?: table.sheet,
                                 enabled = standardControls.enabled,
                                 measurementSheets = standardControls.measurementSheets,
+                                onOpenFullscreen = standardControls.onOpenMeasurements,
                                 onSheetChange = { nextSheet ->
                                     standardControls.onMeasurementSheetChange(stateKey, nextSheet)
                                 },
