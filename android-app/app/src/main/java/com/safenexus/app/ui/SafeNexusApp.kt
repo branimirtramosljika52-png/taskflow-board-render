@@ -12078,6 +12078,7 @@ private fun WorkEquipmentImageRecognitionResult.hasRecognizedWorkEquipmentData()
         technicalData,
         purposeDescription,
         workspacePosition,
+        workingSubstancesAndRawMaterials,
         deficiencies,
     ).any { it.isNotBlank() } ||
         mechanicalItems.isNotEmpty() ||
@@ -12942,6 +12943,8 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                                     "Serijski broj" to item.serialNumber,
                                     "Inventarski broj" to item.inventoryNumber,
                                     "Tehnički podaci" to item.technicalData,
+                                    "Namjena" to item.purposeDescription,
+                                    "Radne tvari" to item.workingSubstancesAndRawMaterials,
                                     "Strojarski dio" to item.mechanicalItems.size.takeIf { it > 0 }?.let { "$it stavki" }.orEmpty(),
                                     "Elektro dio" to item.electricalItems.size.takeIf { it > 0 }?.let { "$it stavki" }.orEmpty(),
                                     "Opasnosti/štetnosti/napori" to listOf(
@@ -12957,6 +12960,10 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
                                     )
                                 }
+                                WorkEquipmentRecognitionDetailsPreview(
+                                    result = item,
+                                    compact = true,
+                                )
                                 val assignedFiles = batchFilesForRecognitionItem(files, item, index, items.size)
                                 if (assignedFiles.isNotEmpty()) {
                                     Text(
@@ -13700,7 +13707,12 @@ private fun ManualWorkEquipmentInlineEditor(
             onDismissRequest = { recognitionPreview = null },
             title = { Text("Provjeri prepoznavanje") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 520.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     Text(
                         result.message.ifBlank { "NexAI je pročitao slike stroja i pločice." },
                         style = MaterialTheme.typography.bodySmall,
@@ -13724,6 +13736,7 @@ private fun ManualWorkEquipmentInlineEditor(
                         "Tehnički podaci" to result.technicalData,
                         "Namjena" to result.purposeDescription,
                         "Položaj" to result.workspacePosition,
+                        "Radne tvari" to result.workingSubstancesAndRawMaterials,
                         "Uporaba i održavanje" to result.useAndMaintenance,
                         "Metode i norme" to result.methodsProceduresAndNorms,
                         "Nedostaci" to result.deficiencies,
@@ -13742,6 +13755,12 @@ private fun ManualWorkEquipmentInlineEditor(
                             Text(value, fontWeight = FontWeight.Bold)
                         }
                     }
+                    WorkEquipmentRecognitionDetailsPreview(
+                        result = result,
+                        hazardOptions = hazardOptions,
+                        harmfulnessOptions = harmfulnessOptions,
+                        strainOptions = strainOptions,
+                    )
                     if (!result.hasRecognizedWorkEquipmentData()) {
                         Text(
                             "Nema sigurnih polja za upis. Dodaj jasniju sliku cijelog stroja, komandi, priključka i pločice.",
@@ -15021,6 +15040,199 @@ private fun normalizeRoAssessmentNote(value: String): String =
 
 private fun IsznrRoAssessmentItem.noteValue(): String =
     measuredValue.ifBlank { customContent }.take(RO_ASSESSMENT_NOTE_MAX_LENGTH)
+
+private fun IsznrRoAssessmentItem.previewTitle(): String =
+    label.ifBlank {
+        registerIri.substringAfterLast('/').takeIf { it.isNotBlank() }?.let { "Stavka $it" }.orEmpty()
+    }.ifBlank { "Stavka" }
+
+private fun workEquipmentRiskPreviewLabel(
+    iri: String,
+    options: List<WorkOrderDocumentationOption>,
+): String {
+    val normalized = iri.trim()
+    return options.firstOrNull { it.id == normalized }?.label
+        ?: when (normalized) {
+            "/api/v3/hazard_registers/1" -> "Mehaničke opasnosti"
+            "/api/v3/hazard_registers/2" -> "Opasnosti od padova"
+            "/api/v3/hazard_registers/3" -> "Električna struja"
+            "/api/v3/hazard_registers/4" -> "Požar i eksplozija"
+            "/api/v3/hazard_registers/5" -> "Termičke opasnosti"
+            "/api/v3/harmfulness_registers/1" -> "Kemijske štetnosti"
+            "/api/v3/harmfulness_registers/2" -> "Biološke štetnosti"
+            "/api/v3/harmfulness_registers/3" -> "Fizikalne štetnosti"
+            "/api/v3/strain_registers/1" -> "Statodinamički napori"
+            "/api/v3/strain_registers/2" -> "Psihofiziološki napori"
+            "/api/v3/strain_registers/3" -> "Napori vida"
+            "/api/v3/strain_registers/4" -> "Napori govora"
+            else -> normalized
+        }
+}
+
+@Composable
+private fun WorkEquipmentRecognitionDetailsPreview(
+    result: WorkEquipmentImageRecognitionResult,
+    hazardOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    harmfulnessOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    strainOptions: List<WorkOrderDocumentationOption> = emptyList(),
+    compact: Boolean = false,
+) {
+    val hasDetails = result.mechanicalItems.isNotEmpty() ||
+        result.electricalItems.isNotEmpty() ||
+        result.hazardRegisterIris.isNotEmpty() ||
+        result.harmfulnessRegisterIris.isNotEmpty() ||
+        result.strainRegisterIris.isNotEmpty()
+    if (!hasDetails) return
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(if (compact) 12.dp else 16.dp),
+        color = Color(0xFFF8FAFC),
+        border = BorderStroke(1.dp, Color(0xFFD7E3F7)),
+    ) {
+        Column(
+            modifier = Modifier.padding(if (compact) 8.dp else 10.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 9.dp),
+        ) {
+            Text(
+                "Pregled upisa u aplikaciju",
+                fontWeight = FontWeight.Black,
+                color = Color(0xFF0F172A),
+                style = if (compact) MaterialTheme.typography.labelMedium else MaterialTheme.typography.bodyMedium,
+            )
+            WorkEquipmentRecognitionAssessmentSection("Strojarski dio", result.mechanicalItems, compact)
+            WorkEquipmentRecognitionAssessmentSection("Elektro dio", result.electricalItems, compact)
+            WorkEquipmentRecognitionRiskSection(
+                title = "Opasnosti",
+                iris = result.hazardRegisterIris,
+                options = hazardOptions,
+                compact = compact,
+            )
+            WorkEquipmentRecognitionRiskSection(
+                title = "Štetnosti",
+                iris = result.harmfulnessRegisterIris,
+                options = harmfulnessOptions,
+                compact = compact,
+            )
+            WorkEquipmentRecognitionRiskSection(
+                title = "Napori",
+                iris = result.strainRegisterIris,
+                options = strainOptions,
+                compact = compact,
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkEquipmentRecognitionAssessmentSection(
+    title: String,
+    items: List<IsznrRoAssessmentItem>,
+    compact: Boolean,
+) {
+    if (items.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(
+            "$title (${items.size})",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Black,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        items.take(if (compact) 8 else 16).forEach { item ->
+            val noteValue = item.noteValue()
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                color = if (item.meetsConditions) Color(0xFFECFDF5) else Color(0xFFFFF1F2),
+                border = BorderStroke(
+                    1.dp,
+                    if (item.meetsConditions) Color(0xFFBBF7D0) else Color(0xFFFECACA),
+                ),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Icon(
+                        if (item.meetsConditions) Icons.Rounded.CheckCircle else Icons.Rounded.ErrorOutline,
+                        contentDescription = null,
+                        tint = if (item.meetsConditions) Color(0xFF059669) else Color(0xFFDC2626),
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            item.previewTitle(),
+                            fontWeight = FontWeight.Bold,
+                            maxLines = if (compact) 2 else 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (noteValue.isNotBlank()) {
+                            Text(
+                                noteValue,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF334155),
+                                maxLines = if (compact) 3 else 5,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        } else {
+                            Text(
+                                "Nema napomene / vrijednosti.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFFB45309),
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        if (items.size > (if (compact) 8 else 16)) {
+            Text(
+                "+${items.size - (if (compact) 8 else 16)} dodatnih stavki vidiš nakon primjene u editoru.",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color(0xFF475569),
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkEquipmentRecognitionRiskSection(
+    title: String,
+    iris: List<String>,
+    options: List<WorkOrderDocumentationOption>,
+    compact: Boolean,
+) {
+    val labels = iris
+        .map { workEquipmentRiskPreviewLabel(it, options) }
+        .filter { it.isNotBlank() }
+        .distinct()
+    if (labels.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(
+            "$title (${labels.size})",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Black,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            labels.take(if (compact) 8 else 16).forEach { label ->
+                AssistChip(
+                    onClick = {},
+                    label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    leadingIcon = {
+                        Icon(Icons.Rounded.Info, contentDescription = null, modifier = Modifier.size(16.dp))
+                    },
+                )
+            }
+            if (labels.size > (if (compact) 8 else 16)) {
+                AssistChip(onClick = {}, label = { Text("+${labels.size - (if (compact) 8 else 16)}") })
+            }
+        }
+    }
+}
 
 @Composable
 private fun ManualStrojeviSequentialInspectionEditor(

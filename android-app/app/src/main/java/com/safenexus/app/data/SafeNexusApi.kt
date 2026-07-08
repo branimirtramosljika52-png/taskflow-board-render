@@ -164,6 +164,9 @@ class SafeNexusApi(
         JSONArray()
             .put(workEquipmentRoRegisterGroupJson("ro_mechanical_engineering_registers", "Strojarski dio", workEquipmentRoMechanicalRegisterItems(), "mechanical"))
             .put(workEquipmentRoRegisterGroupJson("ro_electrical_registers", "Elektro dio", workEquipmentRoElectricalRegisterItems(), "electrical"))
+            .put(workEquipmentRoRegisterGroupJson("hazard_registers", "Opasnosti", workEquipmentRoHazardRegisterItems(), "hazard"))
+            .put(workEquipmentRoRegisterGroupJson("harmfulness_registers", "Stetnosti", workEquipmentRoHarmfulnessRegisterItems(), "harmfulness"))
+            .put(workEquipmentRoRegisterGroupJson("strain_registers", "Napori", workEquipmentRoStrainRegisterItems(), "strain"))
 
     private fun workEquipmentRoProfilesJson(): JSONArray =
         JSONArray()
@@ -198,6 +201,14 @@ class SafeNexusApi(
                 instruction = "Prepoznaj kompresor prema spremniku, manometru, sigurnosnom ventilu, motoru, kucistu i tlacnim vodovima. Gledaj tlak, curenje, buku, vibracije, ventilaciju, prikljucak i dokumentaciju.",
                 noteExamples = listOf("Manometar i sigurnosni elementi su dostupni.", "Nema vidljivog curenja zraka ili ulja.", "Kompresor je stabilno postavljen na podlozi."),
                 verificationQuestions = listOf("Je li sigurnosni ventil funkcionalno provjeren?", "Koji je radni tlak ili tlak na manometru?"),
+            ))
+            .put(workEquipmentRoProfileJson(
+                id = "ro-ai-profile-pressure-tank-lpg",
+                name = "Spremnik / tlacna posuda / UNP oprema",
+                aliases = listOf("spremnik", "tlacna posuda", "tlačna posuda", "rezervoar", "unp", "lpg", "propan", "butan", "plin", "plinski spremnik"),
+                instruction = "Prepoznaj spremnik, tlacnu posudu ili UNP opremu prema cilindricnom spremniku, armaturi, ventilima, manometru, reduktoru, cjevovodu, oznakama UNP/LPG/propan/butan i zastitnoj ogradi. U radne tvari ne pisi opis slike nego direktno 'Radna tvar: UNP.' kada je vidljiv ili vjerojatan UNP/LPG. Obavezno gledaj strojarski dio, elektro dio ako postoji napajanje ili uzemljenje, opasnost od pozara/eksplozije, kemijske stetnosti i statodinamicke napore.",
+                noteExamples = listOf("Radna tvar: UNP.", "Armatura spremnika je dostupna za pregled.", "Nisu uoceni vidljivi tragovi curenja na prikljucnim elementima."),
+                verificationQuestions = listOf("Je li dokumentacijom potvrden radni tlak i periodicki pregled spremnika?", "Jesu li sigurnosni ventili i uzemljenje funkcionalno provjereni?"),
             ))
             .put(workEquipmentRoProfileJson(
                 id = "ro-ai-profile-analyzer",
@@ -266,6 +277,28 @@ class SafeNexusApi(
             .replace("š", "s")
             .replace("ž", "z")
             .replace("đ", "d")
+
+        if (kind == "hazard") {
+            return JSONObject()
+                .put("instruction", "Ako je '$label' relevantno za prepoznatu radnu opremu, vrati puni IRI iz hazard_registers. Ne pisi opceniti opis fotografije. Primjeri: mehanicke opasnosti za pokretne dijelove i radne elemente, elektricna struja za elektricnu opremu, pozar i eksplozija za UNP/LPG/gorivo/plin/tlacnu opremu, termicke opasnosti za vruce/hladne dijelove.")
+                .put("mustInclude", "hazardRegisterIris samo za opasnosti koje proizlaze iz stroja, radne tvari, nacina rada ili okruzenja")
+                .put("avoid", "Ne izmisljaj opasnost ako se ne moze zakljuciti iz slike, plocice ili vrste opreme.")
+                .put("confidenceRequired", "medium")
+        }
+        if (kind == "harmfulness") {
+            return JSONObject()
+                .put("instruction", "Ako je '$label' relevantno za prepoznatu radnu opremu, vrati puni IRI iz harmfulness_registers. Kemijske stetnosti koristi za UNP/LPG, gorivo, ulje, ispusne plinove, prasinu ili kemikalije. Fizikalne stetnosti koristi za buku, vibracije, toplinu, hladnocu ili zracenje kada proizlaze iz opreme.")
+                .put("mustInclude", "harmfulnessRegisterIris za stvarne stetnosti koje proizlaze iz radne tvari ili rada opreme")
+                .put("avoid", "Ne pisi 'na slici se vidi'; ne dodavati bioloske stetnosti bez jasnog izvora.")
+                .put("confidenceRequired", "medium")
+        }
+        if (kind == "strain") {
+            return JSONObject()
+                .put("instruction", "Ako je '$label' relevantno za prepoznatu radnu opremu, vrati puni IRI iz strain_registers. Statodinamicke napore koristi za guranje, vucu, podizanje, dugotrajno stajanje ili rad u prisilnom polozaju. Napori vida vrijede za zaslone, sitne oznake ili precizan vizualni nadzor.")
+                .put("mustInclude", "strainRegisterIris za napore koji proizlaze iz nacina uporabe opreme")
+                .put("avoid", "Ne dodavati napore govora ili vida bez vidljivog ili logicnog razloga.")
+                .put("confidenceRequired", "medium")
+        }
 
         val details = when {
             normalized.contains("stabil") || normalized.contains("postavljanja") ->
@@ -376,6 +409,27 @@ class SafeNexusApi(
         "24" to "Zaštita od ionizirajućeg zračenja",
         "25" to "Primjena posebnih propisa i normi",
         "26" to "Izmjerena diferencijalna struja RCD - Id (A)",
+    )
+
+    private fun workEquipmentRoHazardRegisterItems(): List<Pair<String, String>> = listOf(
+        "1" to "Mehaničke opasnosti",
+        "2" to "Opasnosti od padova",
+        "3" to "Električna struja",
+        "4" to "Požar i eksplozija",
+        "5" to "Termičke opasnosti",
+    )
+
+    private fun workEquipmentRoHarmfulnessRegisterItems(): List<Pair<String, String>> = listOf(
+        "1" to "Kemijske štetnosti",
+        "2" to "Biološke štetnosti",
+        "3" to "Fizikalne štetnosti",
+    )
+
+    private fun workEquipmentRoStrainRegisterItems(): List<Pair<String, String>> = listOf(
+        "1" to "Statodinamički napori",
+        "2" to "Psihofiziološki napori",
+        "3" to "Napori vida",
+        "4" to "Napori govora",
     )
 
     init {
@@ -1402,21 +1456,21 @@ class SafeNexusApi(
                     JSONObject().put("id", "workspacePosition").put("key", "workspacePosition").put("label", "Polozaj u radnom prostoru")
                         .put("instructions", "Opisi gdje je oprema postavljena ili kako se koristi u prostoru: samostojeca, na kotacima, na radnom mjestu, servisni uredaj, radni stol i slicno."),
                     JSONObject().put("id", "workingSubstancesAndRawMaterials").put("key", "workingSubstancesAndRawMaterials").put("label", "Radne tvari i sirovine")
-                        .put("instructions", "Navedi radne tvari, medije ili materijale samo ako proizlaze iz stroja: zrak, ulje, gorivo, ispusni plinovi, elektricka energija, obradak, prasina i slicno."),
+                        .put("instructions", "Navedi samo direktnu radnu tvar, medij ili sirovinu, ne opis fotografije. Ako je spremnik/UNP/LPG/plin, pisi tocno 'Radna tvar: UNP.' Ako je kompresor, pisi 'Radni medij: stlaceni zrak.' Ako je gorivo/ulje/ispusni plin/prasina/elektricka energija, navedi to kratko u istom stilu."),
                     JSONObject().put("id", "useAndMaintenance").put("key", "useAndMaintenance").put("label", "Uporaba i odrzavanje")
                         .put("instructions", "Sazmi uporabu i odrzavanje prema vidljivim komandama, prikljuccima, sondama, kotačima, servisnim elementima i dokumentaciji; ne cekaj samo plocicu."),
                     JSONObject().put("id", "methodsProceduresAndNorms").put("key", "methodsProceduresAndNorms").put("label", "Metode, postupci i norme")
                         .put("instructions", "Predlozi opci postupak pregleda/ispitivanja za prepoznatu opremu: vizualni pregled, funkcionalna proba, provjera zastitnih naprava, elektro pregled ako je prikljucna oprema."),
                     JSONObject().put("id", "deficiencies").put("key", "deficiencies").put("label", "Nedostaci")
-                        .put("instructions", "Ako nema jasnih nedostataka iz slika, vrati 'Bez vidljivih nedostataka na dostavljenim slikama.' Ne izmisljaj kvar."),
+                        .put("instructions", "Pisi blago i tehnicki. Ako nema jasnih nedostataka iz slika, vrati 'Bez vidljivih nedostataka na dostavljenim slikama.' Ne pisi ostro tipa zabraniti rad ili opasno stanje osim ako je kvar jasno vidljiv."),
                     JSONObject().put("id", "measuresToEliminateDeficiencies").put("key", "measuresToEliminateDeficiencies").put("label", "Mjere")
-                        .put("instructions", "Ako nema nedostataka, vrati 'Nisu potrebne posebne mjere prema dostavljenim slikama.' Ako vidis nedostatak, navedi konkretnu mjeru."),
+                        .put("instructions", "Ako nema nedostataka, vrati 'Nisu potrebne posebne mjere prema dostavljenim slikama.' Ako je nesto nesigurno, preporuci dodatnu provjeru ili dokumentiranje. Ostro formuliraj samo jasno vidljive nedostatke."),
                     JSONObject().put("id", "mechanicalItems").put("key", "mechanicalItems").put("label", "Strojarski dio")
                         .put("instructions", "Vrati relevantne strojarske stavke za ovaj stroj odmah iz slike cijelog stroja, komandi, zastita, pokretnih dijelova, stabilnosti i plocice. Ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati label, meetsConditions i obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke. U customContent ne pisi 'vidi se na fotografiji/slici'; pisi direktan nalaz."),
                     JSONObject().put("id", "electricalItems").put("key", "electricalItems").put("label", "Elektro dio")
                         .put("instructions", "Ako oprema ima kabel, utikac, napajanje, elektromotor, upravljacku elektroniku, sonde ili plocicu s U/F/P podacima, obavezno vrati relevantne elektro stavke. Ne ostavljaj elektro dio prazan za elektricnu opremu. Svaka stavka mora imati obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke. U customContent ne pisi 'vidi se na fotografiji/slici'; pisi direktan nalaz."),
                     JSONObject().put("id", "riskRegisterIris").put("key", "hazardRegisterIris").put("label", "Opasnosti, stetnosti i napori")
-                        .put("instructions", "Vrati hazardRegisterIris, harmfulnessRegisterIris i strainRegisterIris za prepoznate opasnosti, stetnosti i napore. Ako IRI nije siguran, vrati opis u warnings ili customContent, ne izmisljaj IRI."),
+                        .put("instructions", "Vrati hazardRegisterIris, harmfulnessRegisterIris i strainRegisterIris za prepoznate opasnosti, stetnosti i napore. Za UNP/LPG/gorivo/plin ukljuci pozar i eksploziju te kemijske stetnosti. Za elektricnu opremu ukljuci elektricnu struju. Za rucno pomicanje, podizanje ili rad u polozaju ukljuci statodinamicke napore. Ako IRI nije siguran, vrati pitanje u verificationQuestions."),
                 ),
             )
             val body = JSONObject()
@@ -1451,7 +1505,7 @@ class SafeNexusApi(
                         )
                         .put(
                             "assessmentRule",
-                            "Za RO zapisnik ne staj na plocici. Nakon citanja plocice obavezno procijeni cijeli stroj: namjenu, polozaj, uporabu/odrzavanje, strojarski dio, elektro dio, opasnosti, stetnosti i napore. Biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Za opremu s napajanjem, kabelom, utikacem, elektromotorom, elektronikom ili U/F/P podacima obavezno vrati elektro stavke. Ne popunjavaj svaku mogucu stavku. Svaka vracena mehanicka/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do 255 znakova. measuredValue koristi samo ako postoji stvarno mjerenje. Ne vracaj stavku bez customContent. U customContent ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi', 'vidi se na fotografiji', 'na slici se vidi' ni slicno. Ako je nalaz siguran, napisi ga direktno kao cinjenicu. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili okruzenja.",
+                            "Za RO zapisnik ne staj na plocici. Nakon citanja plocice obavezno procijeni cijeli stroj: namjenu, polozaj, radne tvari, uporabu/odrzavanje, strojarski dio, elektro dio, opasnosti, stetnosti i napore. Biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Za opremu s napajanjem, kabelom, utikacem, elektromotorom, elektronikom, uzemljenjem ili U/F/P podacima obavezno vrati elektro stavke. Ne popunjavaj svaku mogucu stavku. Svaka vracena mehanicka/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do 255 znakova. Radne tvari pisi kao polje, ne kao opis slike: 'Radna tvar: UNP.', 'Radni medij: stlaceni zrak.', 'Radna tvar: hidraulicno ulje.' Nedostatke i mjere formuliraj blago: bez vidljivih nedostataka, preporucuje se dodatna provjera, preporucuje se dokumentirati. Ne pisi ostro 'zabraniti rad' ili 'opasno stanje' osim za jasno vidljiv kritican nedostatak. measuredValue koristi samo ako postoji stvarno mjerenje. Ne vracaj stavku bez customContent. U customContent i opisnim poljima ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi', 'vidi se na fotografiji', 'na slici se vidi' ni slicno. Ako je nalaz siguran, napisi ga direktno kao cinjenicu. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, radne tvari, nacina rada ili okruzenja.",
                         ),
                 )
                 .put(
@@ -1562,21 +1616,21 @@ class SafeNexusApi(
                     JSONObject().put("id", "workspacePosition").put("key", "workspacePosition").put("label", "Polozaj u radnom prostoru")
                         .put("instructions", "Opisi gdje je oprema postavljena ili kako se koristi u prostoru: samostojeca, na kotacima, na radnom mjestu, servisni uredaj, radni stol i slicno."),
                     JSONObject().put("id", "workingSubstancesAndRawMaterials").put("key", "workingSubstancesAndRawMaterials").put("label", "Radne tvari i sirovine")
-                        .put("instructions", "Navedi radne tvari, medije ili materijale samo ako proizlaze iz stroja: zrak, ulje, gorivo, ispusni plinovi, elektricka energija, obradak, prasina i slicno."),
+                        .put("instructions", "Navedi samo direktnu radnu tvar, medij ili sirovinu, ne opis fotografije. Ako je spremnik/UNP/LPG/plin, pisi tocno 'Radna tvar: UNP.' Ako je kompresor, pisi 'Radni medij: stlaceni zrak.' Ako je gorivo/ulje/ispusni plin/prasina/elektricka energija, navedi to kratko u istom stilu."),
                     JSONObject().put("id", "useAndMaintenance").put("key", "useAndMaintenance").put("label", "Uporaba i odrzavanje")
                         .put("instructions", "Sazmi uporabu i odrzavanje prema vidljivim komandama, prikljuccima, sondama, kotacima, servisnim elementima i dokumentaciji; ne cekaj samo plocicu."),
                     JSONObject().put("id", "methodsProceduresAndNorms").put("key", "methodsProceduresAndNorms").put("label", "Metode, postupci i norme")
                         .put("instructions", "Predlozi opci postupak pregleda/ispitivanja za prepoznatu opremu: vizualni pregled, funkcionalna proba, provjera zastitnih naprava, elektro pregled ako je prikljucna oprema."),
                     JSONObject().put("id", "deficiencies").put("key", "deficiencies").put("label", "Nedostaci")
-                        .put("instructions", "Ako nema jasnih nedostataka iz slika, vrati 'Bez vidljivih nedostataka na dostavljenim slikama.' Ne izmisljaj kvar."),
+                        .put("instructions", "Pisi blago i tehnicki. Ako nema jasnih nedostataka iz slika, vrati 'Bez vidljivih nedostataka na dostavljenim slikama.' Ne pisi ostro tipa zabraniti rad ili opasno stanje osim ako je kvar jasno vidljiv."),
                     JSONObject().put("id", "measuresToEliminateDeficiencies").put("key", "measuresToEliminateDeficiencies").put("label", "Mjere")
-                        .put("instructions", "Ako nema nedostataka, vrati 'Nisu potrebne posebne mjere prema dostavljenim slikama.' Ako vidis nedostatak, navedi konkretnu mjeru."),
+                        .put("instructions", "Ako nema nedostataka, vrati 'Nisu potrebne posebne mjere prema dostavljenim slikama.' Ako je nesto nesigurno, preporuci dodatnu provjeru ili dokumentiranje. Ostro formuliraj samo jasno vidljive nedostatke."),
                     JSONObject().put("id", "mechanicalItems").put("key", "mechanicalItems").put("label", "Strojarski dio")
                         .put("instructions", "Za svaku prepoznatu opremu vrati relevantne strojarske stavke odmah iz slike cijelog stroja, komandi, zastita, pokretnih dijelova, stabilnosti i plocice. Ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka stavka mora imati label, meetsConditions i obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke. U customContent ne pisi 'vidi se na fotografiji/slici'; pisi direktan nalaz."),
                     JSONObject().put("id", "electricalItems").put("key", "electricalItems").put("label", "Elektro dio")
                         .put("instructions", "Ako oprema ima kabel, utikac, napajanje, elektromotor, upravljacku elektroniku, sonde ili plocicu s U/F/P podacima, obavezno vrati relevantne elektro stavke. Ne ostavljaj elektro dio prazan za elektricnu opremu. Svaka stavka mora imati obavezan customContent do 255 znakova. Ako bi napisao treba provjeriti/potvrditi, vrati pitanje u verificationQuestions umjesto stavke. U customContent ne pisi 'vidi se na fotografiji/slici'; pisi direktan nalaz."),
                     JSONObject().put("id", "riskRegisterIris").put("key", "hazardRegisterIris").put("label", "Opasnosti, stetnosti i napori")
-                        .put("instructions", "Vrati hazardRegisterIris, harmfulnessRegisterIris i strainRegisterIris za prepoznate opasnosti, stetnosti i napore. Ako IRI nije siguran, vrati opis u warnings ili customContent, ne izmisljaj IRI."),
+                        .put("instructions", "Vrati hazardRegisterIris, harmfulnessRegisterIris i strainRegisterIris za prepoznate opasnosti, stetnosti i napore. Za UNP/LPG/gorivo/plin ukljuci pozar i eksploziju te kemijske stetnosti. Za elektricnu opremu ukljuci elektricnu struju. Za rucno pomicanje, podizanje ili rad u polozaju ukljuci statodinamicke napore. Ako IRI nije siguran, vrati pitanje u verificationQuestions."),
                 ),
             )
             val body = JSONObject()
@@ -1608,7 +1662,7 @@ class SafeNexusApi(
                         )
                         .put(
                             "assessmentRule",
-                            "Za svaku RO opremu ne staj na plocici. Nakon citanja plocice obavezno procijeni cijeli stroj: namjenu, polozaj, uporabu/odrzavanje, strojarski dio, elektro dio, opasnosti, stetnosti i napore. Biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Za opremu s napajanjem, kabelom, utikacem, elektromotorom, elektronikom ili U/F/P podacima obavezno vrati elektro stavke. Ne popunjavaj svaku mogucu stavku. Svaka vracena mehanicka/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do 255 znakova. measuredValue koristi samo ako postoji stvarno mjerenje. Ne vracaj stavku bez customContent. U customContent ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi', 'vidi se na fotografiji', 'na slici se vidi' ni slicno. Ako je nalaz siguran, napisi ga direktno kao cinjenicu. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, nacina rada ili okruzenja. Prve dvije slike grupe smatraj slikom stroja i slikom plocice te ih vrati kroz imageIndexes/sourceImageNames.",
+                            "Za svaku RO opremu ne staj na plocici. Nakon citanja plocice obavezno procijeni cijeli stroj: namjenu, polozaj, radne tvari, uporabu/odrzavanje, strojarski dio, elektro dio, opasnosti, stetnosti i napore. Biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Za opremu s napajanjem, kabelom, utikacem, elektromotorom, elektronikom, uzemljenjem ili U/F/P podacima obavezno vrati elektro stavke. Ne popunjavaj svaku mogucu stavku. Svaka vracena mehanicka/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do 255 znakova. Radne tvari pisi kao polje, ne kao opis slike: 'Radna tvar: UNP.', 'Radni medij: stlaceni zrak.', 'Radna tvar: hidraulicno ulje.' Nedostatke i mjere formuliraj blago: bez vidljivih nedostataka, preporucuje se dodatna provjera, preporucuje se dokumentirati. Ne pisi ostro 'zabraniti rad' ili 'opasno stanje' osim za jasno vidljiv kritican nedostatak. measuredValue koristi samo ako postoji stvarno mjerenje. Ne vracaj stavku bez customContent. U customContent i opisnim poljima ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi', 'vidi se na fotografiji', 'na slici se vidi' ni slicno. Ako je nalaz siguran, napisi ga direktno kao cinjenicu. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, radne tvari, nacina rada ili okruzenja. Prve dvije slike grupe smatraj slikom stroja i slikom plocice te ih vrati kroz imageIndexes/sourceImageNames.",
                         ),
                 )
                 .put(
@@ -2554,6 +2608,63 @@ private fun String.toDirectRoAssessmentFinding(): String {
 private fun String.toRoAssessmentNote(): String =
     toDirectRoAssessmentFinding()
         .take(RO_ASSESSMENT_NOTE_MAX_LENGTH)
+
+private fun String.toDirectRoTextField(): String =
+    toDirectRoAssessmentFinding()
+
+private fun String.toRoAiSearchText(): String =
+    lowercase(Locale.ROOT)
+        .replace("č", "c")
+        .replace("ć", "c")
+        .replace("š", "s")
+        .replace("ž", "z")
+        .replace("đ", "d")
+
+private fun normalizeRoWorkingSubstances(value: String, vararg contextParts: String): String {
+    val direct = value.toDirectRoTextField()
+    val searchText = (listOf(direct) + contextParts)
+        .joinToString(" ")
+        .toRoAiSearchText()
+    val directSearch = direct.toRoAiSearchText()
+    val isGenericPhotoText = directSearch.contains("spremnik") ||
+        directSearch.contains("posuda") ||
+        directSearch.contains("uredaj") ||
+        directSearch.contains("oprema")
+    return when {
+        searchText.contains("unp") ||
+            searchText.contains("lpg") ||
+            searchText.contains("propan") ||
+            searchText.contains("butan") ||
+            searchText.contains("ukapljeni naftni plin") ->
+            if (direct.isBlank() || isGenericPhotoText || !directSearch.contains("radna tvar")) "Radna tvar: UNP." else direct
+        searchText.contains("kompresor") ||
+            searchText.contains("stlaceni zrak") ||
+            searchText.contains("stlačeni zrak") ->
+            if (direct.isBlank() || isGenericPhotoText || !directSearch.contains("medij")) "Radni medij: stlaceni zrak." else direct
+        searchText.contains("hidraulic") || searchText.contains("ulje") ->
+            if (direct.isBlank() || isGenericPhotoText) "Radna tvar: hidraulicno ulje." else direct
+        searchText.contains("gorivo") ||
+            searchText.contains("dizel") ||
+            searchText.contains("diesel") ||
+            searchText.contains("benzin") ->
+            if (direct.isBlank() || isGenericPhotoText) "Radna tvar: gorivo." else direct
+        searchText.contains("elektricna energija") || searchText.contains("elektricka energija") ->
+            if (direct.isBlank() || isGenericPhotoText) "Elektricna energija." else direct
+        else -> direct
+    }
+}
+
+private fun normalizeRoDeficienciesText(value: String): String {
+    val direct = value.toDirectRoTextField()
+    if (direct.isBlank()) return direct
+    return direct
+        .replace(Regex("\\bzabraniti\\s+rad\\b", RegexOption.IGNORE_CASE), "preporucuje se ograniciti uporabu do provjere")
+        .replace(Regex("\\bopasno\\s+stanje\\b", RegexOption.IGNORE_CASE), "stanje za dodatnu provjeru")
+        .replace(Regex("\\bkritic(?:an|no|na|ni)\\b", RegexOption.IGNORE_CASE), "za dodatnu provjeru")
+}
+
+private fun normalizeRoMeasuresText(value: String): String =
+    normalizeRoDeficienciesText(value)
 
 private fun JSONArray?.toRoAssessmentItems(): List<IsznrRoAssessmentItem> {
     if (this == null) return emptyList()
@@ -3815,19 +3926,24 @@ private fun JSONObject.toWorkEquipmentImageRecognitionResult(): WorkEquipmentIma
         return ""
     }
     return WorkEquipmentImageRecognitionResult(
-        name = readField("name", "equipmentName", "naziv"),
-        manufacturer = readField("manufacturer", "producer", "maker", "brand", "proizvodac", "proizvođač"),
-        model = readField("model", "type", "tip", "typeModel", "modelType"),
-        serialNumber = readField("serialNumber", "serial", "serialNo", "serial_number", "serijskiBroj"),
-        inventoryNumber = readField("inventoryNumber", "inventory", "inv", "inventarskiBroj"),
-        technicalData = readField("technicalData", "technical", "technicalDetails", "partNumber", "part_number", "tehnickiPodaci", "tehničkiPodaci"),
-        purposeDescription = readField("purposeDescription", "purpose", "namjena"),
-        workspacePosition = readField("workspacePosition", "position", "location", "polozaj", "mjestoRada"),
-        workingSubstancesAndRawMaterials = readField("workingSubstancesAndRawMaterials", "workingSubstances", "rawMaterials", "radneTvari"),
-        useAndMaintenance = readField("useAndMaintenance", "maintenance", "koristenjeOdrzavanje"),
-        methodsProceduresAndNorms = readField("methodsProceduresAndNorms", "norms", "standards", "metodePostupciNorme"),
-        deficiencies = readField("deficiencies", "defects", "nedostaci"),
-        measuresToEliminateDeficiencies = readField("measuresToEliminateDeficiencies", "measures", "mjere"),
+        name = readField("name", "equipmentName", "naziv").toDirectRoTextField(),
+        manufacturer = readField("manufacturer", "producer", "maker", "brand", "proizvodac", "proizvođač").toDirectRoTextField(),
+        model = readField("model", "type", "tip", "typeModel", "modelType").toDirectRoTextField(),
+        serialNumber = readField("serialNumber", "serial", "serialNo", "serial_number", "serijskiBroj").toDirectRoTextField(),
+        inventoryNumber = readField("inventoryNumber", "inventory", "inv", "inventarskiBroj").toDirectRoTextField(),
+        technicalData = readField("technicalData", "technical", "technicalDetails", "partNumber", "part_number", "tehnickiPodaci", "tehničkiPodaci").toDirectRoTextField(),
+        purposeDescription = readField("purposeDescription", "purpose", "namjena").toDirectRoTextField(),
+        workspacePosition = readField("workspacePosition", "position", "location", "polozaj", "mjestoRada").toDirectRoTextField(),
+        workingSubstancesAndRawMaterials = normalizeRoWorkingSubstances(
+            readField("workingSubstancesAndRawMaterials", "workingSubstances", "rawMaterials", "radneTvari"),
+            readField("name", "equipmentName", "naziv"),
+            readField("technicalData", "technical", "technicalDetails", "partNumber", "part_number", "tehnickiPodaci", "tehničkiPodaci"),
+            readField("purposeDescription", "purpose", "namjena"),
+        ),
+        useAndMaintenance = readField("useAndMaintenance", "maintenance", "koristenjeOdrzavanje").toDirectRoTextField(),
+        methodsProceduresAndNorms = readField("methodsProceduresAndNorms", "norms", "standards", "metodePostupciNorme").toDirectRoTextField(),
+        deficiencies = normalizeRoDeficienciesText(readField("deficiencies", "defects", "nedostaci")),
+        measuresToEliminateDeficiencies = normalizeRoMeasuresText(readField("measuresToEliminateDeficiencies", "measures", "mjere")),
         finalGrade = readField("finalGrade", "grade", "satisfactory").ifBlank { "1" },
         mechanicalItems = equipment.roAssessmentItems("mechanicalItems", "roMechanicalItems", "mechanical", "strojarskiDio"),
         electricalItems = equipment.roAssessmentItems("electricalItems", "roElectricalItems", "electrical", "elektroDio"),
@@ -3885,19 +4001,24 @@ private fun JSONObject.toWorkEquipmentImageRecognitionBatchResult(): WorkEquipme
 
     fun parseItem(item: JSONObject): WorkEquipmentImageRecognitionResult =
         WorkEquipmentImageRecognitionResult(
-            name = item.field("name", "equipmentName", "title", "naziv"),
-            manufacturer = item.field("manufacturer", "producer", "maker", "brand", "proizvodac"),
-            model = item.field("model", "type", "tip", "typeModel", "modelType"),
-            serialNumber = item.field("serialNumber", "serial", "serialNo", "serial_number", "serijskiBroj"),
-            inventoryNumber = item.field("inventoryNumber", "inventory", "inv", "inventarskiBroj"),
-            technicalData = item.field("technicalData", "technical", "technicalDetails", "partNumber", "part_number", "tehnickiPodaci"),
-            purposeDescription = item.field("purposeDescription", "purpose", "namjena"),
-            workspacePosition = item.field("workspacePosition", "position", "location", "polozaj", "mjestoRada"),
-            workingSubstancesAndRawMaterials = item.field("workingSubstancesAndRawMaterials", "workingSubstances", "rawMaterials", "radneTvari"),
-            useAndMaintenance = item.field("useAndMaintenance", "maintenance", "koristenjeOdrzavanje"),
-            methodsProceduresAndNorms = item.field("methodsProceduresAndNorms", "norms", "standards", "metodePostupciNorme"),
-            deficiencies = item.field("deficiencies", "defects", "nedostaci"),
-            measuresToEliminateDeficiencies = item.field("measuresToEliminateDeficiencies", "measures", "mjere"),
+            name = item.field("name", "equipmentName", "title", "naziv").toDirectRoTextField(),
+            manufacturer = item.field("manufacturer", "producer", "maker", "brand", "proizvodac").toDirectRoTextField(),
+            model = item.field("model", "type", "tip", "typeModel", "modelType").toDirectRoTextField(),
+            serialNumber = item.field("serialNumber", "serial", "serialNo", "serial_number", "serijskiBroj").toDirectRoTextField(),
+            inventoryNumber = item.field("inventoryNumber", "inventory", "inv", "inventarskiBroj").toDirectRoTextField(),
+            technicalData = item.field("technicalData", "technical", "technicalDetails", "partNumber", "part_number", "tehnickiPodaci").toDirectRoTextField(),
+            purposeDescription = item.field("purposeDescription", "purpose", "namjena").toDirectRoTextField(),
+            workspacePosition = item.field("workspacePosition", "position", "location", "polozaj", "mjestoRada").toDirectRoTextField(),
+            workingSubstancesAndRawMaterials = normalizeRoWorkingSubstances(
+                item.field("workingSubstancesAndRawMaterials", "workingSubstances", "rawMaterials", "radneTvari"),
+                item.field("name", "equipmentName", "title", "naziv"),
+                item.field("technicalData", "technical", "technicalDetails", "partNumber", "part_number", "tehnickiPodaci"),
+                item.field("purposeDescription", "purpose", "namjena"),
+            ),
+            useAndMaintenance = item.field("useAndMaintenance", "maintenance", "koristenjeOdrzavanje").toDirectRoTextField(),
+            methodsProceduresAndNorms = item.field("methodsProceduresAndNorms", "norms", "standards", "metodePostupciNorme").toDirectRoTextField(),
+            deficiencies = normalizeRoDeficienciesText(item.field("deficiencies", "defects", "nedostaci")),
+            measuresToEliminateDeficiencies = normalizeRoMeasuresText(item.field("measuresToEliminateDeficiencies", "measures", "mjere")),
             finalGrade = item.field("finalGrade", "grade", "satisfactory").ifBlank { "1" },
             mechanicalItems = item.roAssessmentItems("mechanicalItems", "roMechanicalItems", "mechanical", "strojarskiDio"),
             electricalItems = item.roAssessmentItems("electricalItems", "roElectricalItems", "electrical", "elektroDio"),
@@ -3929,6 +4050,7 @@ private fun JSONObject.toWorkEquipmentImageRecognitionBatchResult(): WorkEquipme
             item.technicalData,
             item.purposeDescription,
             item.workspacePosition,
+            item.workingSubstancesAndRawMaterials,
             item.deficiencies,
         ).any { it.isNotBlank() } ||
             item.mechanicalItems.isNotEmpty() ||
@@ -3958,6 +4080,7 @@ private fun JSONObject.toWorkEquipmentImageRecognitionBatchResult(): WorkEquipme
                 fallback.technicalData,
                 fallback.purposeDescription,
                 fallback.workspacePosition,
+                fallback.workingSubstancesAndRawMaterials,
                 fallback.deficiencies,
             ).any { it.isNotBlank() } ||
             fallback.mechanicalItems.isNotEmpty() ||
