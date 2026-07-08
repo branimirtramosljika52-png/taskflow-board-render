@@ -31682,7 +31682,13 @@ private fun WorkOrderDocumentationWizardDialog(
                         )
                     }
                 } else if (!summaryFlowSelected && !basicsFlowSelected) {
-                WizardSection(title = "Objekt zapisnika", icon = Icons.Rounded.Business) {
+                WizardSection(
+                    title = "Objekt zapisnika",
+                    icon = Icons.Rounded.Business,
+                    summary = activeSelectedObject?.name ?: if (activeObjectId.isBlank()) "Nema objekta" else "Odabrani objekt nije više dostupan",
+                    initiallyExpanded = false,
+                    collapsible = true,
+                ) {
                     WorkOrderSelectField(
                         label = "Objekt / oprema",
                         value = activeObjectId,
@@ -41275,7 +41281,7 @@ private fun DocumentationAiAssistantSection(
     onGridlinePreviewDismiss: () -> Unit,
     onGridlinePreviewApply: (Boolean) -> Unit,
 ) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
+    var expanded by rememberSaveable(selectedTemplateId) { mutableStateOf(false) }
     LaunchedEffect(loading, files.size, message, gridlinePreview) {
         if (loading || files.isNotEmpty() || message.isNotBlank() || gridlinePreview != null) {
             expanded = true
@@ -44594,8 +44600,13 @@ private fun TemplateFieldInput(
 private fun WizardSection(
     title: String,
     icon: ImageVector,
+    summary: String = "",
+    initiallyExpanded: Boolean = true,
+    collapsible: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val isCollapsible = collapsible || !initiallyExpanded || summary.isNotBlank()
+    var expanded by rememberSaveable(title) { mutableStateOf(initiallyExpanded) }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
@@ -44605,11 +44616,41 @@ private fun WizardSection(
             modifier = Modifier.padding(13.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (isCollapsible) Modifier.clickable { expanded = !expanded } else Modifier),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                Text(title, fontWeight = FontWeight.Black)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, fontWeight = FontWeight.Black)
+                    if (isCollapsible && summary.isNotBlank()) {
+                        Text(
+                            summary,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                if (isCollapsible) {
+                    Icon(
+                        if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                        contentDescription = if (expanded) "Sakrij" else "Prikaži",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
-            content()
+            if (isCollapsible) {
+                AnimatedVisibility(visible = expanded) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
+                }
+            } else {
+                content()
+            }
         }
     }
 }
