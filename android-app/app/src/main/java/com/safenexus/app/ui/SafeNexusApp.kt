@@ -92,6 +92,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -124,6 +125,7 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.InsertDriveFile
+import androidx.compose.material.icons.rounded.KeyboardHide
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.ListAlt
@@ -200,6 +202,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextRange
@@ -37581,6 +37584,8 @@ private fun DocumentationMeasurementFullscreenDialog(
         ),
     ) {
         val dialogView = LocalView.current
+        val keyboardController = LocalSoftwareKeyboardController.current
+        val focusManager = LocalFocusManager.current
         SideEffect {
             val window = (dialogView.parent as? DialogWindowProvider)?.window
             window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -37634,6 +37639,18 @@ private fun DocumentationMeasurementFullscreenDialog(
                         contentColor = MaterialTheme.colorScheme.onPrimary,
                     ) {
                         Icon(Icons.Rounded.CheckCircle, contentDescription = "Gotovo")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    FloatingActionButton(
+                        onClick = {
+                            focusManager.clearFocus(force = true)
+                            keyboardController?.hide()
+                        },
+                        modifier = Modifier.size(48.dp),
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    ) {
+                        Icon(Icons.Rounded.KeyboardHide, contentDescription = "Spusti tastaturu")
                     }
                 }
             }
@@ -39160,6 +39177,7 @@ private fun MeasurementGridCell(
         else -> Modifier.padding(horizontal = 8.dp)
     }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
     val focusRequester = remember(cellKey) { FocusRequester() }
     var fieldValue by remember(cellKey) { mutableStateOf(TextFieldValue(rawValue, TextRange(rawValue.length))) }
     LaunchedEffect(cellKey, selected, editable, directEditable, enabled) {
@@ -39201,6 +39219,12 @@ private fun MeasurementGridCell(
                     textAlign = textAlign,
                 ),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                    },
+                ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
             )
             MeasurementCellFillHandle(
