@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.373.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.374.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -37134,6 +37134,8 @@ function buildMobileWorkOrderUserOptions(users = []) {
     .sort((left, right) => left.label.localeCompare(right.label, "hr"));
 }
 
+const MOBILE_HIDDEN_WORK_ORDER_SERVICE_CODES = new Set(["ROG", "RADNAOPREMA"]);
+
 function buildMobileWorkOrderServiceOptions(serviceCatalog = []) {
   return (serviceCatalog ?? [])
     .filter((service) => normalizeInputValue(service.status || "active").toLowerCase() !== "inactive")
@@ -37146,6 +37148,7 @@ function buildMobileWorkOrderServiceOptions(serviceCatalog = []) {
       note: normalizeInputValue(service.note),
     }))
     .filter((service) => service.id && (service.name || service.serviceCode))
+    .filter((service) => !MOBILE_HIDDEN_WORK_ORDER_SERVICE_CODES.has(normalizeInputValue(service.serviceCode).toUpperCase()))
     .sort((left, right) => (left.name || left.serviceCode).localeCompare(right.name || right.serviceCode, "hr"));
 }
 

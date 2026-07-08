@@ -4705,8 +4705,15 @@ private fun JSONArray?.toWorkOrderServices(): List<WorkOrderServiceOption> {
                 ),
             )
         }
-    }.filter { it.id.isNotBlank() && (it.name.isNotBlank() || it.serviceCode.isNotBlank()) }
+    }.filter { service ->
+        service.id.isNotBlank() &&
+            (service.name.isNotBlank() || service.serviceCode.isNotBlank()) &&
+            !service.isHiddenMobileWorkOrderServiceAlias()
+    }
 }
+
+private fun WorkOrderServiceOption.isHiddenMobileWorkOrderServiceAlias(): Boolean =
+    serviceCode.trim().uppercase(Locale.ROOT) in setOf("ROG", "RADNAOPREMA")
 
 private fun JSONArray?.toWorkOrderLocationObjects(): List<WorkOrderLocationObjectOption> {
     if (this == null) return emptyList()
