@@ -26810,22 +26810,38 @@ function buildMobileMeasurementSheetPresetsFromDocumentRecords(records = []) {
       record.createdAt,
     ].map(normalizeInputValue).join("::");
 
-    return entries.map(([sheetKey, sheet]) => ({
-      id: `record:${recordId}:${sheetKey}`,
-      organizationId,
-      templateId,
-      companyId,
-      locationId,
-      fieldKey: buildMobileDocumentationMeasurementPresetFieldKey({
-        serviceCode,
-        sheetKey,
-        objectId,
-      }),
-      title: normalizeInputValue(`${serviceCode || record.documentType || "Zapisnik"} - ${sheetKey}`),
-      sheet,
-      createdAt: record.createdAt,
-      updatedAt: record.updatedAt,
-    }));
+    const nativeTemplateId = serviceCode ? getMobileNativeDocumentationRecordTemplateId(serviceCode) : "";
+    const templateIds = Array.from(new Set([templateId, nativeTemplateId].map(normalizeInputValue).filter(Boolean)));
+    const nativeTables = serviceCode ? createDocumentationMeasurementTablesForService(serviceCode) : [];
+
+    return entries.flatMap(([sheetKey, sheet], entryIndex) => {
+      const aliasKeys = new Set([sheetKey]);
+      const nativeTable = nativeTables[entryIndex]
+        || (entries.length === 1 && nativeTables.length === 1 ? nativeTables[0] : null);
+      if (nativeTable) {
+        getMobileDocumentationMeasurementPresetTableKeys(nativeTable, `gridline-results-${entryIndex + 1}`)
+          .forEach((key) => aliasKeys.add(key));
+      }
+
+      return templateIds.flatMap((presetTemplateId) => (
+        [...aliasKeys].map((aliasKey) => ({
+          id: `record:${recordId}:${presetTemplateId}:${aliasKey}`,
+          organizationId,
+          templateId: presetTemplateId,
+          companyId,
+          locationId,
+          fieldKey: buildMobileDocumentationMeasurementPresetFieldKey({
+            serviceCode,
+            sheetKey: aliasKey,
+            objectId,
+          }),
+          title: normalizeInputValue(`${serviceCode || record.documentType || "Zapisnik"} - ${aliasKey}`),
+          sheet,
+          createdAt: record.createdAt,
+          updatedAt: record.updatedAt,
+        }))
+      ));
+    });
   });
 }
 
@@ -26898,7 +26914,7 @@ async function buildMobileDocumentationContextSnapshot(workOrder = {}, scopedSna
     ]);
     const recordPresets = buildMobileMeasurementSheetPresetsFromDocumentRecords(freshRecords);
     return mergeMobileDocumentContextRecords(
-      mergeMobileMeasurementSheetPresets(scopedSnapshot, [...freshPresets, ...recordPresets]),
+      mergeMobileMeasurementSheetPresets(scopedSnapshot, [...recordPresets, ...freshPresets]),
       freshRecords,
     );
   } catch (error) {
