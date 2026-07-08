@@ -30881,47 +30881,6 @@ private fun WorkOrderDocumentationWizardDialog(
         selectedEquipmentCount = selectedEquipmentIds.size,
         selectedLegalCount = selectedLegalFrameworkIds.size,
     )
-    val selectedDocumentationPeopleCount = remember(
-        inspectorUserIds,
-        inspectorUserId,
-        authorizationHolderUserId,
-        electricalInspectorUserIds,
-        electricalInspectorUserId,
-        electricalAuthorizationHolderUserId,
-        tipkaloInspectorUserIds,
-        tipkaloInspectorUserId,
-        tipkaloAuthorizationHolderUserId,
-        workEquipmentInspectorUserIds,
-        workEquipmentInspectorUserId,
-        workEquipmentAuthorizationHolderUserId,
-        workEnvironmentInspectorUserIds,
-        workEnvironmentInspectorUserId,
-        workEnvironmentAuthorizationHolderUserId,
-    ) {
-        (
-            inspectorUserIds +
-                electricalInspectorUserIds +
-                tipkaloInspectorUserIds +
-                workEquipmentInspectorUserIds +
-                workEnvironmentInspectorUserIds +
-                setOf(
-                    inspectorUserId,
-                    authorizationHolderUserId,
-                    electricalInspectorUserId,
-                    electricalAuthorizationHolderUserId,
-                    tipkaloInspectorUserId,
-                    tipkaloAuthorizationHolderUserId,
-                    workEquipmentInspectorUserId,
-                    workEquipmentAuthorizationHolderUserId,
-                    workEnvironmentInspectorUserId,
-                    workEnvironmentAuthorizationHolderUserId,
-                )
-            )
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .distinctBy { it.lowercase(Locale.getDefault()) }
-            .size
-    }
     val standardTemplateFieldValues = remember(allPromptTemplates, standardValues) {
         buildStandardTemplateFieldValues(allPromptTemplates, standardValues)
     }
@@ -31376,64 +31335,16 @@ private fun WorkOrderDocumentationWizardDialog(
             .navigationBarsPadding()
             .imePadding(),
         properties = DialogProperties(usePlatformDefaultWidth = false),
-        title = {
-            if (measurementPreviewOpen) {
+        title = if (measurementPreviewOpen) {
+            {
                 DocumentationMeasurementPreviewHeader(
                     workOrder = workOrder,
                     selectedLabel = selectedFlowTab?.label ?: selectedFlowItem?.serviceCode ?: "Mjerenja",
                     onDone = { closeMeasurementPreviewFullscreen() },
                 )
-            } else if (isDocumentationLandscape && serviceFlowItems.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(modifier = Modifier.widthIn(min = 190.dp, max = 270.dp)) {
-                        Text(
-                            "Izrada zapisnika v${BuildConfig.VERSION_NAME}",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Black,
-                            maxLines = 1,
-                        )
-                        Text(
-                            text = "${workOrder.displayNumber} - ${workOrder.companyName.ifBlank { "Bez tvrtke" }}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    DocumentationProcessToolbar(
-                        flowTabs = flowTabs,
-                        selectedService = selectedFlowService,
-                        enabled = !formLoading,
-                        compact = true,
-                        modifier = Modifier.weight(1f),
-                        onSelectService = { selectedFlowService = it },
-                        onLongPressService = { item ->
-                            val usedObjectIds = additionalRecords
-                                .filter { it.serviceKey == item.serviceKey }
-                                .map { it.objectId }
-                                .toSet() + selectedObjectId
-                            val nextObject = availableLocationObjects.firstOrNull { it.id !in usedObjectIds }
-                            additionalRecordTarget = item
-                            additionalRecordObjectId = nextObject?.id.orEmpty()
-                        },
-                    )
-                }
-            } else {
-                Column {
-                    Text("Izrada zapisnika v${BuildConfig.VERSION_NAME}", fontWeight = FontWeight.Black)
-                    Text(
-                        text = "${workOrder.displayNumber} - ${workOrder.companyName.ifBlank { "Bez tvrtke" }}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
             }
+        } else {
+            null
         },
         text = {
             if (measurementPreviewOpen) {
@@ -31457,7 +31368,7 @@ private fun WorkOrderDocumentationWizardDialog(
                         .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                if (serviceFlowItems.isNotEmpty() && !isDocumentationLandscape) {
+                if (serviceFlowItems.isNotEmpty()) {
                     DocumentationProcessToolbar(
                         flowTabs = flowTabs,
                         selectedService = selectedFlowService,
@@ -31960,18 +31871,9 @@ private fun WorkOrderDocumentationWizardDialog(
 
                 if (sprBrowserFlowSelected) {
                     DocumentationSprMobileWorkspace(
-                        workOrder = workOrder,
                         templates = activeTemplates,
                         measurementTemplates = measurementTemplates,
                         measurementSheets = measurementSheets,
-                        documentNumber = currentDocumentNumber,
-                        objectName = activeSelectedObject?.name.orEmpty(),
-                        inspectionDate = inspectionDate,
-                        inspectionType = inspectionType,
-                        testingLocation = testingLocation,
-                        selectedEquipmentCount = selectedEquipmentIds.size,
-                        selectedLegalCount = selectedLegalFrameworkIds.size,
-                        selectedPeopleCount = selectedDocumentationPeopleCount,
                         values = effectiveTemplateFieldValues,
                         standardControls = templateControls,
                         attachmentFiles = documentationAttachmentFiles,
@@ -39821,18 +39723,9 @@ private fun TemplateBlockOverview(
 
 @Composable
 private fun DocumentationSprMobileWorkspace(
-    workOrder: WorkOrder,
     templates: List<WorkOrderDocumentationTemplate>,
     measurementTemplates: List<WorkOrderDocumentationTemplate>,
     measurementSheets: Map<String, WorkOrderMeasurementSheet>,
-    documentNumber: String,
-    objectName: String,
-    inspectionDate: String,
-    inspectionType: String,
-    testingLocation: String,
-    selectedEquipmentCount: Int,
-    selectedLegalCount: Int,
-    selectedPeopleCount: Int,
     values: Map<String, String>,
     standardControls: DocumentationTemplateStandardControls,
     attachmentFiles: List<WorkOrderDocumentationAiFile>,
@@ -39849,7 +39742,6 @@ private fun DocumentationSprMobileWorkspace(
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String, Boolean) -> Unit,
     onSprVoicePreview: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
 ) {
-    val sourceLabel = remember(templates) { documentationSprMobileSourceLabel(templates) }
     val menuEntries = remember(templates) {
         templates.flatMap { template ->
             buildTemplateBlockSections(template.fieldBlocks)
@@ -39883,14 +39775,6 @@ private fun DocumentationSprMobileWorkspace(
         }
     }
 
-    val templateLabel = remember(templates) { documentationSprTemplateLabel(templates) }
-    val workspaceTitle = remember(templateLabel) {
-        if (templateLabel.equals("Zapisnik", ignoreCase = true) || templateLabel.endsWith("zapisnik", ignoreCase = true)) {
-            templateLabel
-        } else {
-            "$templateLabel zapisnik"
-        }
-    }
     val standardChapterCount = 2
     val displayedChapterCount = menuEntries.size + standardChapterCount
     val standardChapterInsertPosition = remember(menuEntries) {
@@ -39925,85 +39809,10 @@ private fun DocumentationSprMobileWorkspace(
             }
     }
 
-    WizardSection(title = workspaceTitle, icon = Icons.Rounded.PictureAsPdf) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.52f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
-        ) {
-            Row(
-                modifier = Modifier.padding(14.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.Top,
-            ) {
-                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)) {
-                    Icon(
-                        Icons.Rounded.Description,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(44.dp)
-                            .padding(10.dp),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text(
-                        documentNumber.ifBlank { workOrder.displayNumber.ifBlank { documentationSprTemplateLabel(templates) } },
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        listOf(
-                            workOrder.companyName,
-                            objectName.ifBlank { testingLocation },
-                        ).filter { it.isNotBlank() }.joinToString(" - "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        listOf(
-                            formatDatePickerLabel(inspectionDate),
-                            inspectionType,
-                            sourceLabel,
-                        ).filter { it.isNotBlank() }.distinct().joinToString(" · "),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-        }
-
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            DocumentationSprStatusChip(Icons.Rounded.Work, "Oprema", selectedEquipmentCount.toString())
-            DocumentationSprStatusChip(Icons.Rounded.Lock, "Propisi", selectedLegalCount.toString())
-            DocumentationSprStatusChip(Icons.Rounded.Groups, "Osobe", selectedPeopleCount.toString())
-            if (attachmentFiles.isNotEmpty()) {
-                DocumentationSprStatusChip(Icons.Rounded.AttachFile, "Prilozi", attachmentFiles.size.toString())
-            }
-            if (tableCount > 0) {
-                DocumentationSprStatusChip(Icons.Rounded.ListAlt, "Gridline", "$tableCount / $rowCount")
-                AssistChip(
-                    onClick = onOpenMeasurements,
-                    enabled = enabled,
-                    leadingIcon = {
-                        Icon(Icons.Rounded.ScreenRotation, contentDescription = null, modifier = Modifier.size(16.dp))
-                    },
-                    label = { Text("Okreni", fontWeight = FontWeight.Bold) },
-                )
-            }
-        }
-
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         AnimatedVisibility(visible = sprVoiceAiLoading || sprVoiceAiMessage.isNotBlank()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
