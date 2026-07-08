@@ -1093,7 +1093,10 @@ const SZOMV_CHECKLISTS = Object.freeze([
         tokenKey: "SZOMV_VRSTA_HVATALJKI",
         label: "Vrsta hvataljki",
         defaultValue: "Mreza vodica",
+        type: "multi_dropdown",
+        multiple: true,
         options: SZOMV_CATCHER_OPTIONS,
+        otherFieldId: "szomv-vrsta-hvataljki-ostalo",
       },
       {
         id: "szomv-stanje-vodica-hvataljki",
@@ -1101,6 +1104,7 @@ const SZOMV_CHECKLISTS = Object.freeze([
         tokenKey: "SZOMV_STANJE_VODICA_HVATALJKI",
         label: "Stanje vodica hvataljki",
         defaultValue: "Zadovoljava",
+        negativeNoteFieldId: "szomv-stanje-vodica-hvataljki-napomena",
       },
       {
         id: "szomv-stanje-spojeva-hvataljki",
@@ -1108,6 +1112,7 @@ const SZOMV_CHECKLISTS = Object.freeze([
         tokenKey: "SZOMV_STANJE_SPOJEVA_HVATALJKI",
         label: "Stanje spojeva hvataljki",
         defaultValue: "Zadovoljava",
+        negativeNoteFieldId: "szomv-stanje-spojeva-hvataljki-napomena",
       },
       {
         id: "szomv-stanje-vodica-odvoda",
@@ -1115,6 +1120,7 @@ const SZOMV_CHECKLISTS = Object.freeze([
         tokenKey: "SZOMV_STANJE_VODICA_ODVODA",
         label: "Stanje vodica odvoda",
         defaultValue: "Zadovoljava",
+        negativeNoteFieldId: "szomv-stanje-vodica-odvoda-napomena",
       },
       {
         id: "szomv-stanje-mjernih-spojeva",
@@ -1122,6 +1128,7 @@ const SZOMV_CHECKLISTS = Object.freeze([
         tokenKey: "SZOMV_STANJE_MJERNIH_SPOJEVA",
         label: "Stanje mjernih spojeva",
         defaultValue: "Zadovoljava",
+        negativeNoteFieldId: "szomv-stanje-mjernih-spojeva-napomena",
       },
       {
         id: "szomv-vanjske-dogradnje",
@@ -1150,6 +1157,7 @@ const SZOMV_CHECKLISTS = Object.freeze([
         tokenKey: "SZOMV_ODVODNICI_ELEKTROENERGETSKI_VOD",
         label: "Stanje odvodnika struje munje i prenapona na elektroenergetskom kabelu ili nadzemnom vodu",
         defaultValue: "Zadovoljava",
+        negativeNoteFieldId: "szomv-odvodnici-elektroenergetski-vod-napomena",
       },
       {
         id: "szomv-elektro-vod-ostecen-proradio",
@@ -1173,6 +1181,7 @@ const SZOMV_CHECKLISTS = Object.freeze([
         tokenKey: "SZOMV_ODVODNICI_TELEKOMUNIKACIJSKI_VOD",
         label: "Stanje odvodnika na telekomunikacijskom kabelu ili nadzemnom vodu",
         defaultValue: "Zadovoljava",
+        negativeNoteFieldId: "szomv-odvodnici-telekomunikacijski-vod-napomena",
       },
       {
         id: "szomv-telekom-vod-ostecen-proradio",
@@ -1196,6 +1205,7 @@ const SZOMV_CHECKLISTS = Object.freeze([
         tokenKey: "SZOMV_SPOJEVI_OPSKRBNIH_VODOVA",
         label: "Stanje spojeva opskrbnih vodova sa sustavom uzemljenja i izjednacivanja potencijala",
         defaultValue: "Zadovoljava",
+        negativeNoteFieldId: "szomv-spojevi-opskrbnih-vodova-napomena",
       },
       {
         id: "szomv-vodici-izjednacavanje-potencijala",
@@ -1203,6 +1213,7 @@ const SZOMV_CHECKLISTS = Object.freeze([
         tokenKey: "SZOMV_VODICI_IZJEDNACAVANJE_POTENCIJALA",
         label: "Stanje vodica za izjednacavanje potencijala unutar gradjevine",
         defaultValue: "Zadovoljava",
+        negativeNoteFieldId: "szomv-vodici-izjednacavanje-potencijala-napomena",
       },
       {
         id: "szomv-sabirnice-izjednacenje-potencijala",
@@ -1210,6 +1221,7 @@ const SZOMV_CHECKLISTS = Object.freeze([
         tokenKey: "SZOMV_SABIRNICE_IZJEDNACENJE_POTENCIJALA",
         label: "Stanje spojeva na sabirnicama za izjednacenje potencijala",
         defaultValue: "Zadovoljava",
+        negativeNoteFieldId: "szomv-sabirnice-izjednacenje-potencijala-napomena",
       },
       {
         id: "szomv-unutarnje-dogradnje",
@@ -5147,6 +5159,10 @@ export function createDocumentationChecklistsForService(serviceCode = "") {
       label: item.label || `Stavka ${index + 1}`,
       defaultValue: item.defaultValue || "DA",
       options: Array.isArray(item.options) && item.options.length ? normalizeDocumentationOptions(item.options) : null,
+      type: item.type || (item.multiple ? "multi_dropdown" : ""),
+      multiple: item.multiple === true,
+      otherFieldId: item.otherFieldId || "",
+      negativeNoteFieldId: item.negativeNoteFieldId || "",
     })),
   }));
 }

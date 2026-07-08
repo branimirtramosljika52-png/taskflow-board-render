@@ -864,6 +864,8 @@ data class SprVoiceAiRow(
     val lampCount: String,
     val kind: String = "",
     val protectionType: String = "",
+    val protectionDevice: String = "",
+    val phaseCount: String = "",
     val zLpe: String = "",
     val zLn: String = "",
     val zLl: String = "",

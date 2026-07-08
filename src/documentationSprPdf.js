@@ -1241,8 +1241,11 @@ function drawChecklistPage(pdfDoc, model, checklist, fonts) {
     fill: TABLE_GRAY,
   });
   y -= 42;
-  const rowHeight = 36;
   checklist.items.forEach((item) => {
+    const rowHeight = Math.max(
+      36,
+      Math.min(64, 24 + Math.max(String(item.label || "").length / 34, String(item.value || "").length / 18) * 8),
+    );
     if (y - rowHeight < BOTTOM_Y + 10) {
       return;
     }

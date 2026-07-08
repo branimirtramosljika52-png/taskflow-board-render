@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.353.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.354.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -27355,20 +27355,47 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     },
   ));
   const checklistItemFields = checklists.flatMap((checklist) => (
-    (Array.isArray(checklist.items) ? checklist.items : []).map((item) => {
+    (Array.isArray(checklist.items) ? checklist.items : []).flatMap((item) => {
       const options = Array.isArray(item.options) && item.options.length
         ? item.options
         : (Array.isArray(checklist.options) && checklist.options.length ? checklist.options : yesNoNpOptions);
-      return buildMobileNativeDocumentationField(
-        item.key || item.id,
-        item.label || "Stavka pregleda",
-        "dropdown",
-        {
-          defaultValue: item.defaultValue || "DA",
-          options,
-          helpText: "Vizualni pregled se upisuje kroz izbornik stavke.",
-        },
-      );
+      const fieldsForItem = [
+        buildMobileNativeDocumentationField(
+          item.key || item.id,
+          item.label || "Stavka pregleda",
+          item.type || (item.multiple ? "multi_dropdown" : "dropdown"),
+          {
+            defaultValue: item.defaultValue || "DA",
+            options,
+            helpText: item.multiple
+              ? "Moze se odabrati vise vrijednosti."
+              : "Vizualni pregled se upisuje kroz izbornik stavke.",
+          },
+        ),
+      ];
+      if (item.otherFieldId) {
+        fieldsForItem.push(buildMobileNativeDocumentationField(
+          item.otherFieldId,
+          `${item.label || "Stavka pregleda"} - ostalo`,
+          "textarea",
+          {
+            defaultValue: "",
+            helpText: "Prikazuje se kada je odabrano Ostalo.",
+          },
+        ));
+      }
+      if (item.negativeNoteFieldId) {
+        fieldsForItem.push(buildMobileNativeDocumentationField(
+          item.negativeNoteFieldId,
+          `${item.label || "Stavka pregleda"} - opis neispravnosti`,
+          "textarea",
+          {
+            defaultValue: "",
+            helpText: "Prikazuje se kada je stavka oznacena kao Ne zadovoljava.",
+          },
+        ));
+      }
+      return fieldsForItem;
     })
   ));
   const assessmentFields = measurementAssessments.map((entry, index) => buildMobileNativeDocumentationField(
@@ -27423,6 +27450,18 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         buildMobileNativeDocumentationField("eizIpkVoiceTranscript", "Diktat impedancije petlje kvara", "spr_voice", {
           defaultValue: "",
           helpText: "Primjer: Prodajni prostor 7 uticnica 230 V. Puni IPK tablicu grupnim redom i mjernim mjestima.",
+        }),
+      ]
+      : []),
+    ...(preset.serviceCode === "EXEI"
+      ? [
+        buildMobileNativeDocumentationField("exeiIpkVoiceTranscript", "Diktat ExEi IPK", "spr_voice", {
+          defaultValue: "",
+          helpText: "Primjer: Agregat 7 motor, duplo W14, PP00-Y 4 puta 2,5 mm2, 1F1, AUT B16. Puni oznaku kruga, 1x/3x i tip zastite.",
+        }),
+        buildMobileNativeDocumentationField("exeiZudsVoiceTranscript", "Diktat ExEi FID/ZUDS", "spr_voice", {
+          defaultValue: "",
+          helpText: "Primjer: GRO FID 40/30 Agregat 7 motor duplo W14 PP00-Y 4x2,5 1F1. Puni razdjelnik, krug i In/Idn.",
         }),
       ]
       : []),
@@ -27585,6 +27624,24 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         helpText: "Dodaj upisuje ispod zadnjeg ZUDS retka. Ako je tablica jos primjer iz predloska, zamjenjuje pocetne retke.",
       }));
     }
+    if (preset.serviceCode === "EXEI" && isMobileExeiIpkMeasurementTable(table, index)) {
+      sectionBlocks.push(buildMobileNativeDocumentationBlock("exeiIpkVoiceTranscript", "Diktat ExEi IPK", "spr_voice", {
+        group: title,
+        editable: true,
+        typeLabel: "Glasovni unos",
+        summary: "Primjer: Agregat 7 motor, duplo W14, PP00-Y 4 puta 2,5 mm2, 1F1, AUT B16.",
+        helpText: "Dodaj upisuje oznaku kruga/opreme, 1x/3x i tip zastite u ExEi IPK tablicu. Formule ostaju u tablici.",
+      }));
+    }
+    if (preset.serviceCode === "EXEI" && isMobileExeiZudsMeasurementTable(table, index)) {
+      sectionBlocks.push(buildMobileNativeDocumentationBlock("exeiZudsVoiceTranscript", "Diktat ExEi FID/ZUDS", "spr_voice", {
+        group: title,
+        editable: true,
+        typeLabel: "Glasovni unos",
+        summary: "Primjer: GRO FID 40 kroz 30 Agregat 7 motor duplo W14 PP00-Y 4x2,5 1F1.",
+        helpText: "Puni razdjelnik, strujni krug i In/Idn. Ako ne kazes razdjelnik, koristi GRO kao pocetni prijedlog.",
+      }));
+    }
     return sectionBlocks;
   });
   const checklistSections = checklists.flatMap((checklist, index) => {
@@ -27592,16 +27649,35 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       || `checklist-${index + 1}`;
     const enabledFieldId = checklist.enabledFieldId || `use-${checklistKey}`;
     const title = normalizeInputValue(checklist.label || `Checklist ${index + 1}`);
-    const itemBlocks = (Array.isArray(checklist.items) ? checklist.items : []).map((item) => {
+    const itemBlocks = (Array.isArray(checklist.items) ? checklist.items : []).flatMap((item) => {
       const options = Array.isArray(item.options) && item.options.length
         ? item.options
         : (Array.isArray(checklist.options) && checklist.options.length ? checklist.options : yesNoNpOptions);
-      return buildMobileNativeDocumentationBlock(item.key || item.id, item.label || "Stavka pregleda", "select", {
-        group: title,
-        editable: true,
-        summary: item.defaultValue || "DA",
-        options,
-      });
+      const blocksForItem = [
+        buildMobileNativeDocumentationBlock(item.key || item.id, item.label || "Stavka pregleda", item.type || (item.multiple ? "multi_dropdown" : "select"), {
+          group: title,
+          editable: true,
+          summary: item.defaultValue || "DA",
+          options,
+        }),
+      ];
+      if (item.otherFieldId) {
+        blocksForItem.push(buildMobileNativeDocumentationBlock(item.otherFieldId, `${item.label || "Stavka pregleda"} - ostalo`, "textarea", {
+          group: title,
+          editable: true,
+          summary: "",
+          helpText: "Prikazuje se kada je odabrano Ostalo.",
+        }));
+      }
+      if (item.negativeNoteFieldId) {
+        blocksForItem.push(buildMobileNativeDocumentationBlock(item.negativeNoteFieldId, `${item.label || "Stavka pregleda"} - opis neispravnosti`, "textarea", {
+          group: title,
+          editable: true,
+          summary: "",
+          helpText: "Prikazuje se kada je stavka oznacena kao Ne zadovoljava.",
+        }));
+      }
+      return blocksForItem;
     });
     return [
       buildMobileNativeDocumentationBlock(`chapter-${checklistKey}`, title, "chapter", {
@@ -28756,6 +28832,23 @@ const MOBILE_EIZ_ZUDS_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
   "Glasovni unos EIZ ZUDS",
 ]);
 
+const MOBILE_EXEI_IPK_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
+  "exeiIpkVoiceTranscript",
+  "EXEI_IPK_VOICE_TRANSCRIPT",
+  "Diktat ExEi IPK",
+  "Diktat ExEi impedancije petlje kvara",
+  "Glasovni unos ExEi IPK",
+]);
+
+const MOBILE_EXEI_ZUDS_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
+  "exeiZudsVoiceTranscript",
+  "EXEI_ZUDS_VOICE_TRANSCRIPT",
+  "Diktat ExEi FID",
+  "Diktat ExEi ZUDS",
+  "Diktat ExEi RCD",
+  "Glasovni unos ExEi FID/ZUDS",
+]);
+
 const MOBILE_EXSE_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
   "exseVoiceTranscript",
   "EXSE_VOICE_TRANSCRIPT",
@@ -29884,6 +29977,212 @@ function normalizeMobileEizIpkVoiceRows(rows = []) {
   return normalizedRows;
 }
 
+function normalizeMobileExeiVoiceTechnicalText(value = "") {
+  return normalizeInputValue(value)
+    .replace(/\b(?:cetiri|cetri|četiri|ÄŤetiri)\s+(?:puta|x)\s+(?:dva|2)\s+(?:zarez|,)\s+(?:pet|5)\b/giu, "4x2,5")
+    .replace(/\b(?:tri|3)\s+(?:puta|x)\s+(?:dva|2)\s+(?:zarez|,)\s+(?:pet|5)\b/giu, "3x2,5")
+    .replace(/\b(\d{1,2})\s*(?:puta|x|×)\s*(\d{1,2}(?:[,.]\d+)?)\b/giu, "$1x$2")
+    .replace(/\bPP\s*(?:0|O)\s*(?:0|O)\s*-?\s*Y\b/giu, "PP00-Y")
+    .replace(/\b(mm\s*(?:2|²)|milimet(?:ar|ra|ara)?\s+kvadratn(?:i|ih)?)\b/giu, "mm2")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitMobileExeiVoiceSegments(transcript = "") {
+  const source = normalizeMobileExeiVoiceTechnicalText(transcript);
+  if (!source) {
+    return [];
+  }
+  return source
+    .replace(/\bagregat\s+\d{1,3}/giu, (match, offset) => {
+      const prefix = source.slice(0, offset);
+      const previousLooksComplete = /\b(?:PP00-Y|NYY|H07RN|LIYCY|AUT|(?:w|ve)\s*-?\s*\d|[BCD]\s*-?\s*\d{1,3})\b/iu.test(prefix);
+      return offset > 0 && previousLooksComplete ? `\n${match}` : match;
+    })
+    .replace(/\b(?:i onda|pa onda|zatim|sljedece|sljedeće)\b/giu, "\n")
+    .split(/\r?\n/g)
+    .map((segment) => normalizeInputValue(segment).replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, ""))
+    .filter(Boolean);
+}
+
+function extractMobileExeiVoiceWireMarker(segment = "") {
+  const match = normalizeMobileExeiVoiceTechnicalText(segment).match(/\b(duplo\s+)?(?:w|ve)\s*-?\s*(\d{1,3}(?:\s*-\s*\d{1,3})*)\b/iu);
+  if (!match) {
+    return "";
+  }
+  const number = normalizeInputValue(match[2]).replace(/\s+/g, "");
+  return `${match[1] ? "Duplo " : ""}W${number}`;
+}
+
+function extractMobileExeiVoiceCable(segment = "") {
+  const match = normalizeMobileExeiVoiceTechnicalText(segment).match(/\b(PP00-Y|NYY|H07RN|LIYCY)\s*(\d{1,2}\s*x\s*\d{1,2}(?:[,.]\d+)?)\s*(mm2)?\b/iu);
+  if (!match) {
+    return "";
+  }
+  const cableType = normalizeInputValue(match[1]).toUpperCase();
+  const section = normalizeInputValue(match[2]).replace(/\s*x\s*/giu, "x");
+  return `${cableType} ${section} mm2`;
+}
+
+function extractMobileExeiVoiceProtectionDevice(segment = "") {
+  const match = normalizeInputValue(segment).match(/\b(?:(\d{1,2})\s*)?(F|QF|Q)\s*-?\s*(\d{1,3})\b/iu);
+  if (!match) {
+    return "";
+  }
+  return `${match[1] || ""}${normalizeInputValue(match[2]).toUpperCase()}${match[3]}`;
+}
+
+function normalizeMobileExeiVoiceProtectionType(segment = "") {
+  const source = normalizeMobileExeiVoiceTechnicalText(segment);
+  const rcdRating = normalizeMobileEizZudsRating(source);
+  if (rcdRating && /\b(?:fid|fi|rcd|zuds|kzs|rcbo)\b/iu.test(source)) {
+    return `RCD ${rcdRating}`;
+  }
+  const match = source.match(/\b(?:aut|automatski(?:\s+osigura[cč])?|osigura[cč])?\s*([BCD])\s*-?\s*(\d{1,3})(?:\s*A)?(?:\s*(?:\/|kroz)\s*([1234]))?\b/iu);
+  if (!match) {
+    return "";
+  }
+  const characteristic = normalizeInputValue(match[1]).toUpperCase();
+  const current = normalizeInputValue(match[2]);
+  const poles = normalizeInputValue(match[3]);
+  return poles ? `AUT ${characteristic}${current}/${poles}` : `AUT ${characteristic}${current}A`;
+}
+
+function inferMobileExeiVoicePhaseCount(segment = "", cable = "", protectionType = "") {
+  if (/\b(?:1\s*x|jednofaz|1\s*f)\b/iu.test(segment)) {
+    return "1x";
+  }
+  if (/\b(?:3\s*x|trofaz|3\s*f)\b/iu.test(segment) || /\/\s*3\b/u.test(protectionType)) {
+    return "3x";
+  }
+  const coreCount = Number.parseInt((String(cable || "").match(/\b(\d{1,2})x\d/iu) || [])[1], 10);
+  if (Number.isFinite(coreCount)) {
+    return coreCount >= 4 ? "3x" : "1x";
+  }
+  const lookup = normalizeMobileSprLookupText(`${segment} ${cable} ${protectionType}`);
+  return lookup.includes("motor") || lookup.includes("crpka") ? "3x" : "1x";
+}
+
+function cleanMobileExeiVoiceDeviceLabel(segment = "") {
+  const source = normalizeMobileExeiVoiceTechnicalText(segment);
+  const pumpConnection = source.match(/\bpriklju[cč]ak\s+crpke\s+u\s+agregatu\s+(\d{1,3})\b/iu);
+  if (pumpConnection) {
+    return `Prikljucak crpke u Agregatu ${pumpConnection[1]}`;
+  }
+  const aggregate = source.match(/\bagregat\s+(\d{1,3}(?:\s*\/\s*\d{1,3})?)\b/iu);
+  if (aggregate) {
+    const number = normalizeInputValue(aggregate[1]).replace(/\s+/g, "");
+    const qualifier = /\bmotor\b/iu.test(source)
+      ? "motor"
+      : /\b(?:crpka|pumpa)\b/iu.test(source)
+        ? "crpka"
+        : /\brasvjet/iu.test(source)
+          ? "rasvjeta"
+          : /\bprocesor/iu.test(source)
+            ? "procesor"
+            : "";
+    return qualifier ? `Agregat ${number} - ${qualifier}` : `Agregat ${number}`;
+  }
+  return source
+    .replace(/\b(?:duplo\s+)?(?:w|ve)\s*-?\s*\d{1,3}(?:\s*-\s*\d{1,3})*\b/giu, " ")
+    .replace(/\b(?:PP00-Y|NYY|H07RN|LIYCY)\s*\d{1,2}\s*x\s*\d{1,2}(?:[,.]\d+)?\s*(?:mm2)?\b/giu, " ")
+    .replace(/\b(?:(?:\d{1,2})\s*)?(?:F|QF|Q)\s*-?\s*\d{1,3}\b/giu, " ")
+    .replace(/\b(?:aut|automatski|osigura[cč])\s*[BCD]\s*-?\s*\d{1,3}(?:\s*A)?(?:\s*(?:\/|kroz)\s*[1234])?\b/giu, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, "");
+}
+
+function extractMobileExeiVoiceBoard(segment = "") {
+  const explicit = normalizeInputValue(segment).match(/\b(?:razdjelnik|razdelnik|ormar)\s+([A-ZČĆŽŠĐ0-9][A-ZČĆŽŠĐ0-9\s-]{0,20})/iu);
+  if (explicit?.[1]) {
+    return normalizeInputValue(explicit[1]).replace(/^[,.;:\s-]+|[,.;:\s-]+$/g, "").toUpperCase();
+  }
+  const board = normalizeInputValue(segment).match(/\b(GRO|RO\s*[A-Z0-9-]{0,8})\b/iu);
+  if (board?.[1]) {
+    return normalizeInputValue(board[1]).replace(/\s+/g, " ").toUpperCase();
+  }
+  return "GRO";
+}
+
+function parseMobileExeiIpkVoiceRows(transcript = "") {
+  return splitMobileExeiVoiceSegments(transcript).map((segment, index) => {
+    const label = cleanMobileExeiVoiceDeviceLabel(segment);
+    const wireMarker = extractMobileExeiVoiceWireMarker(segment);
+    const cable = extractMobileExeiVoiceCable(segment);
+    const protectionDevice = extractMobileExeiVoiceProtectionDevice(segment);
+    const protectionType = normalizeMobileExeiVoiceProtectionType(segment);
+    const phaseCount = inferMobileExeiVoicePhaseCount(segment, cable, protectionType);
+    const details = [wireMarker, cable, protectionDevice].map(normalizeInputValue).filter(Boolean).join(", ");
+    const circuit = [label, details].map(normalizeInputValue).filter(Boolean).join("\n");
+    const key = normalizeMobileSprLookupText(`${circuit} ${protectionType} ${index}`);
+    if (!circuit || !key) {
+      return null;
+    }
+    return {
+      key: `exei-ipk-${key}`,
+      place: circuit,
+      circuit,
+      lampCount: phaseCount,
+      phaseCount,
+      protectionDevice,
+      protectionType,
+      kind: "measurement",
+    };
+  }).filter(Boolean);
+}
+
+function normalizeMobileExeiIpkVoiceRows(rows = []) {
+  const normalizedRows = [];
+  (Array.isArray(rows) ? rows : []).forEach((row, index) => {
+    const circuit = normalizeInputValue(row?.circuit || row?.place || row?.oznaka || row?.oznakaKruga || "");
+    if (!circuit) {
+      return;
+    }
+    const protectionType = normalizeMobileExeiVoiceProtectionType(row?.protectionType || row?.zastita || row?.tip || "") ||
+      normalizeInputValue(row?.protectionType || row?.zastita || row?.tip || "");
+    const protectionDevice = normalizeInputValue(row?.protectionDevice || row?.osigurac || row?.breaker || "");
+    const phaseCount = normalizeInputValue(row?.phaseCount || row?.lampCount || row?.phase || "") ||
+      inferMobileExeiVoicePhaseCount(circuit, extractMobileExeiVoiceCable(circuit), protectionType);
+    normalizedRows.push({
+      key: `exei-ipk-${normalizeMobileSprLookupText(`${circuit} ${index}`)}`,
+      place: circuit,
+      circuit,
+      lampCount: phaseCount,
+      phaseCount,
+      protectionDevice,
+      protectionType,
+      kind: "measurement",
+    });
+  });
+  return normalizedRows;
+}
+
+function parseMobileExeiZudsVoiceRows(transcript = "") {
+  return splitMobileExeiVoiceSegments(transcript).map((segment, index) => {
+    const rcdRating = normalizeMobileEizZudsRating(segment);
+    if (!rcdRating) {
+      return null;
+    }
+    const ipkRow = parseMobileExeiIpkVoiceRows(segment)[0] || {};
+    const circuit = normalizeInputValue(ipkRow.circuit || cleanMobileExeiVoiceDeviceLabel(segment));
+    const board = extractMobileExeiVoiceBoard(segment);
+    const key = normalizeMobileSprLookupText(`${board} ${circuit} ${rcdRating} ${index}`);
+    if (!board || !circuit || !key) {
+      return null;
+    }
+    return {
+      key: `exei-zuds-${key}`,
+      place: board,
+      board,
+      lampCount: circuit,
+      circuit,
+      rcdRating,
+      protectionType: rcdRating,
+      kind: "measurement",
+    };
+  }).filter(Boolean);
+}
+
 function getMobileSprVoiceResultRows(result = {}) {
   const directRows = Array.isArray(result?.rows) ? result.rows : [];
   const measurementRows = Array.isArray(result?.measurementRows) ? result.measurementRows : [];
@@ -30137,6 +30436,26 @@ function buildMobileEizZudsVoiceLocalPayload(body = {}, message = "") {
   };
 }
 
+function buildMobileExeiIpkVoiceLocalPayload(body = {}, message = "") {
+  const rows = normalizeMobileExeiIpkVoiceRows(parseMobileExeiIpkVoiceRows(body?.transcript || body?.text || ""));
+  return {
+    ok: true,
+    provider: "local",
+    rows,
+    message: message || `Lokalni parser je pripremio ${rows.length} ExEi IPK redaka.`,
+  };
+}
+
+function buildMobileExeiZudsVoiceLocalPayload(body = {}, message = "") {
+  const rows = normalizeMobileEizZudsVoiceRows(parseMobileExeiZudsVoiceRows(body?.transcript || body?.text || ""));
+  return {
+    ok: true,
+    provider: "local",
+    rows,
+    message: message || `Lokalni parser je pripremio ${rows.length} ExEi FID/ZUDS redaka.`,
+  };
+}
+
 function isMobileEizZudsVoiceRequest(body = {}) {
   const serviceCode = normalizeInputValue(body?.serviceCode).toUpperCase();
   const table = body?.measurementTable && typeof body.measurementTable === "object" ? body.measurementTable : {};
@@ -30186,6 +30505,59 @@ function isMobileEizIpkVoiceRequest(body = {}) {
     || tableText.includes("eiz1 4")
     || tableText.includes("impedanc")
     || tableText.includes("petlje kvara")
+  );
+}
+
+function isMobileExeiZudsVoiceRequest(body = {}) {
+  const serviceCode = normalizeInputValue(body?.serviceCode).toUpperCase();
+  const table = body?.measurementTable && typeof body.measurementTable === "object" ? body.measurementTable : {};
+  const tableText = normalizeMobileSprLookupText([
+    table.id,
+    table.key,
+    table.tokenKey,
+    table.label,
+    table.summary,
+    table.sourceSheet,
+    body?.templateTitle,
+    body?.voiceFieldId,
+    body?.voiceFieldKey,
+    body?.voiceFieldTokenKey,
+    body?.voiceFieldLabel,
+  ].join(" "));
+  return serviceCode === "EXEI" && (
+    tableText.includes("exei zuds")
+    || tableText.includes("exei1 4")
+    || tableText.includes("zoi 10 08")
+    || tableText.includes("zuds")
+    || tableText.includes("diferencijal")
+    || tableText.includes("rcd")
+    || tableText.includes("fid")
+  );
+}
+
+function isMobileExeiIpkVoiceRequest(body = {}) {
+  const serviceCode = normalizeInputValue(body?.serviceCode).toUpperCase();
+  const table = body?.measurementTable && typeof body.measurementTable === "object" ? body.measurementTable : {};
+  const tableText = normalizeMobileSprLookupText([
+    table.id,
+    table.key,
+    table.tokenKey,
+    table.label,
+    table.summary,
+    table.sourceSheet,
+    body?.templateTitle,
+    body?.voiceFieldId,
+    body?.voiceFieldKey,
+    body?.voiceFieldTokenKey,
+    body?.voiceFieldLabel,
+  ].join(" "));
+  return serviceCode === "EXEI" && (
+    tableText.includes("exei ipk")
+    || tableText.includes("exei1 2")
+    || tableText.includes("zoi 10 07")
+    || tableText.includes("impedanc")
+    || tableText.includes("petlje kvara")
+    || tableText.includes("ipk")
   );
 }
 
@@ -30275,6 +30647,12 @@ function isMobileEmmVoiceRequest(body = {}) {
 }
 
 async function buildMobileMeasurementVoiceStructuredRows(body = {}, user = null) {
+  if (isMobileExeiZudsVoiceRequest(body)) {
+    return buildMobileExeiZudsVoiceLocalPayload(body);
+  }
+  if (isMobileExeiIpkVoiceRequest(body)) {
+    return buildMobileExeiIpkVoiceLocalPayload(body);
+  }
   if (isMobileEizZudsVoiceRequest(body)) {
     return buildMobileEizZudsVoiceLocalPayload(body);
   }
@@ -30915,6 +31293,47 @@ function isMobileEizIpkMeasurementTable(table = {}, index = -1) {
     || lookup.includes("petlje kvara");
 }
 
+function isMobileExeiIpkMeasurementTable(table = {}, index = -1) {
+  const lookup = normalizeMobileSprLookupText([
+    table?.id,
+    table?.key,
+    table?.tokenKey,
+    table?.fieldKey,
+    table?.label,
+    table?.summary,
+    table?.chapterTitle,
+    table?.sourceSheet,
+    index === 0 ? "fallback-exei-ipk" : "",
+  ].join(" "));
+  return lookup.includes("exei ipk")
+    || lookup.includes("exei1 2")
+    || lookup.includes("zoi 10 07")
+    || lookup.includes("impedanc")
+    || lookup.includes("petlje kvara")
+    || lookup.includes("ipk");
+}
+
+function isMobileExeiZudsMeasurementTable(table = {}, index = -1) {
+  const lookup = normalizeMobileSprLookupText([
+    table?.id,
+    table?.key,
+    table?.tokenKey,
+    table?.fieldKey,
+    table?.label,
+    table?.summary,
+    table?.chapterTitle,
+    table?.sourceSheet,
+    index === 2 ? "fallback-exei-zuds" : "",
+  ].join(" "));
+  return lookup.includes("exei zuds")
+    || lookup.includes("exei1 4")
+    || lookup.includes("zoi 10 08")
+    || lookup.includes("zuds")
+    || lookup.includes("diferencijal")
+    || lookup.includes("rcd")
+    || lookup.includes("fid");
+}
+
 function isMobileEizZudsSheetTemplateLike(sheet = {}, boardColumn = null, circuitColumn = null, ratingColumn = null) {
   if (!Array.isArray(sheet?.rows) || sheet.rows.length === 0) {
     return true;
@@ -30955,7 +31374,7 @@ function applyMobileEizZudsVoiceRowsToSheet(sheet = null, voiceRows = [], replac
   const tiskColumn = findMobileSprSheetColumn(normalized, ["tisk"], 5);
   const u0Column = findMobileSprSheetColumn(normalized, ["u0", "uo"], 6);
   const passColumn = findMobileSprSheetColumn(normalized, ["zadovoljava", "pass", "iisk idn"], normalized.columns.length - 1);
-  if (!boardColumn?.id || !circuitColumn?.id || !ratingColumn?.id) {
+  if (!boardColumn?.id || !circuitColumn?.id || (!ratingColumn?.id && !inColumn?.id && !idnColumn?.id)) {
     return normalized;
   }
   const originalRows = (Array.isArray(normalized.rows) ? normalized.rows : []).map((row, index) => ({
@@ -31012,8 +31431,10 @@ function applyMobileEizZudsVoiceRowsToSheet(sheet = null, voiceRows = [], replac
   const rowHasUserContent = (row) => {
     const board = normalizeInputValue(row.cells?.[boardColumn.id]);
     const circuit = normalizeInputValue(row.cells?.[circuitColumn.id]);
-    const rating = normalizeInputValue(row.cells?.[ratingColumn.id]);
-    return Boolean(board || circuit || rating);
+    const rating = ratingColumn?.id ? normalizeInputValue(row.cells?.[ratingColumn.id]) : "";
+    const inValue = inColumn?.id ? normalizeInputValue(row.cells?.[inColumn.id]) : "";
+    const idnValue = idnColumn?.id ? normalizeInputValue(row.cells?.[idnColumn.id]) : "";
+    return Boolean(board || circuit || rating || inValue || idnValue);
   };
   let insertIndex = shouldReset ? 0 : Math.max(0, rows.findLastIndex(rowHasUserContent) + 1);
   let measurementNumber = 1;
@@ -31034,7 +31455,9 @@ function applyMobileEizZudsVoiceRowsToSheet(sheet = null, voiceRows = [], replac
     seedFormulaDefaults(targetRow, targetIndex, measurementNumber);
     targetRow.cells[boardColumn.id] = entry.board;
     targetRow.cells[circuitColumn.id] = entry.circuit;
-    targetRow.cells[ratingColumn.id] = entry.rcdRating;
+    if (ratingColumn?.id) {
+      targetRow.cells[ratingColumn.id] = entry.rcdRating;
+    }
     const [inValue = "", idnValue = ""] = String(entry.rcdRating || "").split("/");
     if (inColumn?.id && inColumn.id !== ratingColumn.id) {
       targetRow.cells[inColumn.id] = inValue;
@@ -31209,6 +31632,151 @@ function applyMobileEizIpkVoiceRowsToSheet(sheet = null, voiceRows = [], replace
       ...sectionMerges,
     ],
   };
+}
+
+function isMobileExeiIpkSheetTemplateLike(sheet = {}, circuitColumn = null) {
+  if (!circuitColumn?.id || !Array.isArray(sheet?.rows) || sheet.rows.length === 0) {
+    return true;
+  }
+  return !sheet.rows.some((row) => normalizeInputValue(row?.cells?.[circuitColumn.id]));
+}
+
+function applyMobileExeiIpkVoiceRowsToSheet(sheet = null, voiceRows = [], replaceExisting = false) {
+  const normalized = normalizeWorkOrderMeasurementSheet(sheet);
+  const rowsToApply = normalizeMobileExeiIpkVoiceRows(voiceRows);
+  if (!normalized?.columns?.length || rowsToApply.length === 0) {
+    return normalized || sheet;
+  }
+  const circuitColumn = findMobileSprSheetColumn(
+    normalized,
+    ["oznaka strujnog kruga", "el uredaja", "el uređaja", "strujni krug", "circuit"],
+    0,
+  );
+  const phaseColumn = findMobileSprSheetColumn(normalized, ["1x/3x", "1x 3x", "broj faza", "phase"], -1);
+  const protectionDeviceColumn = findMobileSprSheetColumn(
+    normalized,
+    ["zastitni uredaj", "zaštitni uređaj", "nadstrujni zastitni uredaj", "osigurac", "osigurač"],
+    phaseColumn?.id ? -1 : 1,
+  );
+  const protectionTypeColumn = findMobileSprSheetColumn(
+    normalized,
+    ["tip i karakteristika", "karakteristika", "tip zastite", "tip zaštite"],
+    2,
+  );
+  if (!circuitColumn?.id) {
+    return normalized;
+  }
+  const targetColumnIds = [
+    circuitColumn?.id,
+    phaseColumn?.id,
+    protectionDeviceColumn?.id,
+    protectionTypeColumn?.id,
+  ].filter(Boolean);
+  const originalRows = (Array.isArray(normalized.rows) ? normalized.rows : []).map((row, index) => ({
+    id: normalizeInputValue(row?.id) || `measurement-row-${index + 1}`,
+    cells: { ...(row?.cells || {}) },
+    formats: { ...(row?.formats || {}) },
+  }));
+  const rows = originalRows.map((row) => ({
+    id: row.id,
+    cells: { ...row.cells },
+    formats: { ...row.formats },
+  }));
+  const seedFormulaDefaults = (row, targetIndex) => {
+    const originalCells = originalRows[targetIndex]?.cells || originalRows[originalRows.length - 1]?.cells || {};
+    normalized.columns.forEach((column) => {
+      const originalValue = normalizeInputValue(originalCells[column.id]);
+      if (originalValue.startsWith("=")) {
+        row.cells[column.id] = originalValue;
+      }
+    });
+  };
+  const clearTargetCells = (row) => {
+    targetColumnIds.forEach((columnId) => {
+      row.cells[columnId] = "";
+      delete row.formats[columnId];
+    });
+  };
+  const createRow = (targetIndex = rows.length) => {
+    const base = originalRows[targetIndex] || {};
+    const row = {
+      id: normalizeInputValue(base.id) || `measurement-row-${rows.length + 1}`,
+      cells: Object.fromEntries(normalized.columns.map((column) => [column.id, ""])),
+      formats: {},
+    };
+    seedFormulaDefaults(row, targetIndex);
+    rows.push(row);
+    return row;
+  };
+  const shouldReset = replaceExisting || isMobileExeiIpkSheetTemplateLike(normalized, circuitColumn);
+  if (shouldReset) {
+    rows.forEach(clearTargetCells);
+  }
+  const rowHasUserContent = (row) => targetColumnIds.some((columnId) => normalizeInputValue(row.cells?.[columnId]));
+  let insertIndex = shouldReset ? 0 : Math.max(0, rows.findLastIndex(rowHasUserContent) + 1);
+  rowsToApply.forEach((entry) => {
+    const targetRow = rows[insertIndex] || createRow(insertIndex);
+    const targetIndex = insertIndex;
+    insertIndex += 1;
+    seedFormulaDefaults(targetRow, targetIndex);
+    clearTargetCells(targetRow);
+    targetRow.cells[circuitColumn.id] = entry.circuit || entry.place;
+    if (phaseColumn?.id && entry.phaseCount) {
+      targetRow.cells[phaseColumn.id] = entry.phaseCount;
+    }
+    if (protectionDeviceColumn?.id && entry.protectionDevice) {
+      targetRow.cells[protectionDeviceColumn.id] = entry.protectionDevice;
+    }
+    if (protectionTypeColumn?.id && entry.protectionType) {
+      targetRow.cells[protectionTypeColumn.id] = entry.protectionType;
+    }
+  });
+  return {
+    ...normalized,
+    rows,
+  };
+}
+
+function applyMobileExeiIpkVoiceTranscriptToMeasurementTables(tables = [], common = {}, template = {}) {
+  const transcript = getMobileDocumentationTemplateFieldValues(
+    common,
+    template,
+    MOBILE_EXEI_IPK_VOICE_TRANSCRIPT_FIELD_KEYS,
+  );
+  const voiceRows = normalizeMobileExeiIpkVoiceRows(parseMobileExeiIpkVoiceRows(transcript));
+  if (!voiceRows.length) {
+    return tables;
+  }
+  return tables.map((table, index) => {
+    if (!isMobileExeiIpkMeasurementTable(table, index)) {
+      return table;
+    }
+    return {
+      ...table,
+      sheet: applyMobileExeiIpkVoiceRowsToSheet(table.sheet, voiceRows, false),
+    };
+  });
+}
+
+function applyMobileExeiZudsVoiceTranscriptToMeasurementTables(tables = [], common = {}, template = {}) {
+  const transcript = getMobileDocumentationTemplateFieldValues(
+    common,
+    template,
+    MOBILE_EXEI_ZUDS_VOICE_TRANSCRIPT_FIELD_KEYS,
+  );
+  const voiceRows = normalizeMobileEizZudsVoiceRows(parseMobileExeiZudsVoiceRows(transcript));
+  if (!voiceRows.length) {
+    return tables;
+  }
+  return tables.map((table, index) => {
+    if (!isMobileExeiZudsMeasurementTable(table, index)) {
+      return table;
+    }
+    return {
+      ...table,
+      sheet: applyMobileEizZudsVoiceRowsToSheet(table.sheet, voiceRows, false),
+    };
+  });
 }
 
 function applyMobileEizIpkVoiceTranscriptToMeasurementTables(tables = [], common = {}, template = {}) {
@@ -31538,6 +32106,13 @@ function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, co
       template,
     );
   }
+  if (normalizedServiceCode === "EXEI") {
+    return applyMobileExeiIpkVoiceTranscriptToMeasurementTables(
+      applyMobileExeiZudsVoiceTranscriptToMeasurementTables(tables, common, template),
+      common,
+      template,
+    );
+  }
   return tables;
 }
 
@@ -31590,6 +32165,42 @@ function buildMobileDocumentationChecklists(template = {}, reportDefaults = {}, 
   const checklists = Array.isArray(template.checklists) && template.checklists.length > 0
     ? template.checklists
     : (Array.isArray(reportDefaults.checklists) ? reportDefaults.checklists : []);
+  const normalizeChecklistValue = (value = "") => String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  const checklistValueContainsOption = (value = "", option = "") => {
+    const optionLookup = normalizeChecklistValue(option);
+    if (!optionLookup) {
+      return false;
+    }
+    const normalized = normalizeChecklistValue(value);
+    if (!normalized) {
+      return false;
+    }
+    return normalized.split(/[;,|\n]+/)
+      .map((part) => part.trim())
+      .some((part) => part === optionLookup || part.startsWith(`${optionLookup}:`));
+  };
+  const checklistValueIsNegative = (value = "") => {
+    const lookup = normalizeChecklistValue(value);
+    return lookup === "ne" || lookup === "ne zadovoljava" || lookup.includes("ne zadovoljava") || lookup.includes("nezadovoljava");
+  };
+  const extraChecklistValue = (fieldId = "") => {
+    const normalized = normalizeInputValue(fieldId);
+    if (!normalized) {
+      return "";
+    }
+    return getMobileDocumentationTemplateFieldValues(common, template, [
+      normalized,
+      normalized.toUpperCase().replace(/[^A-Z0-9]+/g, "_"),
+      normalized.replace(/-/g, "_"),
+      normalized.replace(/_/g, "-"),
+    ]);
+  };
   return checklists.map((checklist, index) => {
     const checklistKey = normalizeInputValue(checklist.key || checklist.id || `checklist-${index + 1}`);
     const enabled = getMobileDocumentationTemplateBooleanValue(
@@ -31601,16 +32212,31 @@ function buildMobileDocumentationChecklists(template = {}, reportDefaults = {}, 
     return {
       ...checklist,
       enabled,
-      items: (Array.isArray(checklist.items) ? checklist.items : []).map((item, itemIndex) => ({
-        ...item,
-        value: getMobileDocumentationTemplateFieldValues(common, template, [
+      items: (Array.isArray(checklist.items) ? checklist.items : []).map((item, itemIndex) => {
+        let value = getMobileDocumentationTemplateFieldValues(common, template, [
           item.key,
           item.id,
           item.tokenKey,
           `${checklistKey}-${itemIndex + 1}`,
           item.label,
-        ]) || item.defaultValue || "DA",
-      })),
+        ]) || item.defaultValue || "DA";
+        if (item.otherFieldId && checklistValueContainsOption(value, "Ostalo")) {
+          const otherValue = extraChecklistValue(item.otherFieldId);
+          if (otherValue) {
+            value = value.replace(/\bOstalo\b/i, `Ostalo: ${otherValue}`);
+          }
+        }
+        if (item.negativeNoteFieldId && checklistValueIsNegative(value)) {
+          const negativeNote = extraChecklistValue(item.negativeNoteFieldId);
+          if (negativeNote) {
+            value = `${value} - ${negativeNote}`;
+          }
+        }
+        return {
+          ...item,
+          value,
+        };
+      }),
     };
   });
 }

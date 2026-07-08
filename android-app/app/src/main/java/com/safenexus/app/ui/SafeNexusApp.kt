@@ -5824,9 +5824,10 @@ private fun DocumentationSprVoiceField(
     enabled: Boolean,
 ) {
     val voiceLookupText = remember(label, voiceContext) { "$label $voiceContext" }
+    val isExeiVoice = remember(voiceLookupText) { isExeiVoiceText(voiceLookupText) }
     val isExseVoice = remember(voiceLookupText) { isExseVoiceText(voiceLookupText) }
     val isEizZudsVoice = remember(voiceLookupText) { isEizZudsVoiceText(voiceLookupText) }
-    val isEizIpkVoice = remember(voiceLookupText) {
+    val isIpkVoice = remember(voiceLookupText, isEizZudsVoice) {
         !isEizZudsVoice && (
             voiceLookupText.contains("impedanc", ignoreCase = true) ||
             voiceLookupText.contains("petlje", ignoreCase = true) ||
@@ -5834,8 +5835,13 @@ private fun DocumentationSprVoiceField(
             voiceLookupText.contains("uti", ignoreCase = true)
             )
     }
+    val isExeiZudsVoice = isExeiVoice && isEizZudsVoice
+    val isExeiIpkVoice = isExeiVoice && isIpkVoice
+    val isEizIpkVoice = !isExeiVoice && isIpkVoice
     val exampleText = when {
         isExseVoice -> "Agregat 1 cijev za istakanje Eurosuper 95 otpor cijevi 4"
+        isExeiZudsVoice -> "GRO FID 40 kroz 30 Agregat 7 motor duplo W14 PP00-Y 4 puta 2,5 1F1"
+        isExeiIpkVoice -> "Agregat 7 motor duplo W14 PP00-Y 4 puta 2,5 mm2 1F1 AUT B16"
         isEizZudsVoice -> "GRO Q1 40 kroz 30, Q5 40 kroz 30"
         isEizIpkVoice -> "Prostorija skladište 7 utičnica, C16, ZLP 0,37"
         else -> "Prodajni prostor 7 panika, skladište 6"
@@ -5868,6 +5874,14 @@ private fun DocumentationSprVoiceField(
                 row.pass.takeIf { it.isNotBlank() }?.let { "Ocjena: $it" },
             ).joinToString("  •  ")
         }
+        if (isExeiIpkVoice) {
+            return listOfNotNull(
+                row.circuit.ifBlank { row.place }.takeIf { it.isNotBlank() }?.let { "Oznaka: ${it.replace("\n", " / ")}" },
+                row.phaseCount.ifBlank { row.lampCount }.takeIf { it.isNotBlank() }?.let { "1x/3x: $it" },
+                row.protectionDevice.takeIf { it.isNotBlank() }?.let { "Uređaj: $it" },
+                row.protectionType.takeIf { it.isNotBlank() }?.let { "Tip: $it" },
+            ).joinToString("  •  ")
+        }
         if (isEizZudsVoice) {
             return listOfNotNull(
                 row.board.ifBlank { row.place }.takeIf { it.isNotBlank() }?.let { "Razdjelnik: $it" },
@@ -5892,6 +5906,8 @@ private fun DocumentationSprVoiceField(
     fun parseLocalPreviewRows(spoken: String): List<SprVoiceAiRow> =
         when {
             isExseVoice -> parseExseVoiceTranscriptToAiRows(spoken)
+            isExeiZudsVoice -> parseExeiZudsVoiceTranscriptToAiRows(spoken)
+            isExeiIpkVoice -> parseExeiIpkVoiceTranscriptToAiRows(spoken)
             isEizZudsVoice -> parseEizZudsVoiceTranscriptToAiRows(spoken)
             isEizIpkVoice -> parseEizIpkVoiceTranscriptToAiRows(spoken)
             else -> parseSprVoiceTranscriptToAiRows(spoken)
@@ -5944,9 +5960,11 @@ private fun DocumentationSprVoiceField(
         }
     }
     if (pendingSpoken.isNotBlank()) {
-        val localPreviewRows = remember(pendingSpoken, isExseVoice, isEizZudsVoice, isEizIpkVoice) {
+        val localPreviewRows = remember(pendingSpoken, isExseVoice, isExeiZudsVoice, isExeiIpkVoice, isEizZudsVoice, isEizIpkVoice) {
             when {
                 isExseVoice -> parseExseVoiceTranscriptToAiRows(pendingSpoken)
+                isExeiZudsVoice -> parseExeiZudsVoiceTranscriptToAiRows(pendingSpoken)
+                isExeiIpkVoice -> parseExeiIpkVoiceTranscriptToAiRows(pendingSpoken)
                 isEizZudsVoice -> parseEizZudsVoiceTranscriptToAiRows(pendingSpoken)
                 isEizIpkVoice -> parseEizIpkVoiceTranscriptToAiRows(pendingSpoken)
                 else -> parseSprVoiceTranscriptToAiRows(pendingSpoken)
@@ -6200,6 +6218,53 @@ private fun DocumentationSprVoiceField(
                                                         },
                                                     )
                                                 }
+                                            } else if (isExeiIpkVoice) {
+                                                val circuit = row.circuit.ifBlank { row.place }
+                                                val phaseCount = row.phaseCount.ifBlank { row.lampCount }
+                                                SprVoicePreviewEditField(
+                                                    label = "Oznaka strujnog kruga / el. uređaja",
+                                                    value = circuit,
+                                                    onValueChange = { nextValue ->
+                                                        updatePreviewRow(rowIndex, row.copy(place = nextValue, circuit = nextValue))
+                                                    },
+                                                    onApplyAll = {
+                                                        applyPreviewColumn { it.copy(place = circuit, circuit = circuit) }
+                                                    },
+                                                )
+                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    SprVoicePreviewEditField(
+                                                        label = "1x/3x",
+                                                        value = phaseCount,
+                                                        onValueChange = { nextValue ->
+                                                            updatePreviewRow(rowIndex, row.copy(lampCount = nextValue, phaseCount = nextValue))
+                                                        },
+                                                        modifier = Modifier.weight(1f),
+                                                        onApplyAll = {
+                                                            applyPreviewColumn { it.copy(lampCount = phaseCount, phaseCount = phaseCount) }
+                                                        },
+                                                    )
+                                                    SprVoicePreviewEditField(
+                                                        label = "Osigurač",
+                                                        value = row.protectionDevice,
+                                                        onValueChange = { nextValue ->
+                                                            updatePreviewRow(rowIndex, row.copy(protectionDevice = nextValue))
+                                                        },
+                                                        modifier = Modifier.weight(1f),
+                                                        onApplyAll = {
+                                                            applyPreviewColumn { it.copy(protectionDevice = row.protectionDevice) }
+                                                        },
+                                                    )
+                                                }
+                                                SprVoicePreviewEditField(
+                                                    label = "Tip i karakteristika",
+                                                    value = row.protectionType,
+                                                    onValueChange = { nextValue ->
+                                                        updatePreviewRow(rowIndex, row.copy(protectionType = nextValue))
+                                                    },
+                                                    onApplyAll = {
+                                                        applyPreviewColumn { it.copy(protectionType = row.protectionType) }
+                                                    },
+                                                )
                                             } else if (isEizZudsVoice) {
                                                 val board = row.board.ifBlank { row.place }
                                                 val circuit = row.circuit.ifBlank { row.lampCount }
@@ -6334,6 +6399,8 @@ private fun DocumentationSprVoiceField(
                     Text(
                         when {
                             isExseVoice -> "Ovaj izbor vrijedi za ExSe Gridline tablice. Uzemljenje ide u ExSe1.2, otpor cijevi/statika u ExSe1.3. Slika agregata popunjava samo mjerno mjesto dok ne upišeš izmjerenu vrijednost."
+                            isExeiZudsVoice -> "Ovaj izbor vrijedi za ExEi FID/ZUDS Gridline tablicu. Provjeri razdjelnik, krug i In/Idn prije upisa; formule mjerenja ostaju netaknute."
+                            isExeiIpkVoice -> "Ovaj izbor vrijedi za ExEi IPK Gridline tablicu. Oznaka, 1x/3x i tip zaštite se upisuju u prve kolone, a formule ostaju netaknute."
                             isEizZudsVoice -> "Ovaj izbor vrijedi za ZUDS/PID Gridline tablicu. Ako ne ponoviš razdjelnik, koristi se zadnji iz diktata. Formula stupci ostaju netaknuti."
                             isEizIpkVoice -> "Ovaj izbor vrijedi za IPK Gridline tablicu. Dodaj upisuje ispod zadnjeg IPK bloka. Zamijeni tablicu briše IPK unose i upisuje ovaj pregled od prvog reda."
                             else -> "Ovaj izbor vrijedi za Gridline tablicu. Dodaj u tablicu uvijek dodaje ispod zadnjeg popunjenog reda i ne mijenja postojeće nazive. Zamijeni tablicu briše samo kolone mjesto ispitivanja i količina pa upisuje ovaj pregled od prvog reda."
@@ -6533,6 +6600,98 @@ private fun DocumentationMobileSelectField(
                         expanded = false
                         onSelect(option.first)
                     },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentationMobileMultiSelectField(
+    label: String,
+    value: String,
+    options: List<Pair<String, String>>,
+    enabled: Boolean,
+    onChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedValues = splitTemplateMultiSelectValue(value)
+    val optionLabels = options.associate { it.first to it.second.ifBlank { it.first } }
+    val selectedLabel = selectedValues
+        .map { selected -> optionLabels[selected] ?: selected }
+        .joinToString(", ")
+
+    fun toggleOption(optionValue: String) {
+        val nextValues = if (selectedValues.any { it.equals(optionValue, ignoreCase = true) }) {
+            selectedValues.filterNot { it.equals(optionValue, ignoreCase = true) }
+        } else {
+            selectedValues + optionValue
+        }
+        onChange(nextValues.joinToString(", "))
+    }
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        DocumentationMobileFieldShell(
+            label = label,
+            enabled = enabled && options.isNotEmpty(),
+            minHeight = 92.dp,
+            labelMaxLines = 3,
+            onClick = { expanded = true },
+            trailing = {
+                Icon(
+                    Icons.Rounded.ExpandMore,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            },
+        ) {
+            Text(
+                selectedLabel.ifBlank { "Odaberi vise stavki" },
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Black,
+                color = if (selectedValues.isEmpty()) {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.46f)
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.heightIn(max = 380.dp),
+        ) {
+            options.forEach { option ->
+                val checked = selectedValues.any { it.equals(option.first, ignoreCase = true) }
+                DropdownMenuItem(
+                    text = {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(
+                                checked = checked,
+                                onCheckedChange = { toggleOption(option.first) },
+                                enabled = enabled,
+                            )
+                            Text(
+                                option.second.ifBlank { option.first },
+                                fontWeight = if (checked) FontWeight.Black else FontWeight.Normal,
+                            )
+                        }
+                    },
+                    onClick = { toggleOption(option.first) },
+                    enabled = enabled,
+                )
+            }
+            if (selectedValues.isNotEmpty()) {
+                DropdownMenuItem(
+                    text = { Text("Ocisti odabir") },
+                    onClick = { onChange("") },
+                    enabled = enabled,
                 )
             }
         }
@@ -30717,6 +30876,8 @@ private fun WorkOrderDocumentationWizardDialog(
                                 templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to action.transcript)
                                 val rows = action.rows.ifEmpty {
                                     when {
+                                        template.serviceCode.equals("EXEI", ignoreCase = true) && isExeiZudsVoiceField(field) -> parseExeiZudsVoiceTranscriptToAiRows(action.transcript).ifEmpty { sprVoicePreviewRows }
+                                        template.serviceCode.equals("EXEI", ignoreCase = true) -> parseExeiIpkVoiceTranscriptToAiRows(action.transcript).ifEmpty { sprVoicePreviewRows }
                                         isEizZudsVoiceField(field) -> parseEizZudsVoiceTranscriptToAiRows(action.transcript).ifEmpty { sprVoicePreviewRows }
                                         template.serviceCode.equals("EIZ", ignoreCase = true) -> parseEizIpkVoiceTranscriptToAiRows(action.transcript).ifEmpty { sprVoicePreviewRows }
                                         template.serviceCode.equals("EXSE", ignoreCase = true) -> parseExseVoiceTranscriptToAiRows(action.transcript).ifEmpty { sprVoicePreviewRows }
@@ -30751,6 +30912,8 @@ private fun WorkOrderDocumentationWizardDialog(
                                     sprVoiceAiLoading = false
                                     val rows = result.rows.ifEmpty {
                                         when {
+                                            template.serviceCode.equals("EXEI", ignoreCase = true) && isExeiZudsVoiceField(field) -> parseExeiZudsVoiceTranscriptToAiRows(transcript)
+                                            template.serviceCode.equals("EXEI", ignoreCase = true) -> parseExeiIpkVoiceTranscriptToAiRows(transcript)
                                             isEizZudsVoiceField(field) -> parseEizZudsVoiceTranscriptToAiRows(transcript)
                                             isEizIpkVoiceField(field) -> parseEizIpkVoiceTranscriptToAiRows(transcript)
                                             template.serviceCode.equals("EXSE", ignoreCase = true) -> parseExseVoiceTranscriptToAiRows(transcript)
@@ -30765,6 +30928,8 @@ private fun WorkOrderDocumentationWizardDialog(
                                 { message ->
                                     sprVoiceAiLoading = false
                                     val rows = when {
+                                        template.serviceCode.equals("EXEI", ignoreCase = true) && isExeiZudsVoiceField(field) -> parseExeiZudsVoiceTranscriptToAiRows(transcript)
+                                        template.serviceCode.equals("EXEI", ignoreCase = true) -> parseExeiIpkVoiceTranscriptToAiRows(transcript)
                                         isEizZudsVoiceField(field) -> parseEizZudsVoiceTranscriptToAiRows(transcript)
                                         isEizIpkVoiceField(field) -> parseEizIpkVoiceTranscriptToAiRows(transcript)
                                         template.serviceCode.equals("EXSE", ignoreCase = true) -> parseExseVoiceTranscriptToAiRows(transcript)
@@ -31048,6 +31213,73 @@ private fun templateFieldStateKey(
     field: WorkOrderDocumentationField,
 ): String = "${template.id}::${templateFieldPayloadKey(field)}"
 
+private fun splitTemplateMultiSelectValue(value: String): List<String> =
+    value.split(",", ";", "|", "\n")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase(Locale.getDefault()) }
+
+private fun templateValueContainsOption(value: String, option: String): Boolean {
+    val optionLookup = normalizeTemplateSectionLookup(option)
+    if (optionLookup.isBlank()) return false
+    return splitTemplateMultiSelectValue(value)
+        .map(::normalizeTemplateSectionLookup)
+        .any { it == optionLookup || it.startsWith("$optionLookup:") }
+}
+
+private fun templateChecklistValueIsNegative(value: String): Boolean {
+    val lookup = normalizeTemplateSectionLookup(value)
+    return lookup == "ne" || lookup == "ne zadovoljava" ||
+        lookup.contains("ne zadovoljava") ||
+        lookup.contains("nezadovoljava")
+}
+
+private fun parentPayloadForConditionalChecklistField(payload: String, suffix: String): String? {
+    val cleanPayload = payload.trim()
+    return listOf("-$suffix", "_$suffix").firstNotNullOfOrNull { marker ->
+        if (cleanPayload.endsWith(marker, ignoreCase = true)) {
+            cleanPayload.dropLast(marker.length)
+        } else {
+            null
+        }
+    }
+}
+
+private fun findTemplateFieldByPayloadKey(
+    template: WorkOrderDocumentationTemplate,
+    payloadKey: String,
+): WorkOrderDocumentationField? {
+    val target = normalizeTemplateFieldLookup(payloadKey)
+    if (target.isBlank()) return null
+    return template.fields.firstOrNull { field ->
+        templateFieldCandidateKeys(field).any { normalizeTemplateFieldLookup(it) == target }
+    }
+}
+
+private fun shouldHideSzomvConditionalChecklistField(
+    template: WorkOrderDocumentationTemplate,
+    field: WorkOrderDocumentationField,
+    values: Map<String, String>,
+): Boolean {
+    if (!template.serviceCode.equals("SZOMV", ignoreCase = true)) {
+        return false
+    }
+    val payload = templateFieldPayloadKey(field)
+    val otherParent = parentPayloadForConditionalChecklistField(payload, "ostalo")
+    if (otherParent != null) {
+        val parentField = findTemplateFieldByPayloadKey(template, otherParent) ?: return true
+        val parentValue = values[templateFieldStateKey(template, parentField)].orEmpty()
+        return !templateValueContainsOption(parentValue, "Ostalo")
+    }
+    val negativeParent = parentPayloadForConditionalChecklistField(payload, "napomena")
+    if (negativeParent != null) {
+        val parentField = findTemplateFieldByPayloadKey(template, negativeParent) ?: return true
+        val parentValue = values[templateFieldStateKey(template, parentField)].orEmpty()
+        return !templateChecklistValueIsNegative(parentValue)
+    }
+    return false
+}
+
 private fun documentationAttachmentTemplateIds(
     templates: List<WorkOrderDocumentationTemplate>,
 ): List<String> {
@@ -31299,12 +31531,28 @@ private fun isEizIpkVoiceField(field: WorkOrderDocumentationField?): Boolean =
         !isEizZudsVoiceField(field) &&
         isEizIpkVoiceText(listOf(field.id, field.key, field.tokenKey, field.label, field.helpText).joinToString(" "))
 
+private fun isExeiVoiceText(value: String): Boolean =
+    normalizeSprVoiceLookup(value).contains("exei")
+
+private fun isExeiZudsVoiceField(field: WorkOrderDocumentationField?): Boolean =
+    field != null &&
+        isExeiVoiceText(listOf(field.id, field.key, field.tokenKey, field.label, field.helpText).joinToString(" ")) &&
+        isEizZudsVoiceField(field)
+
+private fun isExeiIpkVoiceField(field: WorkOrderDocumentationField?): Boolean =
+    field != null &&
+        isExeiVoiceText(listOf(field.id, field.key, field.tokenKey, field.label, field.helpText).joinToString(" ")) &&
+        !isExeiZudsVoiceField(field) &&
+        isEizIpkVoiceText(listOf(field.id, field.key, field.tokenKey, field.label, field.helpText).joinToString(" "))
+
 private data class SprVoiceMeasurementRow(
     val key: String,
     val place: String,
     val lampCount: String,
     val kind: String = "",
     val protectionType: String = "",
+    val protectionDevice: String = "",
+    val phaseCount: String = "",
     val zLpe: String = "",
     val zLn: String = "",
     val zLl: String = "",
@@ -31359,6 +31607,8 @@ private fun sprVoiceRowsToJson(rows: List<SprVoiceAiRow>): JSONArray =
                     .put("lampCount", row.lampCount)
                     .put("kind", row.kind)
                     .put("protectionType", row.protectionType)
+                    .put("protectionDevice", row.protectionDevice)
+                    .put("phaseCount", row.phaseCount)
                     .put("zLpe", row.zLpe)
                     .put("zLn", row.zLn)
                     .put("zLl", row.zLl)
@@ -31387,6 +31637,8 @@ private fun sprVoiceRowsFromJson(rows: JSONArray?): List<SprVoiceAiRow> {
                     lampCount = row.optString("lampCount"),
                     kind = row.optString("kind"),
                     protectionType = row.optString("protectionType"),
+                    protectionDevice = row.optString("protectionDevice"),
+                    phaseCount = row.optString("phaseCount"),
                     zLpe = row.optString("zLpe"),
                     zLn = row.optString("zLn"),
                     zLl = row.optString("zLl"),
@@ -31990,6 +32242,224 @@ private fun parseEizIpkVoiceTranscriptToAiRows(transcript: String): List<SprVoic
             zLpe = row.zLpe,
             zLn = row.zLn,
             zLl = row.zLl,
+        )
+    }
+
+private fun normalizeExeiVoiceTechnicalText(value: String): String =
+    value
+        .replace(Regex("\\b(?:četiri|cetiri|cetri)\\s+(?:puta|x)\\s+(?:dva|2)\\s+(?:zarez|,)\\s+(?:pet|5)\\b", RegexOption.IGNORE_CASE), "4x2,5")
+        .replace(Regex("\\b(?:tri|3)\\s+(?:puta|x)\\s+(?:dva|2)\\s+(?:zarez|,)\\s+(?:pet|5)\\b", RegexOption.IGNORE_CASE), "3x2,5")
+        .replace(Regex("\\b(\\d{1,2})\\s*(?:puta|x|×)\\s*(\\d{1,2}(?:[,.]\\d+)?)\\b", RegexOption.IGNORE_CASE), "$1x$2")
+        .replace(Regex("\\bPP\\s*(?:0|O)\\s*(?:0|O)\\s*-?\\s*Y\\b", RegexOption.IGNORE_CASE), "PP00-Y")
+        .replace(Regex("\\b(NYY|H07RN|LIYCY)\\s*-?\\s*", RegexOption.IGNORE_CASE)) { match ->
+            match.groupValues[1].uppercase(Locale.getDefault()) + " "
+        }
+        .replace(Regex("\\b(?:mm\\s*(?:2|²)|milimet(?:ar|ra|ara)?\\s+kvadratn(?:i|ih)?)\\b", RegexOption.IGNORE_CASE), "mm2")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+private fun splitExeiVoiceSegments(transcript: String): List<String> {
+    val source = normalizeExeiVoiceTechnicalText(transcript)
+    if (source.isBlank()) return emptyList()
+    val aggregateBreaks = Regex("\\bagregat\\s+\\d{1,3}", RegexOption.IGNORE_CASE)
+        .replace(source) { match ->
+            val prefix = source.substring(0, match.range.first)
+            val previousLooksComplete = Regex("\\b(?:PP00-Y|NYY|H07RN|LIYCY|AUT|(?:w|ve)\\s*-?\\s*\\d|[BCD]\\s*-?\\s*\\d{1,3})\\b", RegexOption.IGNORE_CASE)
+                .containsMatchIn(prefix)
+            if (match.range.first > 0 && previousLooksComplete) "\n${match.value}" else match.value
+        }
+    return aggregateBreaks
+        .replace(Regex("\\b(?:i onda|pa onda|zatim|sljedeće|sljedece)\\b", RegexOption.IGNORE_CASE), "\n")
+        .split(Regex("\\r?\\n"))
+        .map { it.trim(' ', ',', '.', ';', ':', '-') }
+        .filter { it.isNotBlank() }
+}
+
+private fun extractExeiVoiceWireMarker(segment: String): String {
+    val match = Regex("\\b(duplo\\s+)?(?:w|ve)\\s*-?\\s*(\\d{1,3}(?:\\s*-\\s*\\d{1,3})*)\\b", RegexOption.IGNORE_CASE)
+        .find(segment)
+        ?: return ""
+    val number = match.groupValues[2].replace(Regex("\\s+"), "")
+    val prefix = if (match.groupValues[1].isNotBlank()) "Duplo " else ""
+    return "${prefix}W$number"
+}
+
+private fun extractExeiVoiceCable(segment: String): String {
+    val match = Regex("\\b(PP00-Y|NYY|H07RN|LIYCY)\\s*(\\d{1,2}\\s*x\\s*\\d{1,2}(?:[,.]\\d+)?)\\s*(mm2)?\\b", RegexOption.IGNORE_CASE)
+        .find(normalizeExeiVoiceTechnicalText(segment))
+        ?: return ""
+    val cableType = match.groupValues[1].uppercase(Locale.getDefault())
+    val section = match.groupValues[2].replace(Regex("\\s*x\\s*", RegexOption.IGNORE_CASE), "x")
+    return "$cableType $section mm2"
+}
+
+private fun extractExeiVoiceProtectionDevice(segment: String): String {
+    val match = Regex("\\b(?:(\\d{1,2})\\s*)?(F|QF|Q)\\s*-?\\s*(\\d{1,3})\\b", RegexOption.IGNORE_CASE)
+        .find(segment)
+        ?: return ""
+    val prefix = match.groupValues[1]
+    val code = match.groupValues[2].uppercase(Locale.getDefault())
+    val number = match.groupValues[3]
+    return "$prefix$code$number"
+}
+
+private fun normalizeExeiVoiceProtectionType(segment: String): String {
+    val source = normalizeExeiVoiceTechnicalText(segment)
+    val rcdRating = normalizeEizZudsRating(source)
+    if (rcdRating.isNotBlank() && Regex("\\b(?:fid|fi|rcd|zuds|kzs|rcbo)\\b", RegexOption.IGNORE_CASE).containsMatchIn(source)) {
+        return "RCD $rcdRating"
+    }
+    val match = Regex(
+        "\\b(?:aut|automatski(?:\\s+osigura[cč])?|osigura[cč])?\\s*([BCD])\\s*-?\\s*(\\d{1,3})(?:\\s*A)?(?:\\s*(?:/|kroz)\\s*([1234]))?\\b",
+        RegexOption.IGNORE_CASE,
+    ).find(source) ?: return ""
+    val characteristic = match.groupValues[1].uppercase(Locale.getDefault())
+    val current = match.groupValues[2]
+    val poles = match.groupValues[3]
+    return if (poles.isNotBlank()) "AUT $characteristic$current/$poles" else "AUT $characteristic${current}A"
+}
+
+private fun inferExeiVoicePhaseCount(segment: String, cable: String, protectionType: String): String {
+    val lookup = normalizeSprVoiceLookup("$segment $cable $protectionType")
+    if (Regex("\\b(?:1\\s*x|jednofaz|1\\s*f)\\b", RegexOption.IGNORE_CASE).containsMatchIn(segment)) return "1x"
+    if (Regex("\\b(?:3\\s*x|trofaz|3\\s*f)\\b", RegexOption.IGNORE_CASE).containsMatchIn(segment)) return "3x"
+    if (Regex("/\\s*3\\b").containsMatchIn(protectionType)) return "3x"
+    val cableCoreCount = Regex("\\b(\\d{1,2})x\\d", RegexOption.IGNORE_CASE).find(cable)?.groupValues?.getOrNull(1)?.toIntOrNull()
+    if (cableCoreCount != null) {
+        return if (cableCoreCount >= 4) "3x" else "1x"
+    }
+    return if (lookup.contains("motor") || lookup.contains("crpka")) "3x" else "1x"
+}
+
+private fun cleanExeiVoiceDeviceLabel(segment: String): String {
+    val source = normalizeExeiVoiceTechnicalText(segment)
+    val pumpConnection = Regex("\\bpriklju[cč]ak\\s+crpke\\s+u\\s+agregatu\\s+(\\d{1,3})\\b", RegexOption.IGNORE_CASE)
+        .find(source)
+    if (pumpConnection != null) {
+        return "Priključak crpke u Agregatu ${pumpConnection.groupValues[1]}"
+    }
+    val aggregate = Regex("\\bagregat\\s+(\\d{1,3}(?:\\s*/\\s*\\d{1,3})?)\\b", RegexOption.IGNORE_CASE)
+        .find(source)
+    if (aggregate != null) {
+        val number = aggregate.groupValues[1].replace(Regex("\\s+"), "")
+        val qualifier = when {
+            Regex("\\bmotor\\b", RegexOption.IGNORE_CASE).containsMatchIn(source) -> "motor"
+            Regex("\\b(?:crpka|pumpa)\\b", RegexOption.IGNORE_CASE).containsMatchIn(source) -> "crpka"
+            Regex("\\brasvjet", RegexOption.IGNORE_CASE).containsMatchIn(source) -> "rasvjeta"
+            Regex("\\bprocesor", RegexOption.IGNORE_CASE).containsMatchIn(source) -> "procesor"
+            else -> ""
+        }
+        return if (qualifier.isNotBlank()) "Agregat $number - $qualifier" else "Agregat $number"
+    }
+    return source
+        .replace(Regex("\\b(?:duplo\\s+)?(?:w|ve)\\s*-?\\s*\\d{1,3}(?:\\s*-\\s*\\d{1,3})*\\b", RegexOption.IGNORE_CASE), " ")
+        .replace(Regex("\\b(?:PP00-Y|NYY|H07RN|LIYCY)\\s*\\d{1,2}\\s*x\\s*\\d{1,2}(?:[,.]\\d+)?\\s*(?:mm2)?\\b", RegexOption.IGNORE_CASE), " ")
+        .replace(Regex("\\b(?:(?:\\d{1,2})\\s*)?(?:F|QF|Q)\\s*-?\\s*\\d{1,3}\\b", RegexOption.IGNORE_CASE), " ")
+        .replace(Regex("\\b(?:aut|automatski|osigura[cč])\\s*[BCD]\\s*-?\\s*\\d{1,3}(?:\\s*A)?(?:\\s*(?:/|kroz)\\s*[1234])?\\b", RegexOption.IGNORE_CASE), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim(' ', ',', '.', ';', ':', '-')
+}
+
+private fun extractExeiVoiceBoard(segment: String): String {
+    Regex("\\b(?:razdjelnik|razdelnik|ormar)\\s+([A-ZČĆŽŠĐ0-9][A-ZČĆŽŠĐ0-9\\s-]{0,20})", RegexOption.IGNORE_CASE)
+        .find(segment)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.trim(' ', ',', '.', ';', ':', '-')
+        ?.uppercase(Locale.getDefault())
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return it }
+    Regex("\\b(GRO|RO\\s*[A-Z0-9-]{0,8})\\b", RegexOption.IGNORE_CASE)
+        .find(segment)
+        ?.groupValues
+        ?.getOrNull(1)
+        ?.replace(Regex("\\s+"), " ")
+        ?.trim()
+        ?.uppercase(Locale.getDefault())
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return it }
+    return "GRO"
+}
+
+private fun parseExeiIpkVoiceMeasurementRows(transcript: String): List<SprVoiceMeasurementRow> =
+    splitExeiVoiceSegments(transcript).mapIndexedNotNull { index, segment ->
+        val label = cleanExeiVoiceDeviceLabel(segment)
+        val wireMarker = extractExeiVoiceWireMarker(segment)
+        val cable = extractExeiVoiceCable(segment)
+        val protectionDevice = extractExeiVoiceProtectionDevice(segment)
+        val protectionType = normalizeExeiVoiceProtectionType(segment)
+        val phaseCount = inferExeiVoicePhaseCount(segment, cable, protectionType)
+        val details = listOf(wireMarker, cable, protectionDevice)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .joinToString(", ")
+        val circuit = listOf(label, details)
+            .filter { it.isNotBlank() }
+            .joinToString("\n")
+        val key = normalizeSprVoiceLookup("$circuit $protectionType $index")
+        if (circuit.isBlank() || key.isBlank()) {
+            null
+        } else {
+            SprVoiceMeasurementRow(
+                key = "exei-ipk-$key",
+                place = circuit,
+                lampCount = phaseCount,
+                kind = "measurement",
+                protectionType = protectionType,
+                protectionDevice = protectionDevice,
+                phaseCount = phaseCount,
+                circuit = circuit,
+            )
+        }
+    }
+
+private fun parseExeiIpkVoiceTranscriptToAiRows(transcript: String): List<SprVoiceAiRow> =
+    parseExeiIpkVoiceMeasurementRows(transcript).map { row ->
+        SprVoiceAiRow(
+            place = row.place,
+            lampCount = row.phaseCount.ifBlank { row.lampCount },
+            kind = row.kind,
+            protectionType = row.protectionType,
+            protectionDevice = row.protectionDevice,
+            phaseCount = row.phaseCount,
+            circuit = row.circuit,
+        )
+    }
+
+private fun parseExeiZudsVoiceMeasurementRows(transcript: String): List<SprVoiceMeasurementRow> =
+    splitExeiVoiceSegments(transcript).mapIndexedNotNull { index, segment ->
+        val rating = normalizeEizZudsRating(segment)
+        if (rating.isBlank()) return@mapIndexedNotNull null
+        val ipkRow = parseExeiIpkVoiceMeasurementRows(segment).firstOrNull()
+        val circuit = ipkRow?.circuit?.ifBlank { ipkRow.place } ?: cleanExeiVoiceDeviceLabel(segment)
+        val board = extractExeiVoiceBoard(segment)
+        val key = normalizeSprVoiceLookup("$board $circuit $rating $index")
+        if (board.isBlank() || circuit.isBlank() || key.isBlank()) {
+            null
+        } else {
+            SprVoiceMeasurementRow(
+                key = "exei-zuds-$key",
+                place = board,
+                lampCount = circuit,
+                kind = "measurement",
+                board = board,
+                circuit = circuit,
+                rcdRating = rating,
+                protectionType = rating,
+            )
+        }
+    }
+
+private fun parseExeiZudsVoiceTranscriptToAiRows(transcript: String): List<SprVoiceAiRow> =
+    parseExeiZudsVoiceMeasurementRows(transcript).map { row ->
+        SprVoiceAiRow(
+            place = row.place,
+            lampCount = row.lampCount,
+            kind = row.kind,
+            protectionType = row.protectionType,
+            board = row.board,
+            circuit = row.circuit,
+            rcdRating = row.rcdRating,
         )
     }
 
@@ -32853,6 +33323,147 @@ private fun applyEizZudsVoiceRowsToSheet(
     )
 }
 
+private fun WorkOrderMeasurementTable.isExeiIpkTable(index: Int = -1): Boolean =
+    listOf(id, key, tokenKey, label, summary, sourceSheet, if (index == 0) "fallback-exei-ipk" else "")
+        .joinToString(" ")
+        .let(::normalizeSprVoiceLookup)
+        .let { lookup ->
+            lookup.contains("exei ipk") ||
+                lookup.contains("exei1 2") ||
+                lookup.contains("zoi 10 07") ||
+                lookup.contains("impedanc") ||
+                lookup.contains("petlje kvara") ||
+                lookup.contains("ipk")
+        }
+
+private fun WorkOrderMeasurementTable.isExeiZudsTable(index: Int = -1): Boolean =
+    listOf(id, key, tokenKey, label, summary, sourceSheet, if (index == 2) "fallback-exei-zuds" else "")
+        .joinToString(" ")
+        .let(::normalizeSprVoiceLookup)
+        .let { lookup ->
+            lookup.contains("exei zuds") ||
+                lookup.contains("exei1 4") ||
+                lookup.contains("zoi 10 08") ||
+                lookup.contains("zuds") ||
+                lookup.contains("fid") ||
+                lookup.contains("rcd") ||
+                lookup.contains("diferenc")
+        }
+
+private fun findExeiIpkMeasurementTable(template: WorkOrderDocumentationTemplate): WorkOrderMeasurementTable? =
+    template.measurementTables.firstOrNull { table -> table.isExeiIpkTable() }
+        ?: template.measurementTables.firstOrNull { table -> table.looksLikeExeiMeasurementTable("ipk") }
+        ?: template.measurementTables.firstOrNull()
+
+private fun findExeiZudsMeasurementTable(template: WorkOrderDocumentationTemplate): WorkOrderMeasurementTable? =
+    template.measurementTables.firstOrNull { table -> table.isExeiZudsTable() }
+        ?: template.measurementTables.firstOrNull { table -> table.looksLikeExeiMeasurementTable("zuds") }
+        ?: template.measurementTables.getOrNull(2)
+
+private fun WorkOrderMeasurementSheet.isExeiIpkTemplateLike(circuitColumn: WorkOrderMeasurementColumn): Boolean =
+    rows.none { row -> row.cells[circuitColumn.id].orEmpty().trim().isNotBlank() }
+
+private fun applyExeiIpkVoiceRowsToSheet(
+    sheet: WorkOrderMeasurementSheet,
+    voiceRows: List<SprVoiceMeasurementRow>,
+    replaceExisting: Boolean = false,
+): WorkOrderMeasurementSheet {
+    if (voiceRows.isEmpty() || sheet.columns.isEmpty()) return sheet
+    val circuitColumn = findSprMeasurementColumn(
+        sheet,
+        listOf("oznaka strujnog kruga", "el uredaja", "el uređaja", "strujni krug", "circuit"),
+        0,
+    ) ?: return sheet
+    val phaseColumn = findSprMeasurementColumn(sheet, listOf("1x/3x", "1x 3x", "broj faza", "phase"), -1)
+    val protectionDeviceColumn = findSprMeasurementColumn(
+        sheet,
+        listOf("zastitni uredaj", "zaštitni uređaj", "nadstrujni zastitni uredaj", "osigurac", "osigurač"),
+        if (phaseColumn == null) 1 else -1,
+    )
+    val protectionTypeColumn = findSprMeasurementColumn(
+        sheet,
+        listOf("tip i karakteristika", "karakteristika", "tip zastite", "tip zaštite"),
+        2,
+    )
+    val targetColumnIds = listOfNotNull(
+        circuitColumn.id,
+        phaseColumn?.id,
+        protectionDeviceColumn?.id,
+        protectionTypeColumn?.id,
+    ).filter { it.isNotBlank() }.distinct()
+    val originalRows = sheet.rows.mapIndexed { index, row ->
+        EditableSprMeasurementRow(
+            id = row.id.ifBlank { "measurement-row-${index + 1}" },
+            cells = row.cells.toMutableMap(),
+            formats = row.formats.toMutableMap(),
+        )
+    }
+    val rows = originalRows.map { row ->
+        EditableSprMeasurementRow(
+            id = row.id,
+            cells = row.cells.toMutableMap(),
+            formats = row.formats.toMutableMap(),
+        )
+    }.toMutableList()
+    fun seedFormulaDefaults(row: EditableSprMeasurementRow, targetIndex: Int) {
+        val originalCells = originalRows.getOrNull(targetIndex)?.cells ?: originalRows.lastOrNull()?.cells.orEmpty()
+        sheet.columns.forEach { column ->
+            val originalValue = originalCells[column.id].orEmpty()
+            if (originalValue.startsWith("=")) {
+                row.cells[column.id] = originalValue
+            }
+        }
+    }
+    fun clearTargetCells(row: EditableSprMeasurementRow) {
+        targetColumnIds.forEach { columnId ->
+            row.cells[columnId] = ""
+            row.formats.remove(columnId)
+        }
+    }
+    val shouldReset = replaceExisting || sheet.isExeiIpkTemplateLike(circuitColumn)
+    if (shouldReset) rows.forEach(::clearTargetCells)
+    fun createRow(targetIndex: Int = rows.size): EditableSprMeasurementRow =
+        EditableSprMeasurementRow(
+            id = originalRows.getOrNull(targetIndex)?.id?.takeIf { it.isNotBlank() } ?: "measurement-row-${rows.size + 1}",
+            cells = sheet.columns.associate { it.id to "" }.toMutableMap(),
+            formats = mutableMapOf(),
+        ).also { row ->
+            seedFormulaDefaults(row, targetIndex)
+            rows += row
+        }
+    fun rowHasUserContent(row: EditableSprMeasurementRow): Boolean =
+        targetColumnIds.any { columnId -> row.cells[columnId].orEmpty().isNotBlank() }
+    var insertIndex = if (shouldReset) 0 else (rows.indexOfLast(::rowHasUserContent) + 1).coerceAtLeast(0)
+    voiceRows
+        .filterNot { row -> row.kind.equals("section", ignoreCase = true) }
+        .forEach { entry ->
+            val targetRow = rows.getOrNull(insertIndex) ?: createRow(insertIndex)
+            val targetIndex = insertIndex
+            insertIndex += 1
+            seedFormulaDefaults(targetRow, targetIndex)
+            clearTargetCells(targetRow)
+            val circuit = entry.circuit.ifBlank { entry.place }.trim()
+            val phaseCount = entry.phaseCount.ifBlank { entry.lampCount }.trim()
+            targetRow.cells[circuitColumn.id] = circuit
+            phaseColumn?.id?.takeIf { it.isNotBlank() && phaseCount.isNotBlank() }?.let { targetRow.cells[it] = phaseCount }
+            protectionDeviceColumn?.id?.takeIf { it.isNotBlank() && entry.protectionDevice.isNotBlank() }?.let {
+                targetRow.cells[it] = entry.protectionDevice
+            }
+            protectionTypeColumn?.id?.takeIf { it.isNotBlank() && entry.protectionType.isNotBlank() }?.let {
+                targetRow.cells[it] = entry.protectionType
+            }
+        }
+    return sheet.copy(
+        rows = rows.map { row ->
+            WorkOrderMeasurementRow(
+                id = row.id,
+                cells = row.cells.toMap(),
+                formats = row.formats.toMap(),
+            )
+        },
+    )
+}
+
 private fun applySprVoiceTranscriptToMeasurementSheets(
     template: WorkOrderDocumentationTemplate,
     sheets: Map<String, WorkOrderMeasurementSheet>,
@@ -32865,9 +33476,13 @@ private fun applySprVoiceTranscriptToMeasurementSheets(
         return applySprVoiceAiRowsToMeasurementSheets(template, sheets, action.rows, action.replaceExisting, field)
     }
     val isEiz = template.serviceCode.equals("EIZ", ignoreCase = true)
+    val isExei = template.serviceCode.equals("EXEI", ignoreCase = true)
     val isExse = template.serviceCode.equals("EXSE", ignoreCase = true)
     val isZudsVoice = isEiz && isEizZudsVoiceField(field)
+    val isExeiZudsVoice = isExei && isExeiZudsVoiceField(field)
     val voiceRows = when {
+        isExeiZudsVoice -> parseExeiZudsVoiceMeasurementRows(action.transcript)
+        isExei -> parseExeiIpkVoiceMeasurementRows(action.transcript)
         isZudsVoice -> parseEizZudsVoiceMeasurementRows(action.transcript)
         isEiz -> parseEizIpkVoiceMeasurementRows(action.transcript)
         isExse -> parseExseVoiceMeasurementRows(action.transcript)
@@ -32879,6 +33494,8 @@ private fun applySprVoiceTranscriptToMeasurementSheets(
         return applyExseVoiceRowsToMeasurementSheets(template, sheets, voiceRows, action.replaceExisting)
     }
     val table = when {
+        isExeiZudsVoice -> findExeiZudsMeasurementTable(template)
+        isExei -> findExeiIpkMeasurementTable(template)
         isZudsVoice -> findEizZudsMeasurementTable(template)
         isEiz -> findEizIpkMeasurementTable(template)
         else -> template.measurementTables.firstOrNull()
@@ -32887,6 +33504,8 @@ private fun applySprVoiceTranscriptToMeasurementSheets(
     val key = measurementSheetStateKey(template, table)
     val sheet = sheets[key] ?: table.sheet
     return sheets + (key to when {
+        isExeiZudsVoice -> applyEizZudsVoiceRowsToSheet(sheet, voiceRows, action.replaceExisting)
+        isExei -> applyExeiIpkVoiceRowsToSheet(sheet, voiceRows, action.replaceExisting)
         isZudsVoice -> applyEizZudsVoiceRowsToSheet(sheet, voiceRows, action.replaceExisting)
         isEiz -> applyEizIpkVoiceRowsToSheet(sheet, voiceRows, action.replaceExisting)
         else -> applySprVoiceRowsToSheet(sheet, voiceRows, action.replaceExisting)
@@ -32901,9 +33520,11 @@ private fun applySprVoiceAiRowsToMeasurementSheets(
     field: WorkOrderDocumentationField? = null,
 ): Map<String, WorkOrderMeasurementSheet> {
     val isEiz = template.serviceCode.equals("EIZ", ignoreCase = true)
+    val isExei = template.serviceCode.equals("EXEI", ignoreCase = true)
     val isExse = template.serviceCode.equals("EXSE", ignoreCase = true)
-    if (!isEiz && !isExse && !template.serviceCode.equals("SPR", ignoreCase = true)) return sheets
+    if (!isEiz && !isExei && !isExse && !template.serviceCode.equals("SPR", ignoreCase = true)) return sheets
     val isZudsVoice = isEiz && isEizZudsVoiceField(field)
+    val isExeiZudsVoice = isExei && isExeiZudsVoiceField(field)
     if (isExse) {
         val exseRows = rows.mapNotNull { row ->
             val place = capitalizeSprVoiceFirstLetter(row.place)
@@ -32932,6 +33553,58 @@ private fun applySprVoiceAiRowsToMeasurementSheets(
             }
         }
         return applyExseVoiceRowsToMeasurementSheets(template, sheets, exseRows, replaceExisting)
+    }
+    if (isExei) {
+        val exeiRows = rows.mapNotNull { row ->
+            if (isExeiZudsVoice) {
+                val board = row.board.ifBlank { row.place }.trim()
+                val circuit = row.circuit.ifBlank { row.lampCount }.trim()
+                val rating = normalizeEizZudsRating(row.rcdRating.ifBlank { row.protectionType })
+                val key = normalizeSprVoiceLookup("$board $circuit $rating")
+                if (board.isBlank() || circuit.isBlank() || rating.isBlank() || key.isBlank()) {
+                    null
+                } else {
+                    SprVoiceMeasurementRow(
+                        key = "exei-zuds-$key",
+                        place = board,
+                        lampCount = circuit,
+                        kind = row.kind.ifBlank { "measurement" },
+                        board = board,
+                        circuit = circuit,
+                        rcdRating = rating,
+                        protectionType = rating,
+                    )
+                }
+            } else {
+                val circuit = row.circuit.ifBlank { row.place }.trim()
+                val phaseCount = row.phaseCount.ifBlank { row.lampCount }.trim()
+                val key = normalizeSprVoiceLookup("$circuit ${row.protectionType}")
+                if (circuit.isBlank() || key.isBlank()) {
+                    null
+                } else {
+                    SprVoiceMeasurementRow(
+                        key = "exei-ipk-$key",
+                        place = circuit,
+                        lampCount = phaseCount,
+                        kind = row.kind.ifBlank { "measurement" },
+                        protectionType = row.protectionType,
+                        protectionDevice = row.protectionDevice,
+                        phaseCount = phaseCount,
+                        circuit = circuit,
+                    )
+                }
+            }
+        }
+        if (exeiRows.isEmpty()) return sheets
+        val table = if (isExeiZudsVoice) findExeiZudsMeasurementTable(template) else findExeiIpkMeasurementTable(template)
+        if (table == null) return sheets
+        val key = measurementSheetStateKey(template, table)
+        val sheet = sheets[key] ?: table.sheet
+        return sheets + (key to if (isExeiZudsVoice) {
+            applyEizZudsVoiceRowsToSheet(sheet, exeiRows, replaceExisting)
+        } else {
+            applyExeiIpkVoiceRowsToSheet(sheet, exeiRows, replaceExisting)
+        })
     }
     val voiceRows = rows
         .mapNotNull { row ->
@@ -38435,6 +39108,9 @@ private fun DocumentationSprTemplateSectionPanel(
                         if (editableField != null && hideDefects && isDocumentationDefectsTemplateField(editableField, block)) {
                             return@forEach
                         }
+                        if (editableField != null && shouldHideSzomvConditionalChecklistField(entry.template, editableField, values)) {
+                            return@forEach
+                        }
                         when (block.type.lowercase(Locale.getDefault())) {
                             "equipment_list" -> Unit
                             "legal_list" -> TemplateLegalControls(standardControls)
@@ -39738,6 +40414,9 @@ private fun TemplateBlockSectionCard(
                 if (detailBlocks.isNotEmpty()) {
                     detailBlocks.forEach { block ->
                         val editableField = findTemplateFieldForBlock(template, block)
+                        if (editableField != null && shouldHideSzomvConditionalChecklistField(template, editableField, values)) {
+                            return@forEach
+                        }
                         TemplateBlockDetailRow(
                             template = template,
                             block = block,
@@ -42070,6 +42749,13 @@ private fun TemplateFieldInput(
                 options = listOf("" to "Nije odabrano") + field.options.map { it.value to it.label },
                 enabled = enabled,
                 onSelect = onChange,
+            )
+            "multi_dropdown", "multi_select", "multiselect" -> DocumentationMobileMultiSelectField(
+                label = label,
+                value = value,
+                options = field.options.map { it.value to it.label },
+                enabled = enabled,
+                onChange = onChange,
             )
             "checkbox", "toggle" -> {
                 val checked = value.equals("true", ignoreCase = true) || value == "1" || value.equals("da", ignoreCase = true)

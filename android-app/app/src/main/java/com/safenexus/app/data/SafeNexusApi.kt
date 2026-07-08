@@ -1761,6 +1761,29 @@ class SafeNexusApi(
                             }
                         }
                 } ?: template.measurementTables.getOrNull(if (isExseStaticVoice) 1 else 0)
+            } else if (template.serviceCode.equals("EXEI", ignoreCase = true)) {
+                template.measurementTables.firstOrNull { table ->
+                    listOf(table.id, table.key, table.tokenKey, table.label, table.summary, table.sourceSheet)
+                        .joinToString(" ")
+                        .lowercase()
+                        .let { text ->
+                            if (isEizZudsVoice) {
+                                text.contains("zuds") ||
+                                    text.contains("diferenc") ||
+                                    text.contains("fid") ||
+                                    text.contains("rcd") ||
+                                    text.contains("exei1.4") ||
+                                    text.contains("zoi-10-08")
+                            } else {
+                                text.contains("exei-ipk") ||
+                                    text.contains("exei1.2") ||
+                                    text.contains("zoi-10-07") ||
+                                    text.contains("impedanc") ||
+                                    text.contains("petlje kvara") ||
+                                    (isEizIpkVoice && text.contains("ipk"))
+                            }
+                        }
+                } ?: template.measurementTables.getOrNull(if (isEizZudsVoice) 2 else 0)
             } else {
                 null
             } ?: template.measurementTables.firstOrNull()
@@ -3988,6 +4011,9 @@ private fun JSONArray?.toSprVoiceAiRows(): List<SprVoiceAiRow> {
             val board = item.firstClean("board", "razdjelnik", "razdjelnikOrmar", "ormar", "panel")
             val circuit = item.firstClean("circuit", "strujniKrug", "oznakaStrujnogKruga", "oznaka", "krug")
             val rcdRating = item.firstClean("rcdRating", "rating", "inIdn", "in_idn", "karakteristika", "pid")
+            val protectionType = item.firstClean("protectionType", "protection", "zastita")
+            val protectionDevice = item.firstClean("protectionDevice", "device", "breaker", "osigurac", "oznakaOsiguraca")
+            val phaseCount = item.firstClean("phaseCount", "phase", "phases", "brojFaza", "oneThree", "oneThreePhase")
             val target = item.firstClean("target", "table", "tableKind", "measurementTable", "rowTarget")
             val earthResistance = item.firstClean("earthResistance", "otporUzemljenja", "uzemljenje", "earth")
             val pipeResistance = item.firstClean("pipeResistance", "otporCijevi", "hoseResistance", "cijev", "pipe")
@@ -3995,13 +4021,15 @@ private fun JSONArray?.toSprVoiceAiRows(): List<SprVoiceAiRow> {
             val allowedResistance = item.firstClean("allowedResistance", "dozvoljeniOtpor", "dopusteniOtpor", "allowed")
             val pass = item.firstClean("pass", "ocjena", "zadovoljava", "result")
             val note = item.firstClean("note", "napomena", "comment")
-            val place = item.firstClean("place", "mjesto", "location", "room", "name").ifBlank { board }
-            val lampCount = item.firstClean("lampCount", "brojLampi", "count", "value", "quantity").ifBlank { circuit }
+            val place = item.firstClean("place", "mjesto", "location", "room", "name").ifBlank { board.ifBlank { circuit } }
+            val exeiIpkLike = circuit.isNotBlank() && (protectionType.isNotBlank() || protectionDevice.isNotBlank() || phaseCount.isNotBlank())
+            val lampCount = item.firstClean("lampCount", "brojLampi", "count", "value", "quantity")
+                .ifBlank { if (exeiIpkLike) phaseCount else circuit }
             val kind = item.firstClean("kind", "type", "rowType")
             val isSection = kind.equals("section", ignoreCase = true) ||
                 kind.equals("floor", ignoreCase = true) ||
                 item.optBoolean("isSection", false)
-            val isZudsRow = board.isNotBlank() || circuit.isNotBlank() || rcdRating.isNotBlank()
+            val isZudsRow = board.isNotBlank() || rcdRating.isNotBlank() || (circuit.isNotBlank() && !exeiIpkLike)
             val isExseRow = listOf(
                 target,
                 earthResistance,
@@ -4011,13 +4039,16 @@ private fun JSONArray?.toSprVoiceAiRows(): List<SprVoiceAiRow> {
                 pass,
                 note,
             ).any { it.isNotBlank() }
+            val lampCountRaw = item.firstClean("lampCount", "brojLampi", "count", "value", "quantity", "phaseCount", "phase")
             if (place.isBlank() || (!isSection && !isZudsRow && !isExseRow && lampCount.isBlank())) continue
             add(
                 SprVoiceAiRow(
                     place = place,
-                    lampCount = if (isSection) "" else lampCount,
+                    lampCount = if (isSection) "" else lampCountRaw.ifBlank { lampCount },
                     kind = if (isSection) "section" else kind,
-                    protectionType = item.firstClean("protectionType", "protection", "zastita"),
+                    protectionType = protectionType,
+                    protectionDevice = protectionDevice,
+                    phaseCount = phaseCount,
                     zLpe = item.firstClean("zLpe", "zlpe", "zlp", "ZL-PE", "Z(L-PE)"),
                     zLn = item.firstClean("zLn", "zln", "ZL-N", "Z(L-N)"),
                     zLl = item.firstClean("zLl", "zll", "ZL-L", "Z(L-L)"),
