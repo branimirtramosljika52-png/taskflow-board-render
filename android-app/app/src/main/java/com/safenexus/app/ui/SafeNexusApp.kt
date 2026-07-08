@@ -1075,9 +1075,10 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun loadCompanyLocations(company: MobileRecord, reset: Boolean = false) {
+    fun loadCompanyLocations(company: MobileRecord, reset: Boolean = false, query: String = "") {
         val companyId = company.id.trim()
         if (companyId.isBlank()) return
+        val normalizedQuery = query.trim()
         if (companyId in state.companyDirectoryLocationLoading) return
         val hasExisting = state.companyDirectoryLocations.containsKey(companyId)
         val hasMore = state.companyDirectoryLocationHasMore[companyId] ?: true
@@ -1092,7 +1093,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             },
         )
         viewModelScope.launch {
-            api.listMobileCompanyLocations(companyId = companyId, query = state.companyDirectoryQuery, offset = offset)
+            api.listMobileCompanyLocations(companyId = companyId, query = normalizedQuery, offset = offset)
                 .onSuccess { page ->
                     val current = if (offset == 0) emptyList() else state.companyDirectoryLocations[companyId].orEmpty()
                     val merged = (current + page.records)
@@ -3568,6 +3569,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     onBack = { viewModel.navigateBack() },
                     onSave = viewModel::createWorkOrder,
                     onCreateLocation = viewModel::createWorkOrderLocation,
+                    onSearchCompanies = { query -> viewModel.loadCompanyDirectory(reset = true, query = query) },
                     onLoadMoreCompanies = { viewModel.loadCompanyDirectory(reset = false) },
                     onLoadCompanyLocations = { company -> viewModel.loadCompanyLocations(company) },
                     onLoadMoreCompanyLocations = { company -> viewModel.loadCompanyLocations(company, reset = false) },
@@ -4741,6 +4743,7 @@ private fun WorkOrderCreateScreen(
     onBack: () -> Unit,
     onSave: (WorkOrderCreateDraft) -> Unit,
     onCreateLocation: (WorkOrderLocationCreateDraft, (WorkOrderLocationOption) -> Unit) -> Unit,
+    onSearchCompanies: (String) -> Unit,
     onLoadMoreCompanies: () -> Unit,
     onLoadCompanyLocations: (MobileRecord) -> Unit,
     onLoadMoreCompanyLocations: (MobileRecord) -> Unit,
@@ -4954,6 +4957,7 @@ private fun WorkOrderCreateScreen(
                             icon = Icons.Rounded.Business,
                             searchPlaceholder = "Traži tvrtku, sjedište ili OIB",
                             emptyText = "Nema tvrtki za taj pojam.",
+                            onSearchQueryChange = onSearchCompanies,
                             isLoadingMore = directoryCompanyLoading,
                             hasMore = directoryCompanyHasMore,
                             loadMoreLabel = if (directoryCompanyTotal > 0) {
@@ -5001,6 +5005,8 @@ private fun WorkOrderCreateScreen(
                             icon = Icons.Rounded.LocationOn,
                             searchPlaceholder = "Traži lokaciju, regiju ili koordinate",
                             emptyText = if (companyId.isBlank()) "Prvo odaberi naručitelja." else if (locationLoading) "Učitavam lokacije..." else "Nema lokacija za taj pojam.",
+                            selectedValueMaxLines = 2,
+                            optionLabelMaxLines = 2,
                             isLoadingMore = locationLoading,
                             hasMore = locationHasMore,
                             loadMoreLabel = "Učitaj još lokacija",
@@ -6922,6 +6928,9 @@ private fun WorkOrderSearchSelectField(
     icon: ImageVector = Icons.Rounded.Search,
     searchPlaceholder: String = "Traži",
     emptyText: String = "Nema rezultata.",
+    selectedValueMaxLines: Int = 1,
+    optionLabelMaxLines: Int = 1,
+    onSearchQueryChange: ((String) -> Unit)? = null,
     isLoadingMore: Boolean = false,
     hasMore: Boolean = false,
     loadMoreLabel: String = "Učitaj još",
@@ -6939,9 +6948,16 @@ private fun WorkOrderSearchSelectField(
     }
     val visibleOptions = filteredOptions.take(120)
 
+    LaunchedEffect(open, query) {
+        if (!open || onSearchQueryChange == null) return@LaunchedEffect
+        delay(350)
+        onSearchQueryChange(query.trim())
+    }
+
     OutlinedButton(
         onClick = {
             query = ""
+            onSearchQueryChange?.invoke("")
             open = true
         },
         modifier = modifier.fillMaxWidth(),
@@ -6957,7 +6973,7 @@ private fun WorkOrderSearchSelectField(
                 valueLabel.ifBlank { "Odaberi" },
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold,
-                maxLines = 1,
+                maxLines = selectedValueMaxLines.coerceAtLeast(1),
                 overflow = TextOverflow.Ellipsis,
             )
         }
@@ -7029,7 +7045,7 @@ private fun WorkOrderSearchSelectField(
                                             Text(
                                                 option.label.ifBlank { "Odaberi" },
                                                 fontWeight = if (selected) FontWeight.Black else FontWeight.Bold,
-                                                maxLines = 1,
+                                                maxLines = optionLabelMaxLines.coerceAtLeast(1),
                                                 overflow = TextOverflow.Ellipsis,
                                             )
                                             if (option.meta.isNotBlank()) {
