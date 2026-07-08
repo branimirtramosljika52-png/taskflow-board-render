@@ -4848,7 +4848,7 @@ private fun WorkOrderCreateScreen(
     val filteredServices = remember(data.workOrderServices, selectedServiceFilter) {
         data.workOrderServices
             .filter { service -> service.workOrderServiceFilterKey() == selectedServiceFilter }
-            .sortedBy { service -> service.name.lowercase(Locale.getDefault()) }
+            .sortedWith(workOrderServiceDocumentationOrderComparator())
     }
     fun syncServiceLine(ids: List<String>) {
         val selectedNames = data.workOrderServices
@@ -27100,6 +27100,26 @@ private fun WorkOrderServiceOption.workOrderServiceFilterKey(): String {
     }
 }
 
+private fun WorkOrderServiceOption.documentationServiceOrderCode(): String {
+    val lookup = listOf(serviceCode, name, type, note)
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+    val nativeCode = documentationNativeServiceCodeForText(lookup)
+    return normalizeDocumentationFlowTabCode(nativeCode.ifBlank { serviceCode })
+}
+
+private fun WorkOrderServiceOption.documentationServiceOrderIndex(): Int =
+    documentationFlowTabOrderIndex(documentationServiceOrderCode())
+
+private fun WorkOrderServiceOption.documentationServiceSortLabel(): String =
+    name.ifBlank { serviceCode }
+        .lowercase(Locale.getDefault())
+
+private fun workOrderServiceDocumentationOrderComparator(): Comparator<WorkOrderServiceOption> =
+    compareBy<WorkOrderServiceOption> { service -> service.documentationServiceOrderIndex() }
+        .thenBy { service -> service.documentationServiceSortLabel() }
+        .thenBy { service -> service.id }
+
 private fun resolveWorkOrderSelectedServiceIds(
     workOrder: WorkOrder,
     services: List<WorkOrderServiceOption>,
@@ -27262,15 +27282,12 @@ private fun WorkOrderServiceManagementDialog(
             tab.key to services.count { it.workOrderServiceFilterKey() == tab.key }
         }
     }
-    val filteredServices = remember(services, serviceSearchIndex, query, selectedFilter, selectedIds) {
+    val filteredServices = remember(services, serviceSearchIndex, query, selectedFilter) {
         val normalizedQuery = normalizeServiceMatch(query)
         services.filter { service ->
             val matchesFilter = service.workOrderServiceFilterKey() == selectedFilter
             matchesFilter && (normalizedQuery.isBlank() || serviceSearchIndex[service.id]?.contains(normalizedQuery) == true)
-        }.sortedWith(
-            compareByDescending<WorkOrderServiceOption> { service -> service.id in selectedIds }
-                .thenBy { service -> service.name.lowercase(Locale.getDefault()) },
-        )
+        }.sortedWith(workOrderServiceDocumentationOrderComparator())
     }
     fun setServiceChecked(service: WorkOrderServiceOption, checked: Boolean) {
         val category = serviceFilterById[service.id] ?: service.workOrderServiceFilterKey()
