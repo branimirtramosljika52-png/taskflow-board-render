@@ -2575,6 +2575,9 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         workOrder: WorkOrder,
         currentEquipments: List<IsznrManualWorkEquipment>,
         files: List<IsznrRoAttachmentFile>,
+        selectedProfileId: String = "",
+        selectedProfileName: String = "",
+        userNote: String = "",
         onSuccess: (WorkEquipmentImageRecognitionResult) -> Unit,
         onFailure: (String) -> Unit,
     ) {
@@ -2592,6 +2595,9 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                 workOrder = workOrder,
                 currentEquipments = currentEquipments,
                 files = readableFiles,
+                selectedProfileId = selectedProfileId,
+                selectedProfileName = selectedProfileName,
+                userNote = userNote,
                 modelTier = "strong",
             )
                 .onSuccess(onSuccess)
@@ -3833,11 +3839,14 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     onFailure = onFailure,
                 )
             },
-            onRecognizeWorkEquipmentBatchImages = { currentEquipments, files, onSuccess, onFailure ->
+            onRecognizeWorkEquipmentBatchImages = { currentEquipments, files, profile, userNote, onSuccess, onFailure ->
                 viewModel.recognizeWorkEquipmentBatchFromImages(
                     workOrder = workOrder,
                     currentEquipments = currentEquipments,
                     files = files,
+                    selectedProfileId = profile.id,
+                    selectedProfileName = profile.id.takeIf { it.isNotBlank() }?.let { profile.label }.orEmpty(),
+                    userNote = userNote,
                     onSuccess = onSuccess,
                     onFailure = onFailure,
                 )
@@ -5299,6 +5308,11 @@ private fun WorkOrderCreateScreen(
                     summary = serviceLine.ifBlank { "${selectedServiceIds.size} odabrano" },
                     initiallyExpanded = true,
                 ) {
+                    SelectedWorkOrderServiceCodeBlocks(
+                        services = data.workOrderServices,
+                        selectedIds = selectedServiceIds.toSet(),
+                        onRemove = { service -> setCreateServiceChecked(service, false) },
+                    )
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -5354,10 +5368,7 @@ private fun WorkOrderCreateScreen(
                                                 overflow = TextOverflow.Ellipsis,
                                             )
                                             Text(
-                                                listOf(service.serviceCode, service.validityMonths.takeIf { it.isNotBlank() }?.let { "$it mj." })
-                                                    .filterNotNull()
-                                                    .filter { it.isNotBlank() }
-                                                    .joinToString(" · "),
+                                                service.serviceListMetaLabel(),
                                                 style = MaterialTheme.typography.labelMedium,
                                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                                                 maxLines = 1,
@@ -11195,6 +11206,8 @@ private fun DocumentationWorkEquipmentOptionList(
     onRecognizeWorkEquipmentBatchImages: (
         List<IsznrManualWorkEquipment>,
         List<IsznrRoAttachmentFile>,
+        WorkEquipmentAiProfileChoice,
+        String,
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
@@ -12902,6 +12915,8 @@ private fun WorkEquipmentBatchNexAiUploadCard(
     onRecognizeBatchImages: (
         List<IsznrManualWorkEquipment>,
         List<IsznrRoAttachmentFile>,
+        WorkEquipmentAiProfileChoice,
+        String,
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
@@ -12914,6 +12929,14 @@ private fun WorkEquipmentBatchNexAiUploadCard(
     var recognizing by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
     var preview by remember(files) { mutableStateOf<WorkEquipmentImageRecognitionResult?>(null) }
+    var selectedProfileId by remember { mutableStateOf("") }
+    var profileMenuExpanded by remember { mutableStateOf(false) }
+    var fieldNote by remember { mutableStateOf("") }
+    var pendingSpeechLaunch by remember { mutableStateOf(false) }
+    var voiceError by remember { mutableStateOf("") }
+    val selectedProfile = remember(selectedProfileId) {
+        workEquipmentAiProfileChoices.firstOrNull { it.id == selectedProfileId } ?: workEquipmentAiProfileChoices.first()
+    }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         coroutineScope.launch {
@@ -12940,6 +12963,40 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                 }
             loadingFiles = false
         }
+    }
+    val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+                .orEmpty()
+                .trim()
+            if (spoken.isNotBlank()) {
+                val separator = if (fieldNote.isBlank() || fieldNote.endsWith(" ") || fieldNote.endsWith("\n")) "" else " "
+                fieldNote += separator + spoken
+            }
+        }
+        pendingSpeechLaunch = false
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            pendingSpeechLaunch = true
+        } else {
+            voiceError = "Mikrofon nije dopušten."
+        }
+    }
+
+    LaunchedEffect(pendingSpeechLaunch) {
+        if (!pendingSpeechLaunch) return@LaunchedEffect
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hr-HR")
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, "Opiši stroj, radnu tvar, stanje, elektro i strojarske detalje.")
+        runCatching { speechLauncher.launch(intent) }
+            .onFailure {
+                voiceError = "Govorni unos nije dostupan na ovom uređaju."
+                pendingSpeechLaunch = false
+            }
     }
 
     fun applyPreview(
@@ -13228,6 +13285,94 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = { profileMenuExpanded = true },
+                        enabled = enabled && !recognizing,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
+                    ) {
+                        Icon(Icons.Rounded.Tune, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "Profil: ${selectedProfile.label}",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = profileMenuExpanded,
+                        onDismissRequest = { profileMenuExpanded = false },
+                    ) {
+                        workEquipmentAiProfileChoices.forEach { profile ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                        Text(profile.label, fontWeight = FontWeight.Black)
+                                        Text(
+                                            profile.hint,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    selectedProfileId = profile.id
+                                    profileMenuExpanded = false
+                                },
+                            )
+                        }
+                    }
+                }
+                IconButton(
+                    onClick = {
+                        voiceError = ""
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                            pendingSpeechLaunch = true
+                        } else {
+                            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    },
+                    enabled = enabled && !recognizing,
+                ) {
+                    Icon(Icons.Rounded.Mic, contentDescription = "Diktiraj napomenu")
+                }
+            }
+            OutlinedTextField(
+                value = fieldNote,
+                onValueChange = {
+                    fieldNote = it
+                    voiceError = ""
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Napomena za NexAI") },
+                placeholder = { Text("npr. spremnik UNP iza objekta, armatura dostupna, kabel i uzemljenje vidljivi") },
+                minLines = 2,
+                maxLines = 4,
+                enabled = enabled && !recognizing,
+                shape = RoundedCornerShape(14.dp),
+                trailingIcon = {
+                    if (fieldNote.isNotBlank()) {
+                        IconButton(onClick = { fieldNote = "" }) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Očisti napomenu")
+                        }
+                    }
+                },
+            )
+            if (voiceError.isNotBlank()) {
+                Text(
+                    voiceError,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFFB45309),
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 OutlinedButton(
                     onClick = { imagePicker.launch("image/*") },
                     enabled = enabled && !loadingFiles && files.size < ISZNR_RO_BATCH_ATTACHMENT_MAX_INLINE_FILES,
@@ -13246,6 +13391,8 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                         onRecognizeBatchImages(
                             manualEquipments,
                             files,
+                            selectedProfile,
+                            fieldNote,
                             { result ->
                                 recognizing = false
                                 preview = result
@@ -22317,7 +22464,7 @@ private fun ServiceCatalogLine(service: WorkOrderServiceOption) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(service.name.ifBlank { service.serviceCode.ifBlank { "Usluga" } }, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
-                    listOf(service.type, service.validityMonths.takeIf { it.isNotBlank() }?.let { "$it mj." }).filterNotNull().filter { it.isNotBlank() }.joinToString(" - "),
+                    service.type.ifBlank { service.serviceListMetaLabel() },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                     maxLines = 1,
@@ -27326,6 +27473,90 @@ private fun groupWorkOrderDocuments(documents: List<WorkOrderDocument>): List<Pa
     }
 }
 
+private val workOrderServiceCodeChipPalette = listOf(
+    Color(0xFFDBEAFE) to Color(0xFF1D4ED8),
+    Color(0xFFFFEDD5) to Color(0xFFC2410C),
+    Color(0xFFDCFCE7) to Color(0xFF15803D),
+    Color(0xFFF3E8FF) to Color(0xFF7E22CE),
+    Color(0xFFFFE4E6) to Color(0xFFBE123C),
+    Color(0xFFE0F2FE) to Color(0xFF0369A1),
+    Color(0xFFFEF9C3) to Color(0xFFA16207),
+)
+
+private fun WorkOrderServiceOption.displayCodeBlockLabel(): String =
+    serviceCode.trim().ifBlank {
+        name.trim()
+            .split(Regex("\\s+"))
+            .mapNotNull { word -> word.firstOrNull()?.uppercaseChar()?.toString() }
+            .joinToString("")
+            .take(8)
+            .ifBlank { "USL" }
+    }
+
+private fun WorkOrderServiceOption.serviceListMetaLabel(): String =
+    serviceCode.trim().ifBlank { type.trim() }.ifBlank { note.trim() }
+
+private data class WorkEquipmentAiProfileChoice(
+    val id: String,
+    val label: String,
+    val hint: String,
+)
+
+private val workEquipmentAiProfileChoices = listOf(
+    WorkEquipmentAiProfileChoice("", "Auto", "NexAI sam bira profil iz slike, pločice i napomene."),
+    WorkEquipmentAiProfileChoice("ro-ai-profile-forklift", "Viličar", "Vilice, jarbol, kočnice, hidraulika, signalizacija."),
+    WorkEquipmentAiProfileChoice("ro-ai-profile-lathe", "Tokarilica", "Stezna glava, suport, vodilice, pokrovi i STOP."),
+    WorkEquipmentAiProfileChoice("ro-ai-profile-press", "Presa", "Radni hod, stol, alat, dvoručno upravljanje ili zaštita."),
+    WorkEquipmentAiProfileChoice("ro-ai-profile-compressor", "Kompresor", "Spremnik, manometar, ventil, motor i tlačni vodovi."),
+    WorkEquipmentAiProfileChoice("ro-ai-profile-pressure-tank-lpg", "Spremnik / UNP", "Radna tvar UNP, armatura, ventili, uzemljenje, požar/eksplozija."),
+    WorkEquipmentAiProfileChoice("ro-ai-profile-analyzer", "Analizator", "Servisni aparat, zaslon, sonde, priključci i pločica."),
+    WorkEquipmentAiProfileChoice("ro-ai-profile-crane", "Dizalica", "Kuka, lanac/uže, nosivost, vitlo, komande i kočenje."),
+    WorkEquipmentAiProfileChoice("ro-ai-profile-saw-grinder", "Pila / brusilica", "Disk, traka, štitnik, prašina, buka i vibracije."),
+)
+
+@Composable
+private fun SelectedWorkOrderServiceCodeBlocks(
+    services: List<WorkOrderServiceOption>,
+    selectedIds: Set<String>,
+    onRemove: ((WorkOrderServiceOption) -> Unit)? = null,
+) {
+    val selectedServices = remember(services, selectedIds) {
+        services
+            .filter { service -> service.id in selectedIds }
+            .sortedWith(workOrderServiceDocumentationOrderComparator())
+    }
+    if (selectedServices.isEmpty()) return
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        selectedServices.forEachIndexed { index, service ->
+            val (backgroundColor, contentColor) = workOrderServiceCodeChipPalette[index % workOrderServiceCodeChipPalette.size]
+            val chipModifier = if (onRemove != null) {
+                Modifier.clickable { onRemove(service) }
+            } else {
+                Modifier
+            }
+            Surface(
+                modifier = chipModifier,
+                shape = RoundedCornerShape(9.dp),
+                color = backgroundColor,
+                border = BorderStroke(1.dp, contentColor.copy(alpha = 0.16f)),
+            ) {
+                Text(
+                    service.displayCodeBlockLabel(),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    color = contentColor,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun WorkOrderServiceManagementDialog(
     workOrder: WorkOrder,
@@ -27435,6 +27666,11 @@ private fun WorkOrderServiceManagementDialog(
                 AnimatedVisibility(saveStatus.startsWith("Sprema")) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
+                SelectedWorkOrderServiceCodeBlocks(
+                    services = services,
+                    selectedIds = selectedIds,
+                    onRemove = { service -> setServiceChecked(service, false) },
+                )
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
@@ -27531,10 +27767,7 @@ private fun WorkOrderServiceManagementDialog(
                                             overflow = TextOverflow.Ellipsis,
                                         )
                                         Text(
-                                            listOf(service.serviceCode, service.validityMonths.takeIf { it.isNotBlank() }?.let { "$it mj." })
-                                                .filterNotNull()
-                                                .filter { it.isNotBlank() }
-                                                .joinToString(" · "),
+                                            service.serviceListMetaLabel(),
                                             style = MaterialTheme.typography.labelMedium,
                                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                                             maxLines = 1,
@@ -29585,6 +29818,8 @@ private fun WorkOrderDocumentationWizardDialog(
     onRecognizeWorkEquipmentBatchImages: (
         List<IsznrManualWorkEquipment>,
         List<IsznrRoAttachmentFile>,
+        WorkEquipmentAiProfileChoice,
+        String,
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,

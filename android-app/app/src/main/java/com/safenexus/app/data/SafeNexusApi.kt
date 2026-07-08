@@ -1605,6 +1605,9 @@ class SafeNexusApi(
         workOrder: WorkOrder,
         currentEquipments: List<IsznrManualWorkEquipment>,
         files: List<IsznrRoAttachmentFile>,
+        selectedProfileId: String = "",
+        selectedProfileName: String = "",
+        userNote: String = "",
         modelTier: String = "strong",
     ): Result<WorkEquipmentImageRecognitionResult> = withContext(Dispatchers.IO) {
         runCatching {
@@ -1678,10 +1681,25 @@ class SafeNexusApi(
                         .put("locationName", workOrder.locationName)
                         .put("currentEquipments", JSONArray(currentEquipments.map { it.toJsonObject() }))
                         .put("profiles", workEquipmentRoProfilesJson())
+                        .put("selectedProfileId", selectedProfileId.trim())
+                        .put("selectedProfileName", selectedProfileName.trim())
+                        .put("userFieldNote", userNote.trim())
                         .put("registers", workEquipmentRoRegisterGroupsJson())
                         .put(
                             "imageRule",
                             "Ovo je batch upload iznad popisa RO opreme. U slikama moze biti vise strojeva. Grupiraj kronoloski: cijeli stroj, natpisna plocica i detalji pripadaju istoj opremi dok se ne pojavi ocito novi stroj. Vrati zaseban workEquipments zapis za svaki prepoznati stroj.",
+                        )
+                        .put(
+                            "profileRule",
+                            if (selectedProfileId.isNotBlank() || selectedProfileName.isNotBlank()) {
+                                "Korisnik je prije slanja odabrao profil '${selectedProfileName.trim().ifBlank { selectedProfileId.trim() }}'. Taj profil ima prednost pred automatskim pogadanjem, osim ako slike jasno prikazuju drugu vrstu opreme. U tom slucaju navedi neslaganje u summary/verificationQuestions."
+                            } else {
+                                "Korisnik nije rucno odabrao profil; odaberi najblizi profil iz context.profiles prema slikama i korisnickoj napomeni."
+                            },
+                        )
+                        .put(
+                            "userNoteRule",
+                            "userFieldNote je korisnikov terenski opis ili diktat. Koristi ga kao dodatni izvor za naziv stroja, radnu tvar, lokaciju, elektro dio, strojarski dio, opasnosti, stetnosti i napore. Ako userFieldNote proturjeci slici, ne izmisljaj nego dodaj pitanje za provjeru.",
                         )
                         .put(
                             "databaseRule",
