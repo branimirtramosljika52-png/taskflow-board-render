@@ -3918,6 +3918,32 @@ private fun JSONArray?.toWorkOrderDocumentationTemplates(): List<WorkOrderDocume
     }.filter { it.id.isNotBlank() }
 }
 
+private fun JSONArray?.toWorkOrderDocumentationPreviousRecords(): List<WorkOrderDocumentationPreviousRecord> {
+    if (this == null) return emptyList()
+    return buildList {
+        for (index in 0 until length()) {
+            val item = optJSONObject(index) ?: continue
+            val objectId = item.firstClean("objectId", "locationObjectId")
+            val objectName = item.firstClean("objectName", "locationObjectName")
+            if (objectId.isBlank() && objectName.isBlank()) continue
+            add(
+                WorkOrderDocumentationPreviousRecord(
+                    id = item.firstClean("id"),
+                    templateId = item.firstClean("templateId"),
+                    templateTitle = item.firstClean("templateTitle", "documentType", "title"),
+                    serviceCode = item.firstClean("serviceCode", "code", "nativeServiceCode"),
+                    serviceName = item.firstClean("serviceName", "documentType", "templateTitle", "title"),
+                    objectId = objectId,
+                    objectName = objectName,
+                    workOrderNumber = item.firstClean("workOrderNumber", "recordNumber"),
+                    inspectionDate = item.firstClean("inspectionDate", "issuedDate", "date"),
+                    updatedAt = item.firstClean("updatedAt", "createdAt"),
+                ),
+            )
+        }
+    }
+}
+
 private fun JSONArray?.toWorkOrderDocumentationOptions(): List<WorkOrderDocumentationOption> {
     if (this == null) return emptyList()
     return buildList {
@@ -4097,6 +4123,7 @@ private fun JSONObject.toWorkOrderDocumentationContext(): WorkOrderDocumentation
         workOrderId = firstClean("workOrderId"),
         workOrderNumber = firstClean("workOrderNumber"),
         templates = optJSONArray("templates").toWorkOrderDocumentationTemplates(),
+        previousRecords = optJSONArray("previousRecords").toWorkOrderDocumentationPreviousRecords(),
         hasTemplates = optBoolean("hasTemplates", false),
         fieldCount = optInt("fieldCount", 0),
         templateBlockCount = optInt("templateBlockCount", 0),

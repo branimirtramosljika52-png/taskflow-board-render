@@ -281,6 +281,7 @@ import com.safenexus.app.data.WorkOrderDocumentationDefaults
 import com.safenexus.app.data.WorkOrderDocumentationDraft
 import com.safenexus.app.data.WorkOrderDocumentationField
 import com.safenexus.app.data.WorkOrderDocumentationOption
+import com.safenexus.app.data.WorkOrderDocumentationPreviousRecord
 import com.safenexus.app.data.WorkOrderDocumentationSignatureAreaOptions
 import com.safenexus.app.data.WorkOrderDocumentationTemplate
 import com.safenexus.app.data.WorkOrderDocumentationTemplateBlock
@@ -29372,6 +29373,40 @@ private fun DocumentationServiceFlowItem.matchesDocumentationServiceFlowCandidat
         (itemName == candidateName || itemName.contains(candidateName) || candidateName.contains(itemName))
 }
 
+private fun WorkOrderDocumentationPreviousRecord.matchesDocumentationServiceFlowItem(item: DocumentationServiceFlowItem): Boolean {
+    val recordLookup = listOf(serviceCode, serviceName, templateTitle, templateId)
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+    val itemLookup = listOf(item.serviceCode, item.serviceName, item.serviceKey)
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+    val recordNativeCode = documentationNativeServiceCodeForText(recordLookup)
+    val itemNativeCode = documentationNativeServiceCodeForText(itemLookup)
+    if (recordNativeCode.isNotBlank() && itemNativeCode.isNotBlank()) {
+        return recordNativeCode == itemNativeCode
+    }
+
+    val recordCode = normalizeDocumentationWorkEquipmentText(serviceCode)
+    val itemCode = normalizeDocumentationWorkEquipmentText(item.serviceCode)
+    if (recordCode.isNotBlank() && itemCode.isNotBlank() && recordCode == itemCode) return true
+
+    val recordName = normalizeDocumentationWorkEquipmentText(serviceName.ifBlank { templateTitle })
+    val itemName = normalizeDocumentationWorkEquipmentText(item.serviceName)
+    return recordName.isNotBlank() &&
+        itemName.isNotBlank() &&
+        (recordName == itemName || recordName.contains(itemName) || itemName.contains(recordName))
+}
+
+private fun WorkOrderDocumentationPreviousRecord.matchesLocationObject(objectOption: WorkOrderLocationObjectOption): Boolean {
+    val recordObjectId = objectId.trim()
+    val optionObjectId = objectOption.id.trim()
+    if (recordObjectId.isNotBlank() && optionObjectId.isNotBlank() && recordObjectId == optionObjectId) return true
+
+    val recordObjectName = normalizeDocumentationWorkEquipmentText(objectName)
+    val optionObjectName = normalizeDocumentationWorkEquipmentText(objectOption.name)
+    return recordObjectName.isNotBlank() && optionObjectName.isNotBlank() && recordObjectName == optionObjectName
+}
+
 private fun DocumentationServiceFlowItem.matchesWorkOrderService(service: WorkOrderServiceItem): Boolean {
     val itemCode = normalizeDocumentationWorkEquipmentText(serviceCode)
     val serviceCode = normalizeDocumentationWorkEquipmentText(service.serviceCode)
@@ -30850,6 +30885,89 @@ private fun WorkOrderDocumentationWizardDialog(
         additionalRecordTarget = null
         additionalRecordObjectId = ""
     }
+    var additionalRecordsBatchMessage by remember(workOrder.id, selectedObjectId) { mutableStateOf("") }
+    fun selectedServiceBatchTargets(): List<DocumentationServiceFlowItem> =
+        serviceFlowItems.distinctBy { item -> item.serviceKey.ifBlank { "${item.serviceCode}:${item.serviceIndex}" } }
+
+    fun hasPreviousRecordForObjectAndService(
+        objectOption: WorkOrderLocationObjectOption,
+        target: DocumentationServiceFlowItem,
+    ): Boolean =
+        context.previousRecords.any { record ->
+            record.matchesDocumentationServiceFlowItem(target) && record.matchesLocationObject(objectOption)
+        }
+
+    fun objectHasPreviousRecordsForEverySelectedService(objectOption: WorkOrderLocationObjectOption): Boolean {
+        val targets = selectedServiceBatchTargets()
+        return targets.isNotEmpty() && targets.all { target -> hasPreviousRecordForObjectAndService(objectOption, target) }
+    }
+
+    fun defaultBatchPrimaryObject(): WorkOrderLocationObjectOption? =
+        if (selectedObjectId.isBlank()) {
+            availableLocationObjects.firstOrNull { objectOption -> objectHasPreviousRecordsForEverySelectedService(objectOption) }
+        } else {
+            availableLocationObjects.firstOrNull { it.id == selectedObjectId }
+        }
+
+    fun buildAdditionalRecordsForAllObjects(primaryObjectId: String = selectedObjectId): List<DocumentationAdditionalObjectRecord> {
+        if (serviceFlowItems.isEmpty() || availableLocationObjects.isEmpty()) return emptyList()
+        return selectedServiceBatchTargets().flatMap { target ->
+            val usedObjectIds = additionalRecords
+                .filter { it.serviceKey == target.serviceKey }
+                .map { it.objectId.trim() }
+                .filter { it.isNotBlank() }
+                .toMutableSet()
+            primaryObjectId.trim().takeIf { it.isNotBlank() }?.let { usedObjectIds.add(it) }
+            val targetExistingCount = additionalRecords.count { it.serviceKey == target.serviceKey }
+            availableLocationObjects
+                .filter { objectOption ->
+                    val objectId = objectOption.id.trim()
+                    objectId.isNotBlank() &&
+                        objectId !in usedObjectIds &&
+                        hasPreviousRecordForObjectAndService(objectOption, target)
+                }
+                .mapIndexed { objectIndex, selected ->
+                    DocumentationAdditionalObjectRecord(
+                        serviceKey = target.serviceKey,
+                        serviceIndex = target.serviceIndex,
+                        serviceCode = target.serviceCode,
+                        serviceName = target.serviceName,
+                        objectId = selected.id,
+                        objectName = selected.name,
+                        objectSequence = targetExistingCount + objectIndex + 2,
+                    )
+                }
+            }
+    }
+    fun addAdditionalRecordsForAllObjects() {
+        val baseRecords = additionalRecords
+        val primaryObject = defaultBatchPrimaryObject()
+        val primaryObjectId = primaryObject?.id.orEmpty().ifBlank { selectedObjectId }
+        val shouldSetPrimaryObject = selectedObjectId.isBlank() && primaryObjectId.isNotBlank()
+        val newRecords = buildAdditionalRecordsForAllObjects(primaryObjectId)
+        if (shouldSetPrimaryObject) {
+            onObjectSelectionChange(primaryObjectId)
+        }
+        if (newRecords.isEmpty()) {
+            additionalRecordsBatchMessage = if (shouldSetPrimaryObject) {
+                "Postavljen je osnovni objekt: ${primaryObject?.name.orEmpty()}."
+            } else {
+                "Nema starih zapisnika za preostale objekte i odabrane usluge."
+            }
+            return
+        }
+        additionalRecords = baseRecords + newRecords
+        newRecords.firstOrNull()?.let { firstRecord ->
+            selectedFlowService = documentationAdditionalRecordFlowKey(firstRecord, baseRecords.size)
+        }
+        val objectCount = newRecords.map { it.objectId }.distinct().size
+        val serviceCount = newRecords.map { it.serviceKey }.distinct().size
+        additionalRecordsBatchMessage = if (shouldSetPrimaryObject) {
+            "Osnovni objekt je ${primaryObject?.name.orEmpty()}. Dodano ${newRecords.size} dodatnih zapisnika za $objectCount objekata i $serviceCount usluga."
+        } else {
+            "Dodano ${newRecords.size} zapisnika za $objectCount objekata i $serviceCount usluga."
+        }
+    }
     var requiredWarning by remember(workOrder.id) { mutableStateOf("") }
     val standardValues = DocumentationStandardValues(
         inspectionDate = inspectionDate.trim(),
@@ -31555,6 +31673,76 @@ private fun WorkOrderDocumentationWizardDialog(
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.76f),
                                     fontWeight = FontWeight.SemiBold,
                                 )
+                            }
+                        }
+                    }
+                    if (availableLocationObjects.isNotEmpty() && serviceFlowItems.isNotEmpty()) {
+                        val batchPrimaryObject = defaultBatchPrimaryObject()
+                        val batchPrimaryObjectId = batchPrimaryObject?.id.orEmpty().ifBlank { selectedObjectId }
+                        val allObjectRecordCandidates = buildAdditionalRecordsForAllObjects(batchPrimaryObjectId)
+                        val canAddAllObjects = allObjectRecordCandidates.isNotEmpty() || (selectedObjectId.isBlank() && batchPrimaryObjectId.isNotBlank())
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.34f),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.Business,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Objekti zapisnika", fontWeight = FontWeight.Black)
+                                        Text(
+                                            if (allObjectRecordCandidates.isNotEmpty()) {
+                                                if (selectedObjectId.isBlank()) {
+                                                    if (batchPrimaryObjectId.isNotBlank()) {
+                                                        "Objekt sa starim zapisnicima postaje osnovni; dodaje još ${allObjectRecordCandidates.size} starih kombinacija."
+                                                    } else {
+                                                        "Dodaje ${allObjectRecordCandidates.size} starih kombinacija objekt + usluga."
+                                                    }
+                                                } else {
+                                                    "Dodaje samo kombinacije koje imaju stari zapisnik: ${allObjectRecordCandidates.size} novih tabova."
+                                                }
+                                            } else {
+                                                if (selectedObjectId.isBlank()) {
+                                                    "Nema starih zapisnika za objekte na ovoj lokaciji i odabrane usluge."
+                                                } else {
+                                                    "Svi stari zapisnici za preostale objekte već su dodani."
+                                                }
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                                        )
+                                    }
+                                    Button(
+                                        onClick = ::addAdditionalRecordsForAllObjects,
+                                        enabled = !formLoading && canAddAllObjects,
+                                        shape = RoundedCornerShape(16.dp),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                    ) {
+                                        Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Dodaj sve", fontWeight = FontWeight.Black)
+                                    }
+                                }
+                                if (additionalRecordsBatchMessage.isNotBlank()) {
+                                    Text(
+                                        additionalRecordsBatchMessage,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.SemiBold,
+                                    )
+                                }
                             }
                         }
                     }

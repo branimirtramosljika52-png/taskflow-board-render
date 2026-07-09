@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.386.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.387.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -27092,6 +27092,80 @@ function mergeMobileMeasurementSheetPresets(scopedSnapshot = {}, freshPresets = 
   };
 }
 
+function buildMobileDocumentationPreviousRecords(workOrder = {}, scopedSnapshot = {}) {
+  const companyId = normalizeInputValue(workOrder?.companyId);
+  const locationId = normalizeInputValue(workOrder?.locationId);
+  if (!companyId || !locationId) {
+    return [];
+  }
+
+  const records = Array.isArray(scopedSnapshot.documentRecords) ? scopedSnapshot.documentRecords : [];
+  const seenKeys = new Set();
+  return records
+    .map((record) => {
+      if (!record || typeof record !== "object" || Array.isArray(record)) {
+        return null;
+      }
+      const recordCompanyId = normalizeInputValue(record.companyId);
+      const recordLocationId = normalizeInputValue(record.locationId);
+      if (recordCompanyId !== companyId || recordLocationId !== locationId) {
+        return null;
+      }
+      const objectId = normalizeInputValue(record.objectId || record.locationObjectId);
+      const objectName = normalizeInputValue(record.objectName || record.locationObjectName);
+      if (!objectId && isMobileNoObjectRecordLabel(objectName)) {
+        return null;
+      }
+      if (!objectId && !objectName) {
+        return null;
+      }
+      const nativeServiceCode = getMobileDocumentRecordNativeDocumentationServiceCode(record);
+      const serviceCode = nativeServiceCode || normalizeInputValue(record.serviceCode || record.code);
+      const templateTitle = normalizeInputValue(
+        record.templateTitle
+        || record.documentType
+        || record.documentTitle
+        || record.title
+        || record.documentName,
+      );
+      const serviceName = normalizeInputValue(
+        record.serviceName
+        || record.serviceTitle
+        || record.documentType
+        || templateTitle,
+      );
+      const sortKey = getMobileDocumentRecordSortKey(record);
+      return {
+        id: normalizeInputValue(record.id),
+        templateId: normalizeInputValue(record.templateId),
+        templateTitle,
+        serviceCode,
+        serviceName,
+        objectId,
+        objectName,
+        workOrderNumber: normalizeInputValue(record.workOrderNumber || record.recordNumber),
+        inspectionDate: normalizeDateOnlyValue(record.inspectionDate || record.issuedDate || record.validUntil || record.expirationDate),
+        updatedAt: normalizeInputValue(record.updatedAt || record.createdAt),
+        sortKey,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => String(right.sortKey || "").localeCompare(String(left.sortKey || "")))
+    .filter((record) => {
+      const key = [
+        record.templateId || record.serviceCode || record.serviceName,
+        record.objectId || normalizeMobileTemplateLookupKey(record.objectName),
+      ].map(normalizeInputValue).join("::");
+      if (!key || seenKeys.has(key)) {
+        return false;
+      }
+      seenKeys.add(key);
+      return true;
+    })
+    .slice(0, 500)
+    .map(({ sortKey, ...record }) => record);
+}
+
 async function buildMobileDocumentationContextSnapshot(workOrder = {}, scopedSnapshot = {}) {
   if (
     typeof domainRepository.listDocumentRecords !== "function"
@@ -28762,6 +28836,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     workOrderId: normalizeInputValue(workOrder?.id),
     workOrderNumber: normalizeInputValue(workOrder?.workOrderNumber || workOrder?.number),
     templates,
+    previousRecords: buildMobileDocumentationPreviousRecords(workOrder, scopedSnapshot),
     hasTemplates: templates.length > 0,
     fieldCount: templates.reduce((sum, template) => sum + (template.fields?.length || 0), 0),
     templateBlockCount: templates.reduce((sum, template) => sum + (template.fieldBlocks?.length || 0), 0),

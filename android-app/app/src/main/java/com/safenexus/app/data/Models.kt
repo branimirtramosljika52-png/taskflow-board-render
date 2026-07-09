@@ -537,6 +537,7 @@ data class WorkOrderDocumentationContext(
     val workOrderId: String = "",
     val workOrderNumber: String = "",
     val templates: List<WorkOrderDocumentationTemplate> = emptyList(),
+    val previousRecords: List<WorkOrderDocumentationPreviousRecord> = emptyList(),
     val hasTemplates: Boolean = false,
     val fieldCount: Int = 0,
     val templateBlockCount: Int = 0,
@@ -556,6 +557,19 @@ data class WorkOrderDocumentationContext(
     val legalFrameworkOptions: List<WorkOrderDocumentationOption> = emptyList(),
     val rulebookOptions: List<WorkOrderDocumentationOption> = emptyList(),
     val signaturePersonOptions: List<WorkOrderDocumentationSignatureAreaOptions> = emptyList(),
+)
+
+data class WorkOrderDocumentationPreviousRecord(
+    val id: String = "",
+    val templateId: String = "",
+    val templateTitle: String = "",
+    val serviceCode: String = "",
+    val serviceName: String = "",
+    val objectId: String = "",
+    val objectName: String = "",
+    val workOrderNumber: String = "",
+    val inspectionDate: String = "",
+    val updatedAt: String = "",
 )
 
 data class IsznrWorkEquipmentSubmitResult(
