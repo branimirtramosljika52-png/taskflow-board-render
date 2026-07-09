@@ -4193,7 +4193,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     assessmentLabel: "Tipkala za iskljucenje elektricne energije u slucaju hitnosti",
     conclusionLead: "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da ispitivana tipkala za iskljucenje elektricne energije u slucaju hitnosti na dan predmetnog ispitivanja",
     validitySentence: "Zapisnik o ispitivanju vrijedi jednu (1) godinu, odnosno najkasnije do",
-    signatureAreas: ["tipkalo", "elektro"],
+    signatureAreas: ["tzin"],
     tables: [
       tableSpec({
         id: "tzin-buttons",

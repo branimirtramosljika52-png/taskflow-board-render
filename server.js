@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.384.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.385.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -27235,10 +27235,13 @@ function getMobileQualificationAreaLabel(signatureArea = "elektro") {
   if (key === "spr") {
     return "SPR - Sigurnosna panik rasvjeta";
   }
+  if (key === "tzin") {
+    return "TZIN - Tipkalo za isklop napona";
+  }
   if (key === "elektro") {
     return "Elektro usluga";
   }
-  if (key === "tipkalo" || key === "tzin") {
+  if (key === "tipkalo") {
     return "Tipkalo za isklop napona";
   }
   if (key === "radna_oprema" || key === "ro") {
@@ -27271,7 +27274,7 @@ function getMobileServiceQualificationKeys(service = {}, scopedSnapshot = {}) {
   ].filter(Boolean).join(" ")).toLowerCase();
 
   if (/\b(tzin|tipkalo)\b/.test(text) || text.includes("isklop napona")) {
-    keys.add("tipkalo");
+    keys.add("tzin");
   }
   if (/\b(spr|panik)\b/.test(text) || text.includes("panik rasvjet") || text.includes("panic")) {
     keys.add("spr");
@@ -27304,17 +27307,30 @@ function getMobileDocumentTemplateSignatureAreas(template = {}, service = {}, sc
   return areas.size > 0 ? [...areas] : ["elektro"];
 }
 
+function getMobileQualificationAreaAliasKeys(signatureArea = "elektro") {
+  const area = normalizeMobileQualificationAreaKey(signatureArea);
+  const aliases = {
+    spr: ["spr"],
+    tzin: ["tzin", "tipkalo"],
+    tipkalo: ["tipkalo", "tzin"],
+  }[area] || [area];
+  return Array.from(new Set(aliases.map((key) => normalizeMobileQualificationAreaKey(key)).filter(Boolean)));
+}
+
 function getMobileUserQualificationForArea(user = {}, signatureArea = "elektro") {
   const area = normalizeMobileQualificationAreaKey(signatureArea);
   const rootQualification = user?.electricalQualification && typeof user.electricalQualification === "object"
     ? user.electricalQualification
     : {};
-  const additionalQualification = rootQualification.additionalAreas && typeof rootQualification.additionalAreas === "object"
-    ? rootQualification.additionalAreas[area]
-    : null;
+  const additionalAreas = rootQualification.additionalAreas && typeof rootQualification.additionalAreas === "object"
+    ? rootQualification.additionalAreas
+    : {};
+  const additionalQualification = getMobileQualificationAreaAliasKeys(area)
+    .map((key) => additionalAreas[key])
+    .find((qualification) => qualification && typeof qualification === "object");
   const qualification = area === "elektro"
     ? rootQualification
-    : (additionalQualification || (area === "spr" ? rootQualification : null) || {});
+    : (additionalQualification || {});
   return {
     discipline: normalizeMobileQualificationAreaKey(qualification.discipline || area),
     examTitle: normalizeInputValue(qualification.examTitle || qualification.title),
@@ -27594,7 +27610,7 @@ const MOBILE_NATIVE_DOCUMENTATION_PRESETS_LEGACY = Object.freeze([
     reportTitle: "ISPITIVANJE TIPKALA ZA ISKLOP ELEKTRIČNE INSTALACIJE",
     coverSubtitle: "O ISPITIVANJU TIPKALA ZA ISKLOP ELEKTRIČNE INSTALACIJE U SLUČAJU HITNOSTI",
     measurementTableTitle: "Tablica 1. - rezultati ispitivanja tipkala za isklop",
-    signatureAreas: ["tipkalo", "elektro"],
+    signatureAreas: ["tzin"],
   }),
   Object.freeze({
     serviceCode: "VES",

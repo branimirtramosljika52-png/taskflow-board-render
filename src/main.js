@@ -69865,6 +69865,21 @@ const USER_DOCUMENT_CATEGORY_OPTIONS = [
 
 const BUILTIN_QUALIFICATION_EXAM_DEFINITIONS = Object.freeze([
   Object.freeze({
+    key: "spr",
+    title: "SPR - Sigurnosna panik rasvjeta",
+    label: "SPR - Sigurnosna panik rasvjeta",
+    defaultExam: true,
+    builtIn: true,
+  }),
+  Object.freeze({
+    key: "tzin",
+    title: "TZIN - Tipkalo za isklop napona",
+    label: "TZIN - Tipkalo za isklop napona",
+    defaultExam: true,
+    legacyFallbackArea: "tipkalo",
+    builtIn: true,
+  }),
+  Object.freeze({
     key: "radna_oprema",
     title: "Radna oprema",
     label: "Radna oprema",
@@ -69893,13 +69908,6 @@ const BUILTIN_QUALIFICATION_EXAM_DEFINITIONS = Object.freeze([
 ]);
 
 const LEGACY_QUALIFICATION_EXAM_DEFINITIONS = Object.freeze([
-  Object.freeze({
-    key: "spr",
-    title: "SPR - Sigurnosna panik rasvjeta",
-    label: "SPR - Sigurnosna panik rasvjeta",
-    builtIn: false,
-    legacy: true,
-  }),
   Object.freeze({
     key: "elektro",
     title: "Panik rasvjeta",
@@ -76913,6 +76921,16 @@ function normalizeQualificationAreaKey(signatureArea = "elektro") {
   return normalizedArea || "elektro";
 }
 
+function getQualificationAreaAliasKeys(signatureArea = "elektro") {
+  const normalizedArea = normalizeQualificationAreaKey(signatureArea);
+  const aliases = {
+    spr: ["spr"],
+    tzin: ["tzin", "tipkalo"],
+    tipkalo: ["tipkalo", "tzin"],
+  }[normalizedArea] || [normalizedArea];
+  return Array.from(new Set(aliases.map((area) => normalizeQualificationAreaKey(area)).filter(Boolean)));
+}
+
 function createUserQualificationExamKey(value = "") {
   const safeId = String(value || "")
     .trim()
@@ -77102,7 +77120,6 @@ function getServiceCatalogQualificationDefinitionKey(service = {}) {
 function getServiceCatalogQualificationLegacyFallbackArea(key = "") {
   const normalizedKey = normalizeQualificationAreaKey(key);
   return {
-    spr: "elektro",
     tzin: "tipkalo",
     ro: "radna_oprema",
     fc: "radni_okolis",
@@ -85576,9 +85593,15 @@ async function createDocumentTemplateMediaDraftFromFile(file, field = {}) {
 function getUserElectricalQualification(user = {}, signatureArea = "elektro") {
   const normalizedArea = normalizeQualificationAreaKey(signatureArea);
   const rootQualification = user?.electricalQualification ?? {};
+  const additionalAreas = rootQualification?.additionalAreas && typeof rootQualification.additionalAreas === "object"
+    ? rootQualification.additionalAreas
+    : {};
+  const additionalQualification = getQualificationAreaAliasKeys(normalizedArea)
+    .map((area) => additionalAreas[area])
+    .find((qualification) => qualification && typeof qualification === "object");
   const qualification = normalizedArea === "elektro"
     ? rootQualification
-    : rootQualification?.additionalAreas?.[normalizedArea] ?? {};
+    : additionalQualification ?? {};
   const inheritedSignatureDataUrl = String(
     rootQualification.signatureDataUrl
     || rootQualification.signatureStorageUrl
@@ -85629,9 +85652,15 @@ function getUserElectricalQualification(user = {}, signatureArea = "elektro") {
 function getRawUserQualificationForArea(user = {}, signatureArea = "elektro") {
   const normalizedArea = normalizeQualificationAreaKey(signatureArea);
   const rootQualification = user?.electricalQualification ?? {};
+  const additionalAreas = rootQualification?.additionalAreas && typeof rootQualification.additionalAreas === "object"
+    ? rootQualification.additionalAreas
+    : {};
+  const additionalQualification = getQualificationAreaAliasKeys(normalizedArea)
+    .map((area) => additionalAreas[area])
+    .find((qualification) => qualification && typeof qualification === "object");
   return normalizedArea === "elektro"
     ? rootQualification
-    : rootQualification?.additionalAreas?.[normalizedArea] ?? {};
+    : additionalQualification ?? {};
 }
 
 function getUserQualificationForDefinition(user = {}, definition = {}) {

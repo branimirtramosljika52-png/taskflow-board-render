@@ -60,6 +60,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -29013,7 +29014,7 @@ private fun inferDocumentationSignatureAreas(
         .joinToString(" ")
         .lowercase(Locale.getDefault())
     return when {
-        Regex("\\b(tzin|tipkalo)\\b").containsMatchIn(text) || text.contains("isklop napona") -> listOf("tipkalo")
+        Regex("\\b(tzin|tipkalo)\\b").containsMatchIn(text) || text.contains("isklop napona") -> listOf("tzin")
         Regex("\\b(spr|panik)\\b").containsMatchIn(text) || text.contains("panik rasvjet") -> listOf("spr")
         Regex("\\b(no|strojevi)\\b").containsMatchIn(text) || text.contains("nadzor opreme") || text.contains("nadzor strojeva") -> listOf("strojevi", "radna_oprema")
         Regex("\\bro\\b").containsMatchIn(text) || text.contains("radna oprema") || text.contains("radne opreme") -> listOf("radna_oprema")
@@ -43409,89 +43410,121 @@ private fun DocumentationServicePeopleSection(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Text(options.label, fontWeight = FontWeight.Black)
-                    rules.forEach { rule ->
-                        when (rule.role) {
-                            "company_responsible" -> {
-                                DocumentationPersonRoleCard(
-                                    label = if (rule.required) "${rule.label} *" else rule.label,
-                                    selectedSummary = "Automatski iz tvrtke/lokacije",
-                                    icon = Icons.Rounded.Business,
-                                ) {
-                                    Text(
-                                        "Osoba naručitelja popunjava se iz podataka tvrtke/lokacije.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
-                                    )
-                                }
-                            }
-                            "authorize" -> {
-                                val authorizationLabel = options.authorizationOptions.firstOrNull { it.id == authorizationSelection }?.label.orEmpty()
-                                DocumentationPersonRoleCard(
-                                    label = if (rule.required) "${rule.label} *" else rule.label,
-                                    selectedSummary = authorizationLabel.ifBlank { "Nije odabrano" },
-                                    icon = Icons.Rounded.Person,
-                                ) {
-                                    DocumentationMultiSelectField(
-                                        label = "Odabir osoba",
-                                        options = options.authorizationOptions,
-                                        selectedIds = authorizationSelection.takeIf { it.isNotBlank() }?.let { setOf(it) }.orEmpty(),
-                                        enabled = enabled,
-                                        emptyText = "Nema aktivnih odgovornih osoba s ovlaštenjem za ovu uslugu.",
-                                        singleSelection = true,
-                                        maxVisibleItems = options.authorizationOptions.size,
-                                        onChange = { selected -> onAuthorizationChange(selected.firstOrNull().orEmpty()) },
-                                    )
-                                }
-                            }
-                            else -> {
-                                if (rule.multiple) {
-                                    val selectedInspectorLabels = options.inspectorOptions
-                                        .filter { it.id in inspectorSelection }
-                                        .joinToString(", ") { it.label }
+
+                    @Composable
+                    fun PersonRuleCard(rule: DocumentationPersonFieldRule, modifier: Modifier = Modifier) {
+                        Column(
+                            modifier = modifier,
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            when (rule.role) {
+                                "company_responsible" -> {
                                     DocumentationPersonRoleCard(
                                         label = if (rule.required) "${rule.label} *" else rule.label,
-                                        selectedSummary = selectedInspectorLabels.ifBlank { "Nije odabrano" },
-                                        icon = Icons.Rounded.CheckCircle,
+                                        selectedSummary = "Automatski iz tvrtke/lokacije",
+                                        icon = Icons.Rounded.Business,
                                     ) {
-                                        DocumentationMultiSelectField(
-                                            label = "Odabir osoba",
-                                            options = options.inspectorOptions,
-                                            selectedIds = inspectorSelection,
-                                            enabled = enabled,
-                                            emptyText = "Nema aktivnih ispitivača s ovlaštenjem za ovu uslugu.",
-                                            maxVisibleItems = options.inspectorOptions.size,
-                                            onChange = onInspectorChange,
+                                        Text(
+                                            "Osoba naručitelja popunjava se iz podataka tvrtke/lokacije.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
                                         )
                                     }
-                                } else {
-                                    val selectedInspectorId = inspectorSelection.firstOrNull().orEmpty()
-                                    val inspectorLabel = options.inspectorOptions.firstOrNull { it.id == selectedInspectorId }?.label.orEmpty()
+                                }
+                                "authorize" -> {
+                                    val authorizationLabel = options.authorizationOptions.firstOrNull { it.id == authorizationSelection }?.label.orEmpty()
                                     DocumentationPersonRoleCard(
                                         label = if (rule.required) "${rule.label} *" else rule.label,
-                                        selectedSummary = inspectorLabel.ifBlank { "Nije odabrano" },
-                                        icon = Icons.Rounded.CheckCircle,
+                                        selectedSummary = authorizationLabel.ifBlank { "Nije odabrano" },
+                                        icon = Icons.Rounded.Person,
                                     ) {
                                         DocumentationMultiSelectField(
                                             label = "Odabir osoba",
-                                            options = options.inspectorOptions,
-                                            selectedIds = selectedInspectorId.takeIf { it.isNotBlank() }?.let { setOf(it) }.orEmpty(),
+                                            options = options.authorizationOptions,
+                                            selectedIds = authorizationSelection.takeIf { it.isNotBlank() }?.let { setOf(it) }.orEmpty(),
                                             enabled = enabled,
-                                            emptyText = "Nema aktivnih ispitivača s ovlaštenjem za ovu uslugu.",
+                                            emptyText = "Nema aktivnih odgovornih osoba s ovlaštenjem za ovu uslugu.",
                                             singleSelection = true,
-                                            maxVisibleItems = options.inspectorOptions.size,
-                                            onChange = onInspectorChange,
+                                            maxVisibleItems = options.authorizationOptions.size,
+                                            onChange = { selected -> onAuthorizationChange(selected.firstOrNull().orEmpty()) },
                                         )
                                     }
                                 }
+                                else -> {
+                                    if (rule.multiple) {
+                                        val selectedInspectorLabels = options.inspectorOptions
+                                            .filter { it.id in inspectorSelection }
+                                            .joinToString(", ") { it.label }
+                                        DocumentationPersonRoleCard(
+                                            label = if (rule.required) "${rule.label} *" else rule.label,
+                                            selectedSummary = selectedInspectorLabels.ifBlank { "Nije odabrano" },
+                                            icon = Icons.Rounded.CheckCircle,
+                                        ) {
+                                            DocumentationMultiSelectField(
+                                                label = "Odabir osoba",
+                                                options = options.inspectorOptions,
+                                                selectedIds = inspectorSelection,
+                                                enabled = enabled,
+                                                emptyText = "Nema aktivnih ispitivača s ovlaštenjem za ovu uslugu.",
+                                                maxVisibleItems = options.inspectorOptions.size,
+                                                onChange = onInspectorChange,
+                                            )
+                                        }
+                                    } else {
+                                        val selectedInspectorId = inspectorSelection.firstOrNull().orEmpty()
+                                        val inspectorLabel = options.inspectorOptions.firstOrNull { it.id == selectedInspectorId }?.label.orEmpty()
+                                        DocumentationPersonRoleCard(
+                                            label = if (rule.required) "${rule.label} *" else rule.label,
+                                            selectedSummary = inspectorLabel.ifBlank { "Nije odabrano" },
+                                            icon = Icons.Rounded.CheckCircle,
+                                        ) {
+                                            DocumentationMultiSelectField(
+                                                label = "Odabir osoba",
+                                                options = options.inspectorOptions,
+                                                selectedIds = selectedInspectorId.takeIf { it.isNotBlank() }?.let { setOf(it) }.orEmpty(),
+                                                enabled = enabled,
+                                                emptyText = "Nema aktivnih ispitivača s ovlaštenjem za ovu uslugu.",
+                                                singleSelection = true,
+                                                maxVisibleItems = options.inspectorOptions.size,
+                                                onChange = onInspectorChange,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            if (rule.helpText.isNotBlank()) {
+                                Text(
+                                    rule.helpText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f),
+                                )
                             }
                         }
-                        if (rule.helpText.isNotBlank()) {
-                            Text(
-                                rule.helpText,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f),
-                            )
+                    }
+
+                    val companyRules = rules.filter { it.role == "company_responsible" }
+                    val personChoiceRules = rules.filter { it.role != "company_responsible" }
+                    companyRules.forEach { rule -> PersonRuleCard(rule) }
+
+                    if (personChoiceRules.size == 2) {
+                        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                            if (maxWidth >= 330.dp) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    personChoiceRules.forEach { rule ->
+                                        PersonRuleCard(rule, Modifier.weight(1f))
+                                    }
+                                }
+                            } else {
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    personChoiceRules.forEach { rule -> PersonRuleCard(rule) }
+                                }
+                            }
                         }
+                    } else {
+                        personChoiceRules.forEach { rule -> PersonRuleCard(rule) }
                     }
                 }
             }
@@ -43504,10 +43537,11 @@ private fun DocumentationPersonRoleCard(
     label: String,
     selectedSummary: String,
     icon: ImageVector,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
     ) {
