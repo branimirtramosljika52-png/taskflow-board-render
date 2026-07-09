@@ -23174,11 +23174,29 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     ? Number(source.addAllObjectsServiceIndex ?? source.activeServiceIndex)
     : -1;
   const addAllObjectsServiceCode = normalizeInputValue(source.addAllObjectsServiceCode || source.activeServiceCode);
-  const fieldValues = source.fieldValues && typeof source.fieldValues === "object" && !Array.isArray(source.fieldValues)
+  let fieldValues = source.fieldValues && typeof source.fieldValues === "object" && !Array.isArray(source.fieldValues)
     ? Object.fromEntries(Object.entries(source.fieldValues)
       .map(([key, value]) => [normalizeInputValue(key), value])
       .filter(([key]) => key))
     : {};
+  const projectDocumentation = normalizeInputValue(
+    source.projectDocumentation
+    || source.usedDocumentation
+    || source.technicalDocumentation
+    || source.PROJECT_DOCUMENTATION
+    || source.KORISTENA_DOKUMENTACIJA
+    || fieldValues.PROJECT_DOCUMENTATION
+    || fieldValues.KORISTENA_DOKUMENTACIJA
+    || fieldValues.TEHNICKA_DOKUMENTACIJA,
+  );
+  if (projectDocumentation) {
+    fieldValues = {
+      ...fieldValues,
+      KORISTENA_DOKUMENTACIJA: normalizeInputValue(fieldValues.KORISTENA_DOKUMENTACIJA) || projectDocumentation,
+    };
+    delete fieldValues.PROJECT_DOCUMENTATION;
+    delete fieldValues.TEHNICKA_DOKUMENTACIJA;
+  }
   const templateFieldValues = source.templateFieldValues
     && typeof source.templateFieldValues === "object"
     && !Array.isArray(source.templateFieldValues)
@@ -23237,6 +23255,7 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     testingLocation: normalizeInputValue(source.testingLocation || source.inspectionPlace || source.inspectionLocation),
     note: normalizeInputValue(source.note),
     inspectionType: normalizeInputValue(source.inspectionType),
+    projectDocumentation,
     completedBy: normalizeInputValue(source.completedBy || source.completedByLabel),
     handoverVerifierUserId: normalizeInputValue(
       source.handoverVerifierUserId
@@ -28008,7 +28027,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
   const measurementAssessments = Array.isArray(reportDefaults.measurementAssessments)
     ? reportDefaults.measurementAssessments
     : [];
-  const includeProjectDocumentation = preset.serviceCode === "EIZ" || normalizeInputValue(reportDefaults.projectDocumentation).length > 0;
+  const includeProjectDocumentation = true;
   const includeSystemDescription = normalizeInputValue(reportDefaults.systemDescription).length > 0;
   const includeResultsText = normalizeInputValue(reportDefaults.resultsText).length > 0;
   const serviceWithCode = {
@@ -28202,7 +28221,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       },
     )),
     ...(includeProjectDocumentation ? [
-      buildMobileNativeDocumentationField("KORISTENA_DOKUMENTACIJA", "Tehnička dokumentacija", "longtext", {
+      buildMobileNativeDocumentationField("KORISTENA_DOKUMENTACIJA", "Korištena dokumentacija", "longtext", {
         defaultValue: reportDefaults.projectDocumentation || "",
         helpText: "Bullet popis projekata, prethodnih zapisnika, jednopolnih shema i druge tehničke dokumentacije.",
       }),
@@ -28471,12 +28490,12 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     }),
     buildMobileNativeDocumentationBlock("legal", "Primijenjeni propisi", "legal_list", { group: "Primijenjeni propisi" }),
     ...(includeProjectDocumentation ? [
-      buildMobileNativeDocumentationBlock("chapter-project-documentation", "Tehnička dokumentacija", "chapter", {
+      buildMobileNativeDocumentationBlock("chapter-project-documentation", "Korištena dokumentacija", "chapter", {
         typeLabel: "Poglavlje",
-        summary: "Popis korištene tehničke dokumentacije za EIZ.",
+        summary: "Popis korištene dokumentacije.",
       }),
-      buildMobileNativeDocumentationBlock("KORISTENA_DOKUMENTACIJA", "Tehnička dokumentacija", "longtext", {
-        group: "Tehnička dokumentacija",
+      buildMobileNativeDocumentationBlock("KORISTENA_DOKUMENTACIJA", "Korištena dokumentacija", "longtext", {
+        group: "Korištena dokumentacija",
         editable: true,
         summary: reportDefaults.projectDocumentation || "Dodaj dokumentaciju korištenu pri izradi zapisnika.",
         helpText: "Textbox s bulletima. NexAI može prepisati nazive projekata, prethodnih zapisnika, jednopolnih shema i slika elektroormara.",
@@ -33600,6 +33619,7 @@ function buildMobileGeneratedDocumentPlaceholders(workOrder = {}, service = {}, 
     MJESTO_IZDAVANJA: common.issuedPlace,
     WORK_ORDER_DOCUMENT_NOTE: common.note,
     NAPOMENA_ZAPISNIKA: common.note,
+    KORISTENA_DOKUMENTACIJA: common.projectDocumentation,
     WORK_ORDER_INSPECTION_TYPE: inspectionType,
     INSPECTION_TYPE: inspectionType,
     VRSTA_ISPITIVANJA: inspectionType,

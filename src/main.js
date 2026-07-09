@@ -58545,7 +58545,7 @@ const DOCUMENTATION_SPR_FIELD_LABELS = Object.freeze({
   validUntil: "Vrijedi do",
   recordNumber: "Broj zapisnika",
   inspectionType: "Vrsta ispitivanja",
-  projectDocumentation: "Korištena tehničko-projektna dokumentacija",
+  projectDocumentation: "Korištena dokumentacija",
   systemDescription: "Opis sustava",
   resultsText: "Rezultati ispitivanja",
   measurementEquipmentIds: "Mjerna oprema",
@@ -61246,7 +61246,7 @@ function applyDocumentationSprPreviousRecordToModel(model = {}, entry = {}, reco
   if (previousAttachments.length > 0 && normalizeDocumentationSprAttachments(next.attachments).length === 0) {
     next.attachments = previousAttachments;
   }
-  next.projectDocumentation = fieldText(["PROJECT_DOCUMENTATION", "KORISTENA_DOKUMENTACIJA", "TEHNICKA_DOKUMENTACIJA"])
+  next.projectDocumentation = fieldText(["KORISTENA_DOKUMENTACIJA", "PROJECT_DOCUMENTATION", "TEHNICKA_DOKUMENTACIJA"])
     || next.projectDocumentation
     || `Prethodni zapisnik ${previousLabel}`;
   next.technicalData = fieldText(["TECHNICAL_DATA", "TEHNICKI_PODACI", "TEHNICKI_PODACI_SUSTAVA", "DOCUMENTATION_TECHNICAL_DATA"])
@@ -67205,7 +67205,6 @@ function buildDocumentationSprRecordFieldValues(model = {}) {
     DOCUMENTATION_SPR_RECOMMENDATIONS: normalized.recommendations || "",
     SPR_RECOMMENDATIONS: normalized.recommendations || "",
     PREPORUKE: normalized.recommendations || "",
-    PROJECT_DOCUMENTATION: normalized.projectDocumentation || "",
     KORISTENA_DOKUMENTACIJA: normalized.projectDocumentation || "",
     SIGNATURE_MODE: normalized.signatureMode || "digital",
     NACIN_POTPISA: normalized.signatureMode || "digital",
@@ -74013,7 +74012,7 @@ function getDocumentTemplateAiWizardDefinitions() {
     },
     { name: "sourcePriority", label: "Prioritet izvora", kind: "textarea", rows: 3, full: true, placeholder: "previous_report\nolder_previous_report\nuploaded_file\ntemplate" },
     { name: "displayOrder", label: "Redoslijed", kind: "number" },
-    { name: "group", label: "Blok / grupa", placeholder: "SPR · Tehnička dokumentacija" },
+    { name: "group", label: "Blok / grupa", placeholder: "SPR · Korištena dokumentacija" },
     { name: "validationRules", label: "Pravila provjere", kind: "textarea", rows: 3, full: true, placeholder: "Ako nije vidljivo u izvoru, ne smije biti označeno kao sigurno." },
   ];
 }

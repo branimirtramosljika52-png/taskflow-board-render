@@ -2792,7 +2792,7 @@ export function buildDocumentationNativeHtml({
     </section>
 
     <section class="sn-ex-section">
-      <div class="section-label">${hasTechnicalData ? "5" : "4"}. Koristena tehnicko-projektna dokumentacija</div>
+      <div class="section-label">${hasTechnicalData ? "5" : "4"}. Koristena dokumentacija</div>
       <div class="text-box">${formatNativeRichTextHtml(model.projectDocumentation)}</div>
     </section>
     ${cleanMultiline(model.systemDescription) ? `

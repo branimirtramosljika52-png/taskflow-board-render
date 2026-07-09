@@ -99,9 +99,9 @@ function makeTechnicalAi(options = {}) {
 function makeProjectDocumentationAi(options = {}) {
   return makeAiConfig({
     type: "text",
-    group: "Tehnicka dokumentacija",
-    description: "Popis koristene tehnicke dokumentacije koji se u zapisniku prikazuje kao bullet lista.",
-    aiDescription: "Pronadji i prepisi koristenu tehnicku dokumentaciju za EIZ iz naziva uploadanih projekata, starih zapisnika, jednopolnih shema, slika elektroormara ili popisa priloga. Vrati kratku bullet listu, jednu stavku po retku.",
+    group: "Koristena dokumentacija",
+    description: "Popis koristene dokumentacije koji se u zapisniku prikazuje kao bullet lista.",
+    aiDescription: "Pronadji i prepisi koristenu dokumentaciju iz naziva uploadanih projekata, starih zapisnika, jednopolnih shema, slika elektroormara ili popisa priloga. Vrati kratku bullet listu, jednu stavku po retku.",
     aiLookFor: [
       "tehnicka dokumentacija",
       "projekt",
@@ -3921,7 +3921,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       sourceSheet: "EOTP1.1",
       columns: ["Poglavlje", "Tekst", "Napomena"],
       rows: [
-        ["Koristena tehnicko-projektna dokumentacija", "Tlocrt radnog prostora", ""],
+        ["Koristena dokumentacija", "Tlocrt radnog prostora", ""],
         ["Projektni zadatak", "", ""],
         ["Metodologija", "", ""],
         ["Strucno misljenje", "", ""],
@@ -5257,21 +5257,19 @@ export function createDocumentationNativeAiFieldsForService(serviceCode = "") {
       }),
     },
   ];
-  const projectDocumentationFields = preset.serviceCode === "EIZ" || String(preset.projectDocumentation || "").trim()
-    ? [{
+  const projectDocumentationFields = [{
         id: "KORISTENA_DOKUMENTACIJA",
         key: "KORISTENA_DOKUMENTACIJA",
-        label: "Tehnička dokumentacija",
+        label: "Korištena dokumentacija",
         type: "text",
         fieldType: "textarea",
         required: false,
         ai: makeProjectDocumentationAi({
           key: "KORISTENA_DOKUMENTACIJA",
-          label: "Tehnička dokumentacija",
+          label: "Korištena dokumentacija",
           defaultValue: preset.projectDocumentation || "",
         }),
-      }]
-    : [];
+      }];
   return [
     ...technicalFields.map((field) => ({
       id: `technical-${field.id || field.key}`,
