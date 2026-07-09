@@ -15243,8 +15243,12 @@ function buildGeneratedDocumentTemplateRecordPayload({
   );
   if (recordAttachments.length > 0) {
     fieldValues[MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY] = recordAttachments;
+    if (resolvedTemplateId) {
+      fieldValues[MOBILE_DOCUMENTATION_RECORD_TEMPLATE_ATTACHMENTS_KEY] = { [resolvedTemplateId]: recordAttachments };
+    }
   } else {
     delete fieldValues[MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY];
+    delete fieldValues[MOBILE_DOCUMENTATION_RECORD_TEMPLATE_ATTACHMENTS_KEY];
   }
   const objectName = String(
     suppliedRecord.objectName
@@ -15650,10 +15654,11 @@ function buildWorkOrderDocumentRecordPayloadFromRequest(input = {}, workOrder = 
   );
   if (recordAttachments.length > 0) {
     fieldValues[MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY] = recordAttachments;
+    fieldValues[MOBILE_DOCUMENTATION_RECORD_TEMPLATE_ATTACHMENTS_KEY] = { [template.id]: recordAttachments };
   } else {
     delete fieldValues[MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY];
+    delete fieldValues[MOBILE_DOCUMENTATION_RECORD_TEMPLATE_ATTACHMENTS_KEY];
   }
-  delete fieldValues[MOBILE_DOCUMENTATION_RECORD_TEMPLATE_ATTACHMENTS_KEY];
 
   const fieldSheets = expandDocumentationSprRecordFieldSheetsForTemplate(input.fieldSheets, template);
   const workOrderNumber = normalizeInputValue(input.workOrderNumber || workOrder.workOrderNumber || workOrder.number);
@@ -43230,6 +43235,7 @@ async function handleApiRequest(request, response, url) {
         documentRecords: recordResult.savedRecords.map((record) => {
           const {
             [MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY]: _attachments,
+            [MOBILE_DOCUMENTATION_RECORD_TEMPLATE_ATTACHMENTS_KEY]: _templateAttachments,
             ...fieldValues
           } = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
             ? record.fieldValues

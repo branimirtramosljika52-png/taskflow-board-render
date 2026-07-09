@@ -2684,6 +2684,8 @@ const state = {
       electricalValidityMonths: "12",
       tipkaloValidityMonths: "12",
       serviceValidityMonths: {},
+      attachments: [],
+      templateAttachments: {},
       inspectorUserIds: [],
       inspectorUserId: "",
       authorizationHolderUserId: "",
@@ -100162,6 +100164,105 @@ function renderDocumentTemplateRuntimeFieldRows() {
     return card;
   };
 
+  const createRuntimeAttachmentsBlock = () => {
+    const attachments = getDocumentTemplateRuntimeTemplateAttachments(template);
+    const blockNode = document.createElement("section");
+    blockNode.className = "document-template-runtime-block document-template-runtime-attachments-block";
+    blockNode.classList.toggle("is-collapsed", attachments.length === 0);
+    blockNode.classList.toggle("is-ok", attachments.length > 0);
+
+    const head = document.createElement("div");
+    head.className = "document-template-runtime-block-head";
+    const copy = document.createElement("div");
+    const title = document.createElement("h4");
+    title.textContent = "Prilozi periodike";
+    const meta = document.createElement("p");
+    meta.className = "document-template-runtime-block-meta";
+    meta.textContent = attachments.length
+      ? `${attachments.length} ${attachments.length === 1 ? "prilog je povučen" : "priloga je povučeno"} za ovaj zapisnik. Možeš ih otvoriti ili maknuti samo iz ovog novog exporta.`
+      : "Dodaj PDF ili slike koje trebaju ostati uz ovaj zapisnik i idu u sljedeću periodiku.";
+    copy.append(title, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "document-template-runtime-block-actions document-template-runtime-attachments-actions";
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "application/pdf,image/*,.pdf,.png,.jpg,.jpeg,.webp";
+    fileInput.multiple = true;
+    fileInput.hidden = true;
+    fileInput.addEventListener("change", () => {
+      void addDocumentTemplateRuntimeAttachmentFiles(fileInput.files, template)
+        .finally(() => {
+          fileInput.value = "";
+        });
+    });
+    const addButton = createActionButton("Dodaj", "ghost-button document-template-runtime-attachments-add", () => {
+      fileInput.click();
+    });
+    const statusBadge = createBadge(
+      attachments.length ? `${attachments.length} prilog(a)` : "Nema priloga",
+      `document-template-meta-badge ${attachments.length ? "is-success" : "is-neutral"}`,
+    );
+    actions.append(statusBadge, addButton, fileInput);
+    head.append(copy, actions);
+
+    const body = document.createElement("div");
+    body.className = "document-template-runtime-block-body document-template-runtime-attachments-body";
+    if (!attachments.length) {
+      const empty = document.createElement("p");
+      empty.className = "helper-copy module-copy";
+      empty.textContent = "Ako prethodni zapisnik ima priloge, pojavit će se ovdje automatski. Možeš ih i ručno dodati.";
+      body.append(empty);
+    } else {
+      const list = document.createElement("div");
+      list.className = "document-template-runtime-attachments-list";
+      attachments.forEach((attachment) => {
+        const row = document.createElement("article");
+        row.className = "module-attachment-row document-template-runtime-attachment-row";
+
+        const badge = document.createElement("span");
+        badge.className = "document-template-runtime-media-file-badge";
+        badge.textContent = getWorkOrderDocumentExtension(attachment.fileName, attachment.fileType)
+          || (/^image\//i.test(attachment.fileType || "") ? "IMG" : "PDF");
+
+        const copyNode = document.createElement("div");
+        copyNode.className = "module-attachment-copy";
+        const name = document.createElement("strong");
+        name.textContent = attachment.fileName || "Prilog";
+        const metaNode = document.createElement("span");
+        metaNode.className = "module-attachment-meta";
+        metaNode.textContent = [
+          attachment.fileType === "application/pdf" ? "PDF" : /^image\//i.test(attachment.fileType || "") ? "Slika" : "Prilog",
+          formatFileSize(attachment.fileSize) || "",
+          attachment.createdAt ? `Dodano ${formatCompactDate(attachment.createdAt)}` : "",
+        ].filter(Boolean).join(" · ");
+        copyNode.append(name, metaNode);
+
+        const rowActions = document.createElement("div");
+        rowActions.className = "module-attachment-actions";
+        const openButton = createActionButton("Pregled", "card-button", () => {
+          openDocumentTemplateRuntimeAttachment(attachment);
+        });
+        const removeButton = createActionButton("Makni", "card-button card-danger", () => {
+          setDocumentTemplateRuntimeTemplateAttachments(
+            template,
+            attachments.filter((item) => String(item.id || "") !== String(attachment.id || "")),
+            { render: true },
+          );
+          renderDocumentTemplatePreviewContent();
+          setDocumentTemplateMessage("Prilog je maknut iz ovog novog zapisnika. Stari zapisnik ostaje netaknut.", { type: "success" });
+        });
+        rowActions.append(openButton, removeButton);
+        row.append(badge, copyNode, rowActions);
+        list.append(row);
+      });
+      body.append(list);
+    }
+
+    blockNode.append(head, body);
+    return blockNode;
+  };
+
   const getRuntimeCompanyIdentityBundleRole = (entry = {}) => {
     const field = entry?.field ?? {};
     const source = String(field.source || "").trim().toUpperCase();
@@ -100226,6 +100327,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
   };
 
   appendDocumentTemplateRuntimeNexAiPanel(shell, template, activeWorkOrder);
+  shell.append(createRuntimeAttachmentsBlock());
 
   visibleBlocks.forEach((block, blockIndex) => {
     const blockNode = document.createElement("section");
@@ -139619,6 +139721,136 @@ function normalizeDocumentTemplateRuntimeFieldAiMeta(meta = null) {
   };
 }
 
+function normalizeDocumentTemplateRuntimeAttachments(value = []) {
+  const source = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  return source
+    .map((entry) => (entry && typeof entry === "object" ? createModuleAttachmentDraft(entry) : null))
+    .filter((entry) => {
+      if (!entry?.fileName || !(entry.dataUrl || entry.storageUrl)) {
+        return false;
+      }
+      const key = [
+        String(entry.id || "").trim(),
+        String(entry.fileName || "").trim(),
+        String(entry.fileSize || "").trim(),
+        String(entry.dataUrl || entry.storageUrl || "").slice(0, 80),
+      ].join("::");
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 8);
+}
+
+function normalizeDocumentTemplateRuntimeTemplateAttachments(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return Object.fromEntries(Object.entries(value)
+    .map(([templateId, attachments]) => [
+      String(templateId || "").trim(),
+      normalizeDocumentTemplateRuntimeAttachments(attachments),
+    ])
+    .filter(([templateId, attachments]) => templateId && attachments.length > 0));
+}
+
+function getDocumentTemplateRuntimeTemplateAttachments(template = buildDocumentTemplateDraft()) {
+  const templateId = getDocumentTemplateRuntimeTemplateId(template);
+  const scoped = normalizeDocumentTemplateRuntimeTemplateAttachments(
+    state.documentTemplateRuntime.common?.templateAttachments ?? {},
+  );
+  if (templateId && Array.isArray(scoped[templateId])) {
+    return scoped[templateId];
+  }
+  if (Object.keys(scoped).length > 0) {
+    return [];
+  }
+  return normalizeDocumentTemplateRuntimeAttachments(state.documentTemplateRuntime.common?.attachments ?? []);
+}
+
+function setDocumentTemplateRuntimeTemplateAttachments(template = buildDocumentTemplateDraft(), attachments = [], { render = true } = {}) {
+  const templateId = getDocumentTemplateRuntimeTemplateId(template);
+  if (!templateId) {
+    return;
+  }
+  const normalizedAttachments = normalizeDocumentTemplateRuntimeAttachments(attachments);
+  const nextTemplateAttachments = {
+    ...normalizeDocumentTemplateRuntimeTemplateAttachments(state.documentTemplateRuntime.common?.templateAttachments ?? {}),
+  };
+  if (normalizedAttachments.length > 0) {
+    nextTemplateAttachments[templateId] = normalizedAttachments;
+  } else {
+    delete nextTemplateAttachments[templateId];
+  }
+  updateDocumentTemplateRuntimeCommon({
+    templateAttachments: nextTemplateAttachments,
+    attachments: Object.keys(nextTemplateAttachments).length === 0 ? [] : state.documentTemplateRuntime.common?.attachments,
+  }, { render });
+}
+
+function openDocumentTemplateRuntimeAttachment(attachment = {}) {
+  const href = String(attachment?.storageUrl || attachment?.dataUrl || "").trim();
+  if (!href) {
+    setDocumentTemplateMessage("Prilog nije dostupan za pregled.");
+    return;
+  }
+  const link = document.createElement("a");
+  link.href = href;
+  link.target = "_blank";
+  link.rel = "noopener";
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
+async function addDocumentTemplateRuntimeAttachmentFiles(files = [], template = buildDocumentTemplateDraft()) {
+  const selectedFiles = Array.from(files ?? []).filter((entry) => entry instanceof File);
+  if (!selectedFiles.length) {
+    return;
+  }
+  const acceptedFiles = selectedFiles.filter((file) => {
+    const type = String(file.type || "").toLowerCase();
+    const name = String(file.name || "").trim();
+    return type === "application/pdf"
+      || type.startsWith("image/")
+      || /\.(?:pdf|png|jpe?g|webp)$/i.test(name);
+  }).slice(0, 8);
+  if (!acceptedFiles.length) {
+    setDocumentTemplateMessage("Prilog mora biti PDF ili slika.");
+    return;
+  }
+
+  try {
+    const drafts = await Promise.all(acceptedFiles.map(async (file) => createModuleAttachmentDraft({
+      fileName: file.name || "prilog",
+      fileType: file.type || (/\.pdf$/i.test(file.name || "") ? "application/pdf" : "image/*"),
+      fileSize: file.size || 0,
+      documentCategory: "Prilog zapisnika",
+      dataUrl: await readFileAsDataUrl(file, `Ne mogu učitati prilog ${file.name || ""}`.trim()),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })));
+    setDocumentTemplateRuntimeTemplateAttachments(
+      template,
+      [
+        ...getDocumentTemplateRuntimeTemplateAttachments(template),
+        ...drafts,
+      ],
+      { render: true },
+    );
+    renderDocumentTemplatePreviewContent();
+    setDocumentTemplateMessage(
+      drafts.length === 1 ? "Prilog je dodan u ovaj zapisnik." : `${drafts.length} priloga dodano je u ovaj zapisnik.`,
+      { type: "success" },
+    );
+  } catch (error) {
+    setDocumentTemplateMessage(error?.message || "Ne mogu učitati priloge.");
+  }
+}
+
 function normalizeDocumentTemplateRuntimeOverrideRecord(record = {}) {
   const source = record && typeof record === "object" ? record : {};
   const fieldValues = source.fieldValues && typeof source.fieldValues === "object"
@@ -140219,6 +140451,12 @@ function updateDocumentTemplateRuntimeCommon(patch = {}, { render = true } = {})
     serviceValidityMonths: Object.prototype.hasOwnProperty.call(patch, "serviceValidityMonths")
       ? normalizeWorkOrderServiceValidityMap(patch.serviceValidityMonths ?? {})
       : normalizeWorkOrderServiceValidityMap(state.documentTemplateRuntime.common?.serviceValidityMonths ?? {}),
+    attachments: Object.prototype.hasOwnProperty.call(patch, "attachments")
+      ? normalizeDocumentTemplateRuntimeAttachments(patch.attachments ?? [])
+      : normalizeDocumentTemplateRuntimeAttachments(state.documentTemplateRuntime.common?.attachments ?? []),
+    templateAttachments: Object.prototype.hasOwnProperty.call(patch, "templateAttachments")
+      ? normalizeDocumentTemplateRuntimeTemplateAttachments(patch.templateAttachments ?? {})
+      : normalizeDocumentTemplateRuntimeTemplateAttachments(state.documentTemplateRuntime.common?.templateAttachments ?? {}),
     inspectorUserIds: hasInspectorIdsPatch
       ? normalizeQualifiedUserIdList(patch.inspectorUserIds ?? [])
       : normalizeQualifiedUserIdList(state.documentTemplateRuntime.common?.inspectorUserIds ?? []),
@@ -140569,6 +140807,8 @@ function normalizeDocumentTemplateRuntimeCommonDraft(common = {}) {
     electricalValidityMonths: String(source.electricalValidityMonths ?? "12").trim(),
     tipkaloValidityMonths: String(source.tipkaloValidityMonths ?? "12").trim(),
     serviceValidityMonths: normalizeWorkOrderServiceValidityMap(source.serviceValidityMonths ?? {}),
+    attachments: normalizeDocumentTemplateRuntimeAttachments(source.attachments ?? []),
+    templateAttachments: normalizeDocumentTemplateRuntimeTemplateAttachments(source.templateAttachments ?? {}),
     inspectorUserIds,
     inspectorUserId: String(source.inspectorUserId ?? inspectorUserIds[0] ?? "").trim(),
     authorizationHolderUserId: String(source.authorizationHolderUserId ?? "").trim(),
@@ -141253,6 +141493,18 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
     fieldValues[DOCUMENT_TEMPLATE_SPECIFICATION_FIELD_KEY] = buildDocumentTemplateHandoverSpecificationPlaceholder(handoverProtocol);
   }
 
+  const recordAttachments = normalizeDocumentTemplateRuntimeAttachments(
+    getDocumentTemplateRuntimeTemplateAttachments(template),
+  );
+  const templateAttachments = templateId && recordAttachments.length > 0 ? { [templateId]: recordAttachments } : {};
+  if (recordAttachments.length > 0) {
+    fieldValues[DOCUMENTATION_SPR_RECORD_ATTACHMENTS_KEY] = recordAttachments;
+    fieldValues[DOCUMENTATION_SPR_RECORD_TEMPLATE_ATTACHMENTS_KEY] = templateAttachments;
+  } else {
+    delete fieldValues[DOCUMENTATION_SPR_RECORD_ATTACHMENTS_KEY];
+    delete fieldValues[DOCUMENTATION_SPR_RECORD_TEMPLATE_ATTACHMENTS_KEY];
+  }
+
   return {
     templateId,
     templateTitle: String(template?.title || getDocumentTemplateTypeLabel(template?.documentType) || "Zapisnik").trim(),
@@ -141266,6 +141518,8 @@ function buildDocumentTemplateRuntimeDocumentRecordPayload(template = buildDocum
     expirationDate,
     fieldValues,
     fieldSheets,
+    attachments: recordAttachments,
+    templateAttachments,
   };
 }
 
