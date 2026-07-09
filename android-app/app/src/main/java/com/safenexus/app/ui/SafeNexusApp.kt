@@ -32376,16 +32376,16 @@ private fun findSavedMeasurementSheetByKeys(
     if (candidateLookups.isEmpty()) return null
 
     for (key in candidates) {
-        sheets[key]?.takeIf { it.columns.isNotEmpty() }?.let { return it }
+        sheets[key]?.takeIf { it.hasReusableMeasurementRows() }?.let { return it }
     }
 
     val normalizedSheets = normalizedMeasurementSheetMap(sheets)
     for (lookup in candidateLookups) {
-        normalizedSheets[lookup]?.takeIf { it.columns.isNotEmpty() }?.let { return it }
+        normalizedSheets[lookup]?.takeIf { it.hasReusableMeasurementRows() }?.let { return it }
     }
 
     sheets.forEach { (key, sheet) ->
-        if (sheet.columns.isEmpty()) return@forEach
+        if (!sheet.hasReusableMeasurementRows()) return@forEach
         val keyLookups = listOf(key, key.substringAfterLast("::"))
             .map(::normalizeTemplateFieldLookup)
             .filter { it.isNotBlank() }
@@ -39464,6 +39464,86 @@ private fun normalizeMeasurementHeaderText(value: String): String =
     value.trim()
         .lowercase(Locale.getDefault())
         .replace(Regex("[^\\p{L}\\p{N}]+"), "")
+
+private fun normalizeReusableMeasurementText(value: String): String =
+    value.trim()
+        .lowercase(Locale.getDefault())
+        .replace('\u00a0', ' ')
+        .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+private fun WorkOrderMeasurementColumn.isReusableMeasurementIndexColumn(index: Int): Boolean {
+    if (index != 0) return false
+    val lookup = normalizeReusableMeasurementText(listOf(label, placeholder, id).joinToString(" "))
+    return lookup == "r br" ||
+        lookup == "rbr" ||
+        lookup == "broj" ||
+        lookup == "pozicija" ||
+        lookup.contains("redni broj")
+}
+
+private fun WorkOrderMeasurementColumn.isReusableMeasurementAnchorColumn(index: Int): Boolean {
+    if (computed.isNotBlank() || isReusableMeasurementIndexColumn(index)) return false
+    val lookup = normalizeReusableMeasurementText(listOf(label, placeholder, id).joinToString(" "))
+    return listOf(
+        "mjesto",
+        "lokacija",
+        "prostor",
+        "prostorija",
+        "oznaka",
+        "strujni krug",
+        "krug",
+        "razdjelnik",
+        "uredaj",
+        "oprema",
+        "element",
+        "stavka",
+        "naziv",
+        "vrsta",
+        "dionica",
+        "cijev",
+        "hidrant",
+    ).any { term -> lookup == term || lookup.contains(term) }
+}
+
+private fun WorkOrderMeasurementSheet.rowLooksLikeEmbeddedHeader(row: WorkOrderMeasurementRow): Boolean {
+    val comparable = columns
+        .filter { column -> column.label.trim().isNotBlank() }
+        .mapNotNull { column ->
+            val header = normalizeMeasurementHeaderText(column.label)
+            val value = normalizeMeasurementHeaderText(row.cells[column.id].orEmpty())
+            if (header.isBlank() || value.isBlank()) null else header to value
+        }
+        .take(8)
+    if (comparable.size < 2) return false
+    val matchCount = comparable.count { (header, value) -> value == header || value.contains(header) }
+    return matchCount >= 2 && matchCount * 2 >= comparable.size
+}
+
+private fun WorkOrderMeasurementSheet.hasReusableMeasurementRows(): Boolean {
+    if (columns.isEmpty() || rows.isEmpty()) return false
+    val headerIds = headerRows.toSet()
+    val anchors = columns.withIndex()
+        .filter { (index, column) -> column.isReusableMeasurementAnchorColumn(index) }
+        .map { it.value.id }
+    val fallback = columns.withIndex()
+        .filter { (index, column) -> column.computed.isBlank() && !column.isReusableMeasurementIndexColumn(index) }
+        .map { it.value.id }
+    val candidateIds = if (anchors.isNotEmpty()) anchors else fallback
+    if (candidateIds.isEmpty()) return false
+    return rows.any { row ->
+        row.id !in headerIds &&
+            !rowLooksLikeEmbeddedHeader(row) &&
+            candidateIds.any { columnId ->
+                val value = row.cells[columnId].orEmpty().trim()
+                value.isNotBlank() &&
+                    value != "-" &&
+                    value != "—" &&
+                    !value.startsWith("=")
+            }
+    }
+}
 
 private fun WorkOrderMeasurementSheet.hasEmbeddedMeasurementHeaderRows(): Boolean {
     if (headerRows.any { headerRowId -> rows.any { row -> row.id == headerRowId } }) {

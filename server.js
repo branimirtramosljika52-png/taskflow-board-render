@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.381.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.382.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -12204,12 +12204,6 @@ function assertHandoverUsesWordTemplate(entry = {}, template = {}) {
 
 function resolveMobileTemplateForExportEntry(documentTemplates = [], entry = {}, scopedSnapshot = {}) {
   const normalizedTemplateId = normalizeInputValue(entry?.templateId);
-  const scopedTemplate = (Array.isArray(documentTemplates) ? documentTemplates : [])
-    .find((template) => normalizeInputValue(template?.id) === normalizedTemplateId);
-  if (scopedTemplate) {
-    return scopedTemplate;
-  }
-
   const workOrder = (Array.isArray(scopedSnapshot.workOrders) ? scopedSnapshot.workOrders : [])
     .find((item) => normalizeInputValue(item?.id) === normalizeInputValue(entry?.workOrderId));
   const nativeIdMatch = normalizedTemplateId.match(/^native-([a-z0-9]+)-(\d+)$/i);
@@ -12232,6 +12226,12 @@ function resolveMobileTemplateForExportEntry(documentTemplates = [], entry = {},
   }, serviceIndex, workOrder || {}, scopedSnapshot);
   if (nativeTemplate) {
     return nativeTemplate;
+  }
+
+  const scopedTemplate = (Array.isArray(documentTemplates) ? documentTemplates : [])
+    .find((template) => normalizeInputValue(template?.id) === normalizedTemplateId);
+  if (scopedTemplate) {
+    return scopedTemplate;
   }
 
   return assertInScope(
@@ -15345,11 +15345,6 @@ function findWorkOrderServiceForDocumentRecord(input = {}, workOrder = {}, scope
 }
 
 function resolveWorkOrderDocumentRecordTemplate(input = {}, workOrder = {}, scopedSnapshot = {}) {
-  const directTemplate = getScopedDocumentTemplateById(scopedSnapshot, input.templateId);
-  if (directTemplate && isActiveMobileDocumentTemplate(directTemplate)) {
-    return directTemplate;
-  }
-
   const nativeTemplateId = parseMobileNativeDocumentationTemplateId(input.templateId || input.documentTemplateId);
   if (nativeTemplateId) {
     const nativeTemplate = buildMobileNativeDocumentationTemplate({
@@ -15363,7 +15358,35 @@ function resolveWorkOrderDocumentRecordTemplate(input = {}, workOrder = {}, scop
     }
   }
 
+  const inputNativePreset = getMobileNativeDocumentationPresetForService({
+    ...input,
+    serviceCode: input.serviceCode || input.activeServiceCode || input.code,
+    code: input.serviceCode || input.activeServiceCode || input.code,
+    name: input.serviceName || input.activeServiceName || input.documentType || input.templateTitle,
+  }, Math.max(0, Number.parseInt(input.serviceIndex || "0", 10) || 0), scopedSnapshot);
+  if (inputNativePreset) {
+    const nativeTemplate = buildMobileNativeDocumentationTemplate({
+      ...input,
+      serviceCode: inputNativePreset.serviceCode,
+      code: inputNativePreset.serviceCode,
+      name: input.serviceName || input.documentType || input.templateTitle || inputNativePreset.serviceCode,
+    }, Math.max(0, Number.parseInt(input.serviceIndex || "0", 10) || 0), workOrder, scopedSnapshot);
+    if (nativeTemplate) {
+      return nativeTemplate;
+    }
+  }
+
   const service = findWorkOrderServiceForDocumentRecord(input, workOrder, scopedSnapshot);
+  const serviceNativeTemplate = buildMobileNativeDocumentationTemplate(service || {}, Number.parseInt(input.serviceIndex || "0", 10) || 0, workOrder, scopedSnapshot);
+  if (serviceNativeTemplate) {
+    return serviceNativeTemplate;
+  }
+
+  const directTemplate = getScopedDocumentTemplateById(scopedSnapshot, input.templateId);
+  if (directTemplate && isActiveMobileDocumentTemplate(directTemplate)) {
+    return directTemplate;
+  }
+
   const linkedTemplateIds = service ? getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot) : [];
   for (const templateId of linkedTemplateIds) {
     const template = getScopedDocumentTemplateById(scopedSnapshot, templateId);
@@ -15504,7 +15527,7 @@ function findMobileDocumentationMeasurementPreset({
       && (!companyId || normalizeInputValue(item?.companyId) === companyId)
       && (!locationId || normalizeInputValue(item?.locationId) === locationId)
       && normalizeInputValue(item?.fieldKey) === fieldKey
-      && normalizeWorkOrderMeasurementSheet(item?.sheet)
+      && isMobileDocumentationMeasurementSheetFilled(item?.sheet)
     ));
     if (preset) {
       return normalizeWorkOrderMeasurementSheet(preset.sheet);
@@ -15705,7 +15728,7 @@ async function persistMobileDocumentationMeasurementPresets({
     : {};
   const entries = Object.entries(fieldSheets)
     .map(([key, sheet]) => [normalizeInputValue(key), normalizeWorkOrderMeasurementSheet(sheet)])
-    .filter(([key, sheet]) => key && sheet);
+    .filter(([key, sheet]) => key && isMobileDocumentationMeasurementSheetFilled(sheet));
   if (entries.length === 0) {
     return { savedPresets: [], warnings: [] };
   }
@@ -15804,6 +15827,22 @@ function buildMobileDocumentationDraftRecordInputs(body = {}, workOrder = {}, sc
     }
   }
 
+  const templateMappingsById = new Map();
+  templateIds.forEach((inputTemplateId) => {
+    const resolvedTemplate = resolveWorkOrderDocumentRecordTemplate({
+      ...body,
+      templateId: inputTemplateId,
+      documentTemplateId: inputTemplateId,
+    }, workOrder, scopedSnapshot);
+    const templateId = normalizeInputValue(resolvedTemplate?.id || inputTemplateId);
+    if (templateId && !templateMappingsById.has(templateId)) {
+      templateMappingsById.set(templateId, {
+        inputTemplateId,
+        templateId,
+      });
+    }
+  });
+
   const commonFieldValues = body.fieldValues && typeof body.fieldValues === "object" && !Array.isArray(body.fieldValues)
     ? body.fieldValues
     : {};
@@ -15819,14 +15858,24 @@ function buildMobileDocumentationDraftRecordInputs(body = {}, workOrder = {}, sc
   const nowIso = new Date().toISOString();
   const workOrderNumber = normalizeInputValue(body.workOrderNumber || workOrder.workOrderNumber || workOrder.number);
   const workOrderId = normalizeInputValue(workOrder.id);
+  const getTemplateScopedObject = (source = {}, templateId = "", inputTemplateId = "") => {
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+      return {};
+    }
+    const scoped = source[templateId];
+    if (scoped && typeof scoped === "object" && !Array.isArray(scoped)) {
+      return scoped;
+    }
+    const inputScoped = source[inputTemplateId];
+    if (inputScoped && typeof inputScoped === "object" && !Array.isArray(inputScoped)) {
+      return inputScoped;
+    }
+    return {};
+  };
 
-  return templateIds.map((templateId) => {
-    const templateValues = templateFieldValues[templateId] && typeof templateFieldValues[templateId] === "object" && !Array.isArray(templateFieldValues[templateId])
-      ? templateFieldValues[templateId]
-      : {};
-    const templateSheets = templateFieldSheets[templateId] && typeof templateFieldSheets[templateId] === "object" && !Array.isArray(templateFieldSheets[templateId])
-      ? templateFieldSheets[templateId]
-      : {};
+  return Array.from(templateMappingsById.values()).map(({ templateId, inputTemplateId }) => {
+    const templateValues = getTemplateScopedObject(templateFieldValues, templateId, inputTemplateId);
+    const templateSheets = getTemplateScopedObject(templateFieldSheets, templateId, inputTemplateId);
     const nativeTemplate = parseMobileNativeDocumentationTemplateId(templateId);
     const nativeServiceCode = normalizeInputValue(nativeTemplate?.serviceCode);
     const scopedFieldSheets = mobileDocumentationObjectEntries(templateSheets).length > 0
@@ -24329,6 +24378,104 @@ function isMobileMeasurementPrintableValuePresent(value = "") {
   return Boolean(normalized && normalized !== "-" && normalized !== "—");
 }
 
+function isMobileMeasurementFormulaPlaceholderValue(value = "") {
+  const normalized = normalizeInputValue(value).replace(/\u00a0/g, " ").trim();
+  return normalized.startsWith("=");
+}
+
+function normalizeMobileMeasurementMeaningText(value = "") {
+  return normalizeInputValue(value)
+    .replace(/\u00a0/g, " ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function getMobileMeasurementRawCellValue(row = {}, column = {}) {
+  const cell = row?.cells?.[column?.id];
+  if (cell && typeof cell === "object" && !Array.isArray(cell)) {
+    return cell.text ?? cell.value ?? "";
+  }
+  return cell ?? "";
+}
+
+function isMobileMeasurementAnchorColumn(column = {}, columnIndex = 0) {
+  if (!column || column.computed || isMobileMeasurementIndexColumn(column, columnIndex)) {
+    return false;
+  }
+  const lookup = normalizeMobileMeasurementColumnLookupText(column, columnIndex);
+  return [
+    "mjesto",
+    "lokacija",
+    "prostor",
+    "prostorija",
+    "oznaka",
+    "strujni krug",
+    "krug",
+    "razdjelnik",
+    "uredaj",
+    "oprema",
+    "element",
+    "stavka",
+    "naziv",
+    "vrsta",
+    "dionica",
+    "cijev",
+    "hidrant",
+  ].some((term) => lookup === term || lookup.includes(term));
+}
+
+function doesMobileMeasurementRowLookLikeHeader(sheet = {}, row = {}) {
+  const columns = Array.isArray(sheet?.columns) ? sheet.columns : [];
+  const comparable = columns
+    .map((column) => {
+      const label = normalizeMobileMeasurementMeaningText(column?.label || column?.placeholder || column?.id);
+      const value = normalizeMobileMeasurementMeaningText(getMobileMeasurementRawCellValue(row, column));
+      return { label, value };
+    })
+    .filter((item) => item.label && item.value);
+  if (comparable.length < 2) {
+    return false;
+  }
+  const matches = comparable.filter((item) => item.label === item.value || item.value.includes(item.label)).length;
+  return matches >= 2 && matches * 2 >= comparable.length;
+}
+
+function countMobileDocumentationMeaningfulMeasurementRows(sheet = null) {
+  const normalized = normalizeWorkOrderMeasurementSheet(sheet);
+  if (!normalized?.columns?.length || !Array.isArray(normalized.rows)) {
+    return 0;
+  }
+  const headerRowIds = new Set((Array.isArray(normalized.headerRows) ? normalized.headerRows : []).map(normalizeInputValue));
+  const anchorColumnIds = normalized.columns
+    .map((column, columnIndex) => (isMobileMeasurementAnchorColumn(column, columnIndex) ? column.id : ""))
+    .filter(Boolean);
+  const fallbackColumnIds = normalized.columns
+    .filter((column, columnIndex) => !column.computed && !isMobileMeasurementIndexColumn(column, columnIndex))
+    .map((column) => column.id)
+    .filter(Boolean);
+  const candidateColumnIds = anchorColumnIds.length > 0 ? anchorColumnIds : fallbackColumnIds;
+  if (candidateColumnIds.length === 0) {
+    return 0;
+  }
+  return normalized.rows.filter((row) => {
+    if (!row || row.header || headerRowIds.has(normalizeInputValue(row.id))) {
+      return false;
+    }
+    if (doesMobileMeasurementRowLookLikeHeader(normalized, row)) {
+      return false;
+    }
+    return candidateColumnIds.some((columnId) => {
+      const value = getMobileMeasurementRawCellValue(row, { id: columnId });
+      return isMobileMeasurementPrintableValuePresent(value)
+        && !isMobileMeasurementFormulaPlaceholderValue(value);
+    });
+  }).length;
+}
+
 function doesMobileMeasurementTableRowHaveVisibleResult(row = {}, columns = []) {
   const cells = Array.isArray(row?.cells) ? row.cells : [];
   const resultColumnIndexes = columns
@@ -25851,11 +25998,7 @@ function getMobileMeasurementSheetSummary(sheet = null) {
   if (!normalized?.columns?.length) {
     return "Prazna Excel tablica";
   }
-  const populatedRows = normalized.rows.filter((row) => (
-    normalized.columns
-      .filter((column) => !column.computed)
-      .some((column) => normalizeInputValue(row?.cells?.[column.id]))
-  )).length;
+  const populatedRows = countMobileDocumentationMeaningfulMeasurementRows(normalized);
   return [
     `${normalized.columns.length} kolona`,
     populatedRows > 0 ? `${populatedRows} popunjenih redova` : "spremno za unos",
@@ -26402,7 +26545,11 @@ function buildMobileDocumentRecordWizardDefaults(record = null, workOrder = {}) 
   } = fieldValues;
   const fieldValuesForDefaults = stripMobileDocumentationDraftFields(rawFieldValuesForDefaults);
   const fieldSheets = record?.fieldSheets && typeof record.fieldSheets === "object" && !Array.isArray(record.fieldSheets)
-    ? record.fieldSheets
+    ? Object.fromEntries(
+        Object.entries(record.fieldSheets)
+          .map(([key, sheet]) => [key, normalizeWorkOrderMeasurementSheet(sheet)])
+          .filter(([, sheet]) => isMobileDocumentationMeasurementSheetFilled(sheet)),
+      )
     : {};
   const inspectionDate = normalizeDateOnlyValue(
     record.inspectionDate
@@ -26714,7 +26861,7 @@ function findMobileDocumentationDefaultSheetForTable(table = {}, index = 0, temp
   const keys = getMobileDocumentationMeasurementPresetTableKeys(table, `gridline-results-${index + 1}`);
   for (const key of keys) {
     const sheet = normalizeWorkOrderMeasurementSheet(fieldSheets[key]);
-    if (sheet) {
+    if (isMobileDocumentationMeasurementSheetFilled(sheet)) {
       return sheet;
     }
   }
@@ -26785,7 +26932,7 @@ function buildMobileMeasurementSheetPresetsFromDocumentRecords(records = []) {
       : {};
     const entries = Object.entries(fieldSheets)
       .map(([sheetKey, sheet]) => [normalizeInputValue(sheetKey), normalizeWorkOrderMeasurementSheet(sheet)])
-      .filter(([sheetKey, sheet]) => sheetKey && sheet);
+      .filter(([sheetKey, sheet]) => sheetKey && isMobileDocumentationMeasurementSheetFilled(sheet));
     if (entries.length === 0) {
       return [];
     }
@@ -32368,10 +32515,7 @@ function getMobileSprRows(entry = {}, template = {}, common = {}) {
 }
 
 function isMobileDocumentationMeasurementSheetFilled(sheet = null) {
-  const normalized = normalizeWorkOrderMeasurementSheet(sheet);
-  return Boolean(normalized?.rows?.some((row) =>
-    Object.values(row?.cells || {}).some((value) => normalizeInputValue(value))
-  ));
+  return countMobileDocumentationMeaningfulMeasurementRows(sheet) > 0;
 }
 
 function getMobileDocumentationMeasurementSheetForTable(table = {}, index = 0, entry = {}, template = {}, common = {}) {
@@ -33964,13 +34108,15 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
   const appendEntriesForService = (service, serviceIndex, generationWorkOrder = workOrder, options = {}) => {
     const nativePreset = getMobileNativeDocumentationPresetForService(service, serviceIndex, scopedSnapshot);
     const nativeServiceCode = nativePreset?.serviceCode || "";
-    const linkedTemplates = getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot)
-      .map((templateId) => templateById.get(String(templateId)))
-      .filter(isActiveMobileDocumentTemplate)
-      .filter((template) => mobileDocumentTemplateMatchesNativeServiceCode(template, nativeServiceCode));
-    const nativeTemplate = linkedTemplates.length === 0
+    const nativeTemplate = nativePreset
       ? buildMobileNativeDocumentationTemplate(service, serviceIndex, generationWorkOrder, scopedSnapshot)
       : null;
+    const linkedTemplates = nativeTemplate
+      ? []
+      : getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot)
+        .map((templateId) => templateById.get(String(templateId)))
+        .filter(isActiveMobileDocumentTemplate)
+        .filter((template) => mobileDocumentTemplateMatchesNativeServiceCode(template, nativeServiceCode));
     const templatesForService = nativeTemplate ? [nativeTemplate] : linkedTemplates;
 
     templatesForService.forEach((template) => {
