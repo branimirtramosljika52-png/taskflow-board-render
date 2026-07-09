@@ -90666,6 +90666,36 @@ body.is-document-template-editor-open .document-template-editor-backdrop {
   white-space: nowrap;
 }
 
+.work-order-bottom-card-service.is-basic-tab {
+  max-width: 92px;
+}
+
+.work-order-bottom-card-service-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.work-order-bottom-card-service-status-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  margin-left: 5px;
+  border-radius: 999px;
+  background: #94a3b8;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.16);
+}
+
+.work-order-bottom-card-service-status-dot.is-ok {
+  background: #4ade80;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18);
+}
+
+.work-order-bottom-card-service-status-dot.is-error {
+  background: #f87171;
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.18);
+}
+
 .work-order-bottom-card-service.is-sequence {
   cursor: pointer;
   border-color: rgba(74, 222, 128, 0.36);

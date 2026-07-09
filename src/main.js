@@ -61709,6 +61709,14 @@ function getDocumentationSprSignatureAreaForService(service = {}) {
     service?.serviceName,
     service?.title,
   ].filter(Boolean).join(" "));
+  const runtimeServiceCode = getWorkOrderServiceCodeForSignatureArea({
+    ...service,
+    serviceCode: serviceBinding?.serviceCode || service?.serviceCode || serviceCode,
+    name: serviceBinding?.serviceName || service?.name || service?.serviceName || service?.title || "",
+  });
+  if (runtimeServiceCode) {
+    return normalizeQualificationAreaKey(runtimeServiceCode);
+  }
   const serviceText = normalizeLooseName([
     serviceBinding?.serviceName,
     service?.name,
@@ -61716,9 +61724,12 @@ function getDocumentationSprSignatureAreaForService(service = {}) {
     service?.title,
   ].filter(Boolean).join(" "));
   if (serviceCode === "TZIN" || serviceText.includes("tipkalo") || serviceText.includes("isklop")) {
-    return "tipkalo";
+    return "tzin";
   }
-  return "elektro";
+  if (serviceCode === "SPR" || serviceText.includes("panik") || serviceText.includes("rasvjet")) {
+    return "spr";
+  }
+  return "";
 }
 
 function getDocumentationSprWizardPeopleContext(workOrder = {}, service = {}) {
@@ -61733,55 +61744,25 @@ function getDocumentationSprWizardPeopleContext(workOrder = {}, service = {}) {
   const areaInspectorsFromSource = workOrderId && areaInspectorListField
     ? getWorkOrderDocumentWizardSourceValues(workOrderId, areaInspectorListField)
     : [];
-  const commonElectricalInspectors = normalizeDocumentationSprIdList(state.workOrderDocumentWizard.common?.electricalInspectorUserIds ?? []);
-  const commonGenericInspectors = normalizeDocumentationSprIdList(state.workOrderDocumentWizard.common?.inspectorUserIds ?? []);
-  const electricalInspectorsFromSource = workOrderId
-    ? getWorkOrderDocumentWizardSourceValues(workOrderId, "electricalInspectorUserIds")
-    : [];
-  const genericInspectorsFromSource = workOrderId
-    ? getWorkOrderDocumentWizardSourceValues(workOrderId, "inspectorUserIds")
-    : [];
-  const electricalInspectors = electricalInspectorsFromSource.length > 0
-    ? electricalInspectorsFromSource
-    : commonElectricalInspectors;
-  const genericInspectors = genericInspectorsFromSource.length > 0
-    ? genericInspectorsFromSource
-    : commonGenericInspectors;
   const inspectorIds = areaInspectorsFromSource.length > 0
     ? areaInspectorsFromSource
     : commonAreaInspectors.length > 0
       ? commonAreaInspectors
-      : electricalInspectors.length > 0
-        ? electricalInspectors
-        : genericInspectors.length > 0
-          ? genericInspectors
-          : normalizeDocumentationSprIdList([
-            workOrderId ? getWorkOrderDocumentWizardSourceValue(workOrderId, areaInspectorField) : "",
-            state.workOrderDocumentWizard.common?.[areaInspectorField],
-            workOrderId ? getWorkOrderDocumentWizardSourceValue(workOrderId, "electricalInspectorUserId") : "",
-            workOrderId ? getWorkOrderDocumentWizardSourceValue(workOrderId, "inspectorUserId") : "",
-            state.workOrderDocumentWizard.common?.electricalInspectorUserId,
-            state.workOrderDocumentWizard.common?.inspectorUserId,
-          ]);
-  const executorInspectorIds = getDocumentationSprInspectorIdsFromExecutors(workOrder);
-  const resolvedInspectorIds = inspectorIds.length > 0 ? inspectorIds : executorInspectorIds;
+      : normalizeDocumentationSprIdList([
+        workOrderId ? getWorkOrderDocumentWizardSourceValue(workOrderId, areaInspectorField) : "",
+        state.workOrderDocumentWizard.common?.[areaInspectorField],
+      ]);
   const responsibleUserId = workOrderId
     ? (
       getWorkOrderDocumentWizardSourceValue(workOrderId, areaAuthorizationField)
-      || getWorkOrderDocumentWizardSourceValue(workOrderId, "electricalAuthorizationHolderUserId")
-      || getWorkOrderDocumentWizardSourceValue(workOrderId, "authorizationHolderUserId")
       || state.workOrderDocumentWizard.common?.[areaAuthorizationField]
-      || state.workOrderDocumentWizard.common?.electricalAuthorizationHolderUserId
-      || state.workOrderDocumentWizard.common?.authorizationHolderUserId
     )
     : (
       state.workOrderDocumentWizard.common?.[areaAuthorizationField]
-      || state.workOrderDocumentWizard.common?.electricalAuthorizationHolderUserId
-      || state.workOrderDocumentWizard.common?.authorizationHolderUserId
       || ""
     );
   return {
-    inspectorIds: resolvedInspectorIds,
+    inspectorIds,
     responsibleUserId: String(responsibleUserId || "").trim(),
     signatureArea,
   };
@@ -77314,6 +77295,82 @@ function normalizeDocumentTemplateSignatureServiceCode(value = "") {
   return compact.length > 0 && compact.length <= 10 ? compact : "";
 }
 
+const DOCUMENT_TEMPLATE_RUNTIME_REQUIRED_SERVICE_CODES = new Set([
+  "RO",
+  "NO",
+  "EIZ",
+  "EMM",
+  "SPR",
+  "SZOM",
+  "SZOMV",
+  "TZIN",
+  "VS",
+  "FC",
+  "KC",
+  "SVZ",
+  "HM",
+  "SGP",
+  "PPV",
+  "PPZ",
+  "SO",
+  "PJENA",
+  "EXEI",
+  "EXSE",
+  "EXOV",
+  "NPI",
+  "UNP",
+  "NNZD",
+]);
+
+function normalizeDocumentTemplateRuntimeRequiredServiceCode(value = "", { allowCatalog = true } = {}) {
+  const directCode = normalizeDocumentTemplateRuntimeServiceCode(value);
+  if (directCode && DOCUMENT_TEMPLATE_RUNTIME_REQUIRED_SERVICE_CODES.has(directCode)) {
+    return directCode;
+  }
+
+  const signatureCode = normalizeDocumentTemplateSignatureServiceCode(value);
+  const normalizedSignatureCode = signatureCode
+    ? normalizeDocumentTemplateRuntimeServiceCode(signatureCode)
+    : "";
+  if (normalizedSignatureCode && DOCUMENT_TEMPLATE_RUNTIME_REQUIRED_SERVICE_CODES.has(normalizedSignatureCode)) {
+    return normalizedSignatureCode;
+  }
+
+  if (allowCatalog && directCode) {
+    const inCatalog = (state.serviceCatalog ?? []).some((item) => (
+      normalizeDocumentTemplateRuntimeServiceCode(item?.serviceCode || item?.code || "") === directCode
+    ));
+    if (inCatalog) {
+      return directCode;
+    }
+  }
+
+  return "";
+}
+
+function getWorkOrderServiceCodeForSignatureArea(service = {}) {
+  const directCode = [
+    service?.serviceCode,
+    service?.code,
+    service?.shortCode,
+    getServiceCatalogItemForWorkOrderService(service)?.serviceCode,
+  ]
+    .map((value) => normalizeDocumentTemplateRuntimeRequiredServiceCode(value))
+    .find(Boolean);
+  if (directCode) {
+    return directCode;
+  }
+
+  return [
+    service?.name,
+    service?.serviceName,
+    service?.title,
+    getServiceCatalogItemForWorkOrderService(service)?.name,
+  ]
+    .map((value) => normalizeDocumentTemplateRuntimeRequiredServiceCode(value, { allowCatalog: false }))
+    .find(Boolean) || "";
+}
+
 function getDocumentTemplateSignatureServiceCode(field = {}, context = {}) {
   const workOrder = context.sampleWorkOrder || {};
   const template = context.template || {};
@@ -77374,38 +77431,42 @@ function getDocumentTemplateSignatureAreas(template = {}) {
       return;
     }
 
-    areas.add(normalizeQualificationAreaKey(field?.signatureArea || "elektro"));
+    const area = normalizeQualificationAreaKey(field?.signatureArea || "");
+    if (area) {
+      areas.add(area);
+    }
   });
 
-  return areas.size > 0 ? [...areas] : ["elektro"];
+  return [...areas];
 }
 
 function getWorkOrderRelevantSignatureAreas(workOrder = {}) {
   const areas = new Set();
   getWorkOrderServiceItems(workOrder).forEach((service) => {
-    getWorkOrderServiceQualificationKeys(service).forEach((area) => areas.add(area));
+    const serviceCode = getWorkOrderServiceCodeForSignatureArea(service);
+    const serviceArea = normalizeQualificationAreaKey(serviceCode || "");
+    if (serviceArea) {
+      areas.add(serviceArea);
+      return;
+    }
+    getWorkOrderServiceQualificationKeys(service).forEach((area) => {
+      const normalizedArea = normalizeQualificationAreaKey(area);
+      if (normalizedArea) {
+        areas.add(normalizedArea);
+      }
+    });
     getWorkOrderServiceTemplateIds(service).forEach((templateId) => {
       const template = getDocumentTemplateById(templateId);
-      getDocumentTemplateSignatureAreas(template).forEach((area) => areas.add(area));
+      getDocumentTemplateSignatureAreas(template).forEach((area) => {
+        const normalizedArea = normalizeQualificationAreaKey(area);
+        if (normalizedArea) {
+          areas.add(normalizedArea);
+        }
+      });
     });
-    const serviceCode = normalizeDocumentTemplateSignatureServiceCode([
-      service?.serviceCode,
-      service?.code,
-      service?.shortCode,
-      service?.name,
-      service?.serviceName,
-      service?.title,
-    ].filter(Boolean).join(" "));
-    if (serviceCode === "TZIN" || normalizeLooseName([service?.name, service?.serviceName, service?.title].filter(Boolean).join(" ")).includes("tipkalo")) {
-      areas.add("tipkalo");
-    } else if (serviceCode === "SVZ") {
-      areas.add("pozar");
-    } else if (["EIZ", "SZOM", "SZOMV", "VES", "SPR", "ZUDS"].includes(serviceCode)) {
-      areas.add("elektro");
-    }
   });
 
-  return areas.size > 0 ? [...areas] : ["elektro"];
+  return [...areas];
 }
 
 function getBatchRelevantSignatureAreas(workOrders = getAllSelectedWorkOrdersForDocumentWizard()) {
@@ -77413,7 +77474,7 @@ function getBatchRelevantSignatureAreas(workOrders = getAllSelectedWorkOrdersFor
   (Array.isArray(workOrders) ? workOrders : []).forEach((workOrder) => {
     getWorkOrderRelevantSignatureAreas(workOrder).forEach((area) => areas.add(area));
   });
-  return areas.size > 0 ? [...areas] : ["elektro"];
+  return [...areas];
 }
 
 function getActiveOrganizationUsers() {
@@ -78310,6 +78371,46 @@ function getWorkOrderDocumentSignaturePersonFields() {
   });
 }
 
+function getWorkOrderDocumentSignaturePersonFieldsForArea(signatureArea = "") {
+  const normalizedArea = normalizeQualificationAreaKey(signatureArea);
+  if (!normalizedArea) {
+    return [];
+  }
+
+  const existingFields = getWorkOrderDocumentSignaturePersonFields()
+    .filter((definition) => definition.signatureArea === normalizedArea);
+  if (existingFields.length > 0) {
+    return existingFields;
+  }
+
+  const fieldKey = getQualificationAreaFieldKey(normalizedArea);
+  const label = getSignatureAreaLabel(normalizedArea).toUpperCase() === normalizedArea.toUpperCase()
+    ? normalizedArea.toUpperCase()
+    : getSignatureAreaLabel(normalizedArea);
+  const inspectLabels = getWorkOrderDocumentSignaturePersonDisplayLabels({ key: normalizedArea, label }, "inspect");
+  const authorizeLabels = getWorkOrderDocumentSignaturePersonDisplayLabels({ key: normalizedArea, label }, "authorize");
+  return [
+    {
+      listFieldName: `${fieldKey}InspectorUserIds`,
+      fieldName: `${fieldKey}InspectorUserId`,
+      capability: "inspect",
+      signatureArea: normalizedArea,
+      label: inspectLabels.label,
+      summaryLabel: inspectLabels.summaryLabel,
+      emptyLabel: "Odaberi ispitivače",
+      multiple: true,
+    },
+    {
+      fieldName: `${fieldKey}AuthorizationHolderUserId`,
+      capability: "authorize",
+      signatureArea: normalizedArea,
+      label: authorizeLabels.label,
+      summaryLabel: authorizeLabels.summaryLabel,
+      emptyLabel: "Odaberi odgovornu osobu",
+    },
+  ];
+}
+
 function getWorkOrderDocumentSignatureAreaGroups() {
   const legacyGroups = new Map(WORK_ORDER_DOCUMENT_SIGNATURE_AREA_GROUPS.map((group) => [group.key, group]));
   return getQualificationExamDefinitions().map((definition) => {
@@ -78818,19 +78919,23 @@ function applyDeterministicEnvironmentVariance(rawValue = "", seedKey = "", fiel
 function getWorkOrderDocumentSignaturePersonFieldName(capability = "inspect", signatureArea = "elektro") {
   const normalizedCapability = capability === "authorize" ? "authorize" : "inspect";
   const normalizedArea = normalizeQualificationAreaKey(signatureArea);
-  return getWorkOrderDocumentSignaturePersonFields().find((entry) => (
+  return getWorkOrderDocumentSignaturePersonFieldsForArea(normalizedArea).find((entry) => (
     entry.capability === normalizedCapability && entry.signatureArea === normalizedArea
-  ))?.fieldName || (normalizedCapability === "authorize" ? "authorizationHolderUserId" : "inspectorUserId");
+  ))?.fieldName || (normalizedArea
+    ? `${getQualificationAreaFieldKey(normalizedArea)}${normalizedCapability === "authorize" ? "AuthorizationHolderUserId" : "InspectorUserId"}`
+    : (normalizedCapability === "authorize" ? "authorizationHolderUserId" : "inspectorUserId"));
 }
 
 function getWorkOrderDocumentSignaturePersonListFieldName(capability = "inspect", signatureArea = "elektro") {
   const normalizedCapability = capability === "authorize" ? "authorize" : "inspect";
   const normalizedArea = normalizeQualificationAreaKey(signatureArea);
-  return getWorkOrderDocumentSignaturePersonFields().find((entry) => (
+  return getWorkOrderDocumentSignaturePersonFieldsForArea(normalizedArea).find((entry) => (
     entry.capability === normalizedCapability
       && entry.signatureArea === normalizedArea
       && entry.listFieldName
-  ))?.listFieldName || "";
+  ))?.listFieldName || (normalizedArea && normalizedCapability === "inspect"
+    ? `${getQualificationAreaFieldKey(normalizedArea)}InspectorUserIds`
+    : "");
 }
 
 function buildWorkOrderDocumentSignaturePersonPatch({
@@ -86010,7 +86115,7 @@ function getWorkOrderDocumentWizardRelevantAreasForBatch(workOrders = getAllSele
   (Array.isArray(workOrders) ? workOrders : []).forEach((workOrder) => {
     getWorkOrderDocumentWizardRelevantAreasForWorkOrder(workOrder).forEach((area) => areas.add(area));
   });
-  return areas.size > 0 ? [...areas] : ["elektro"];
+  return [...areas];
 }
 
 function getWorkOrderDocumentSignatureAreaGroupsForAreas(areas = []) {
@@ -86019,7 +86124,7 @@ function getWorkOrderDocumentSignatureAreaGroupsForAreas(areas = []) {
       .map((area) => normalizeQualificationAreaKey(area))
       .filter(Boolean),
   ));
-  const areaList = normalizedAreas.length > 0 ? normalizedAreas : ["elektro"];
+  const areaList = normalizedAreas;
   const areaGroups = getWorkOrderDocumentSignatureAreaGroups();
   return areaList.map((area) => (
     areaGroups.find((group) => group.key === area) || {
@@ -88338,18 +88443,75 @@ function createWorkOrderBottomBarCard({
 
   const serviceRow = document.createElement("span");
   serviceRow.className = "work-order-bottom-card-services";
+  const createServiceStatusDot = (ok = false, titleText = "") => {
+    const dotNode = document.createElement("span");
+    dotNode.className = "work-order-bottom-card-service-status-dot";
+    dotNode.classList.toggle("is-ok", Boolean(ok));
+    dotNode.classList.toggle("is-error", !ok);
+    dotNode.title = titleText;
+    dotNode.setAttribute("aria-hidden", "true");
+    return dotNode;
+  };
+  const appendServiceBadgeLabel = (badge, labelText = "", ok = false, titleText = "") => {
+    const label = document.createElement("span");
+    label.className = "work-order-bottom-card-service-label";
+    label.textContent = labelText || "Zapisnik";
+    badge.replaceChildren(label, createServiceStatusDot(ok, titleText));
+  };
+  const basicEntries = groupItems.length > 0
+    ? groupItems
+    : serviceItems.map((service) => ({
+      serviceCode: getWorkOrderServiceCodeForSignatureArea(service),
+      timelineLabel: getDocumentTemplateRuntimeServiceBadgeLabel(service),
+      workOrderId: group.workOrderId,
+    }));
+  const basicCompletions = basicEntries.length > 0
+    ? basicEntries.map((entry) => {
+      const { template: entryTemplate, workOrder: entryWorkOrder } = getDocumentTemplateRuntimeSequenceEntryContext(entry);
+      return getDocumentTemplateRuntimeBasicCompletion({
+        entry,
+        template: entryTemplate || buildDocumentTemplateDraft(),
+        workOrder: entryWorkOrder || workOrder,
+      });
+    })
+    : [];
+  const basicMissingRequired = Array.from(new Set(
+    basicCompletions.flatMap((completion) => completion.missingRequiredLabels ?? []),
+  ));
+  const basicOk = basicCompletions.length > 0 && basicCompletions.every((completion) => completion.ok);
+  const createBasicBadge = () => {
+    const badge = document.createElement("button");
+    badge.type = "button";
+    badge.className = "work-order-bottom-card-service is-sequence is-basic-tab";
+    badge.classList.add(basicOk ? "is-ok" : "is-error");
+    badge.classList.toggle("is-active-report", isActive && activePanel === "fields" && !sequenceState?.isSummary);
+    badge.title = basicOk
+      ? "Osnovno je popunjeno"
+      : `Osnovno - nedostaje: ${basicMissingRequired.slice(0, 6).join(", ") || "obavezni podaci"}`;
+    appendServiceBadgeLabel(badge, "Osnovno", basicOk, badge.title);
+    badge.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openWorkOrderFields();
+    });
+    return badge;
+  };
   const createSequenceBadge = (entry) => {
     const badge = document.createElement("button");
     badge.type = "button";
     badge.className = "work-order-bottom-card-service is-sequence";
     const index = Number(entry?.dockIndex);
     const isEntryActive = Number.isFinite(index) && index === activeIndex && !sequenceState?.isSummary;
+    const isComplete = isDocumentTemplateRuntimeSequenceEntryComplete(entry);
+    const entryMissingRequired = getDocumentTemplateRuntimeSequenceEntryMissingRequired(entry);
     badge.classList.toggle("is-active-report", isEntryActive);
-    badge.textContent = entry?.timelineLabel || "Zapisnik";
+    badge.classList.add(isComplete ? "is-ok" : "is-error");
     badge.title = [
       entry?.templateTitle || "Zapisnik",
       group.workOrderNumber ? `RN ${group.workOrderNumber}` : "",
+      isComplete ? "spremno" : `nedostaje: ${entryMissingRequired.slice(0, 5).join(", ") || "obavezni podaci"}`,
     ].filter(Boolean).join(" · ");
+    appendServiceBadgeLabel(badge, entry?.timelineLabel || "Zapisnik", isComplete, badge.title);
     badge.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -88383,6 +88545,9 @@ function createWorkOrderBottomBarCard({
   const visibleServices = visibleSequenceItems.length > 0
     ? []
     : serviceItems.slice(0, serviceItems.length > 2 ? 1 : 2);
+  if (basicCompletions.length > 0) {
+    serviceRow.append(createBasicBadge());
+  }
   if (visibleSequenceItems.length > 0) {
     visibleSequenceItems.forEach((entry) => {
       serviceRow.append(createSequenceBadge(entry));
@@ -96525,6 +96690,166 @@ function getDocumentTemplateRuntimeBlockCompletion(block = {}, workOrder = getDo
   };
 }
 
+function getDocumentTemplateRuntimeSequenceEntryContext(entry = {}) {
+  const template = getDocumentTemplateById(entry?.templateId);
+  const workOrder = getDocumentTemplateRuntimeWorkOrderById(entry?.workOrderId)
+    || (state.workOrders ?? []).find((item) => String(item?.id) === String(entry?.workOrderId))
+    || null;
+  return { template, workOrder };
+}
+
+function getDocumentTemplateRuntimeValidationServiceCode({ entry = {}, template = null, workOrder = null } = {}) {
+  const primaryService = workOrder && template
+    ? getDocumentTemplateRuntimePrimaryServiceItem(workOrder, template)
+    : null;
+  const catalogService = primaryService ? getServiceCatalogItemForWorkOrderService(primaryService) : null;
+  const directCode = [
+    entry?.serviceCode,
+    primaryService?.serviceCode,
+    primaryService?.code,
+    primaryService?.shortCode,
+    catalogService?.serviceCode,
+    template?.serviceCode,
+  ]
+    .map((value) => normalizeDocumentTemplateRuntimeRequiredServiceCode(value))
+    .find(Boolean);
+  if (directCode) {
+    return directCode;
+  }
+
+  return [
+    entry?.timelineLabel,
+    entry?.templateTitle,
+    primaryService?.name,
+    primaryService?.serviceName,
+    primaryService?.title,
+    catalogService?.name,
+    template?.documentType,
+    template?.title,
+    template?.outputFileName,
+  ]
+    .map((value) => normalizeDocumentTemplateRuntimeRequiredServiceCode(value, { allowCatalog: false }))
+    .find(Boolean) || "";
+}
+
+function getDocumentTemplateRuntimeCodePersonCompletion(workOrder = {}, serviceCode = "") {
+  const normalizedCode = normalizeDocumentTemplateRuntimeRequiredServiceCode(serviceCode);
+  if (!normalizedCode) {
+    return {
+      ok: false,
+      missingRequiredLabels: ["Šifra usluge"],
+      label: "Nedostaje šifra usluge",
+    };
+  }
+
+  const activeWorkOrder = workOrder || {};
+  const workOrderId = String(activeWorkOrder?.id || "").trim();
+  const signatureArea = normalizeQualificationAreaKey(normalizedCode);
+  const fields = getWorkOrderDocumentSignaturePersonFieldsForArea(signatureArea);
+  const inspectorField = fields.find((field) => field.capability === "inspect");
+  const authorizationField = fields.find((field) => field.capability === "authorize");
+  const inspectorIds = normalizeQualifiedUserIdList([
+    ...(inspectorField?.listFieldName ? getDocumentTemplateRuntimeArrayValue(workOrderId, inspectorField.listFieldName) : []),
+    inspectorField?.fieldName ? getDocumentTemplateRuntimeValue(workOrderId, inspectorField.fieldName) : "",
+  ]);
+  const authorizationId = authorizationField?.fieldName
+    ? String(getDocumentTemplateRuntimeValue(workOrderId, authorizationField.fieldName) || "").trim()
+    : "";
+  const missingRequiredLabels = [];
+  if (inspectorIds.length === 0) {
+    missingRequiredLabels.push(`Ispitivač ${normalizedCode}`);
+  }
+  if (!authorizationId) {
+    missingRequiredLabels.push(`Odgovorna osoba ${normalizedCode}`);
+  }
+
+  return {
+    ok: missingRequiredLabels.length === 0,
+    missingRequiredLabels,
+    label: missingRequiredLabels.length === 0 ? `${normalizedCode} osobe OK` : `Nedostaje ${missingRequiredLabels.length}`,
+  };
+}
+
+function getDocumentTemplateRuntimeBasicCompletion({ entry = {}, template = null, workOrder = null } = {}) {
+  const activeTemplate = template || buildDocumentTemplateDraft();
+  const activeWorkOrder = workOrder || {};
+  const serviceCode = getDocumentTemplateRuntimeValidationServiceCode({ entry, template: activeTemplate, workOrder: activeWorkOrder });
+  const workOrderId = String(activeWorkOrder?.id || "").trim();
+  const inspectionDate = workOrderId ? getDocumentTemplateRuntimeValue(workOrderId, "inspectionDate") : "";
+  const issuedDate = workOrderId ? getDocumentTemplateRuntimeValue(workOrderId, "issuedDate") : "";
+  const validityMonths = normalizeValidityMonthsValue(resolveDocumentTemplateRuntimeServiceValidityMonths(activeWorkOrder, activeTemplate));
+  const personCompletion = getDocumentTemplateRuntimeCodePersonCompletion(activeWorkOrder, serviceCode);
+  const missingRequiredLabels = [];
+  if (!inspectionDate) {
+    missingRequiredLabels.push("Datum ispitivanja");
+  }
+  if (!issuedDate) {
+    missingRequiredLabels.push("Datum izdavanja");
+  }
+  if (!validityMonths || Number(validityMonths) <= 0) {
+    missingRequiredLabels.push("Rok važenja");
+  }
+  missingRequiredLabels.push(...(personCompletion.missingRequiredLabels ?? []));
+
+  return {
+    ok: missingRequiredLabels.length === 0,
+    serviceCode,
+    missingRequiredLabels,
+    label: missingRequiredLabels.length === 0 ? "Osnovno popunjeno" : `Nedostaje ${missingRequiredLabels.length}`,
+  };
+}
+
+function getDocumentTemplateRuntimeServiceSpecificCompletion({ entry = {}, template = null, workOrder = null } = {}) {
+  const activeTemplate = template || buildDocumentTemplateDraft();
+  const activeWorkOrder = workOrder || {};
+  const serviceCode = getDocumentTemplateRuntimeValidationServiceCode({ entry, template: activeTemplate, workOrder: activeWorkOrder });
+  if (serviceCode !== "SPR") {
+    return {
+      ok: true,
+      serviceCode,
+      missingRequiredLabels: [],
+      label: "Nema dodatnih uvjeta",
+    };
+  }
+
+  const workOrderId = String(activeWorkOrder?.id || "").trim();
+  const fields = (Array.isArray(activeTemplate?.customFields) ? activeTemplate.customFields : [])
+    .filter((field) => field && isDocumentTemplateRuntimeVisibleField(field));
+  const equipmentIds = new Set();
+  fields
+    .filter((field) => String(field?.type || "").trim().toLowerCase() === "equipment_list")
+    .forEach((field) => {
+      getDocumentTemplateRuntimeSelectedEquipmentIds(workOrderId, field, activeTemplate)
+        .forEach((id) => equipmentIds.add(String(id || "").trim()));
+    });
+  const legalIds = new Set(
+    (Array.isArray(activeTemplate?.selectedLegalFrameworkIds) ? activeTemplate.selectedLegalFrameworkIds : [])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean),
+  );
+  fields
+    .filter((field) => String(field?.type || "").trim().toLowerCase() === "legal_list")
+    .forEach((field) => {
+      getDocumentTemplateRuntimeSelectedLegalFrameworkIds(workOrderId, field)
+        .forEach((id) => legalIds.add(String(id || "").trim()));
+    });
+
+  const missingRequiredLabels = [];
+  if ([...equipmentIds].filter(Boolean).length === 0) {
+    missingRequiredLabels.push("Mjerna oprema");
+  }
+  if ([...legalIds].filter(Boolean).length === 0) {
+    missingRequiredLabels.push("Propis");
+  }
+
+  return {
+    ok: missingRequiredLabels.length === 0,
+    serviceCode,
+    missingRequiredLabels,
+    label: missingRequiredLabels.length === 0 ? "SPR uvjeti OK" : `SPR nedostaje ${missingRequiredLabels.length}`,
+  };
+}
+
 function openDocumentTemplateRuntimeStatusBlock(block = {}, blockIndex = 0) {
   const blockId = getDocumentTemplateRuntimeBlockId(block, blockIndex);
   setDocumentTemplateRuntimeBlockCollapsed(block, blockIndex, false, { render: false });
@@ -96647,27 +96972,40 @@ function renderDocumentTemplateRuntimeStatusPanel({
 }
 
 function getDocumentTemplateRuntimeSequenceEntryMissingRequired(entry = {}) {
-  const template = getDocumentTemplateById(entry?.templateId);
-  const workOrder = getDocumentTemplateRuntimeWorkOrderById(entry?.workOrderId)
-    || (state.workOrders ?? []).find((item) => String(item?.id) === String(entry?.workOrderId));
+  const { template, workOrder } = getDocumentTemplateRuntimeSequenceEntryContext(entry);
   if (!template || !workOrder) {
     return ["Nedostaje template ili RN."];
   }
 
-  return buildDocumentTemplateRuntimeBlockGroups(template.customFields ?? [])
+  const basicCompletion = getDocumentTemplateRuntimeBasicCompletion({ entry, template, workOrder });
+  const serviceCompletion = getDocumentTemplateRuntimeServiceSpecificCompletion({ entry, template, workOrder });
+  const blockMissing = buildDocumentTemplateRuntimeBlockGroups(template.customFields ?? [])
     .filter((block) => (block.items ?? []).length > 0)
     .flatMap((block) => (
       getDocumentTemplateRuntimeBlockCompletion(block, workOrder, template).missingRequiredLabels ?? []
     ))
     .map((label) => String(label || "").trim())
     .filter(Boolean);
+  return Array.from(new Set([
+    ...(basicCompletion.missingRequiredLabels ?? []),
+    ...(serviceCompletion.missingRequiredLabels ?? []),
+    ...blockMissing,
+  ]));
 }
 
 function isDocumentTemplateRuntimeSequenceEntryComplete(entry = {}) {
-  const template = getDocumentTemplateById(entry?.templateId);
-  const workOrder = getDocumentTemplateRuntimeWorkOrderById(entry?.workOrderId)
-    || (state.workOrders ?? []).find((item) => String(item?.id) === String(entry?.workOrderId));
+  const { template, workOrder } = getDocumentTemplateRuntimeSequenceEntryContext(entry);
   if (!template || !workOrder) {
+    return false;
+  }
+
+  const basicCompletion = getDocumentTemplateRuntimeBasicCompletion({ entry, template, workOrder });
+  if (!basicCompletion.ok) {
+    return false;
+  }
+
+  const serviceCompletion = getDocumentTemplateRuntimeServiceSpecificCompletion({ entry, template, workOrder });
+  if (!serviceCompletion.ok) {
     return false;
   }
 
@@ -138892,8 +139230,7 @@ function syncWorkOrderDocumentWizardCommonInputs() {
   if (workOrderDocumentWizardCommonPeopleBody) {
     workOrderDocumentWizardCommonPeopleBody.replaceChildren();
     getWorkOrderDocumentSignatureAreaGroupsForAreas([...relevantAreaSet]).forEach((areaGroup) => {
-      const areaFields = getWorkOrderDocumentSignaturePersonFields()
-        .filter((definition) => definition.signatureArea === areaGroup.key);
+      const areaFields = getWorkOrderDocumentSignaturePersonFieldsForArea(areaGroup.key);
       if (areaFields.length === 0) {
         return;
       }
@@ -140790,6 +141127,7 @@ function normalizeDocumentTemplateRuntimeCommonDraft(common = {}) {
   const workEnvironmentInspectorUserIds = normalizeQualifiedUserIdList(source.radni_okolisInspectorUserIds ?? source.workEnvironmentInspectorUserIds ?? []);
 
   return {
+    ...source,
     inspectionDate: normalizeDateInputValue(source.inspectionDate ?? ""),
     issuedDate: normalizeDateInputValue(source.issuedDate ?? ""),
     issuedPlace: String(source.issuedPlace ?? "").trim(),
@@ -141204,6 +141542,7 @@ function setDocumentTemplateRuntimeFromWizard(workOrders = getAllSelectedWorkOrd
     exportStatuses: {},
     aiAssistantHidden: true,
     common: {
+      ...(state.workOrderDocumentWizard.common ?? {}),
       inspectionDate: normalizeDateInputValue(state.workOrderDocumentWizard.common?.inspectionDate ?? ""),
       issuedDate: normalizeDateInputValue(state.workOrderDocumentWizard.common?.issuedDate ?? ""),
       issuedPlace: String(state.workOrderDocumentWizard.common?.issuedPlace ?? "").trim(),
@@ -143470,8 +143809,7 @@ function buildWorkOrderDocumentWizardSelectionCard(workOrder) {
   const peopleGrid = document.createElement("div");
   peopleGrid.className = "work-order-document-selection-person-grid";
   getWorkOrderDocumentSignatureAreaGroupsForAreas(relevantSignatureAreas).forEach((areaGroup) => {
-    const fields = getWorkOrderDocumentSignaturePersonFields()
-      .filter((definition) => definition.signatureArea === areaGroup.key);
+    const fields = getWorkOrderDocumentSignaturePersonFieldsForArea(areaGroup.key);
     if (fields.length === 0) {
       return;
     }
