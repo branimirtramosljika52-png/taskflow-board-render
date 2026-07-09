@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.383.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.384.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -27232,6 +27232,9 @@ function normalizeMobileQualificationKeyList(value = []) {
 
 function getMobileQualificationAreaLabel(signatureArea = "elektro") {
   const key = normalizeMobileQualificationAreaKey(signatureArea);
+  if (key === "spr") {
+    return "SPR - Sigurnosna panik rasvjeta";
+  }
   if (key === "elektro") {
     return "Elektro usluga";
   }
@@ -27271,7 +27274,7 @@ function getMobileServiceQualificationKeys(service = {}, scopedSnapshot = {}) {
     keys.add("tipkalo");
   }
   if (/\b(spr|panik)\b/.test(text) || text.includes("panik rasvjet") || text.includes("panic")) {
-    keys.add("elektro");
+    keys.add("spr");
   }
   if (/\bro\b/.test(text) || text.includes("radna oprema") || text.includes("radne opreme")) {
     keys.add("radna_oprema");
@@ -27306,11 +27309,12 @@ function getMobileUserQualificationForArea(user = {}, signatureArea = "elektro")
   const rootQualification = user?.electricalQualification && typeof user.electricalQualification === "object"
     ? user.electricalQualification
     : {};
+  const additionalQualification = rootQualification.additionalAreas && typeof rootQualification.additionalAreas === "object"
+    ? rootQualification.additionalAreas[area]
+    : null;
   const qualification = area === "elektro"
     ? rootQualification
-    : (rootQualification.additionalAreas && typeof rootQualification.additionalAreas === "object"
-      ? rootQualification.additionalAreas[area]
-      : null) || {};
+    : (additionalQualification || (area === "spr" ? rootQualification : null) || {});
   return {
     discipline: normalizeMobileQualificationAreaKey(qualification.discipline || area),
     examTitle: normalizeInputValue(qualification.examTitle || qualification.title),
@@ -27570,7 +27574,7 @@ const MOBILE_NATIVE_DOCUMENTATION_PRESETS_LEGACY = Object.freeze([
     reportTitle: "ISPITIVANJE SIGURNOSNE PROTUPANIČNE RASVJETE",
     coverSubtitle: "O ISPITIVANJU PROTUPANIČNE (SIGURNOSNE) RASVJETE",
     measurementTableTitle: "Tablica 1. - mjerna mjesta sigurnosne protupanične rasvjete",
-    signatureAreas: ["elektro"],
+    signatureAreas: ["spr"],
   }),
   Object.freeze({
     serviceCode: "SZOMV",
@@ -29415,8 +29419,8 @@ function getMobileSprRegulationsText(template = {}, scopedSnapshot = {}, common 
 
 function getMobileSprPersonText(common = {}, scopedSnapshot = {}, area = "elektro", capability = "inspect") {
   const ids = capability === "authorize"
-    ? [common.electricalAuthorizationHolderUserId || common.authorizationHolderUserId]
-    : (common.electricalInspectorUserIds?.length ? common.electricalInspectorUserIds : common.inspectorUserIds);
+    ? getMobileDocumentSignatureAuthorizationIds(common, area)
+    : getMobileDocumentSignatureInspectorIds(common, area);
   const users = normalizeMobileDocumentWizardArray(ids)
     .map((id) => findMobileScopedUserById(scopedSnapshot, id))
     .filter(Boolean);
@@ -29447,11 +29451,18 @@ function getMobileSprResponsibleUser(common = {}, scopedSnapshot = {}) {
 }
 
 function getMobileSprSignatureOib(common = {}, scopedSnapshot = {}, area = "elektro") {
-  const user = getMobileSprResponsibleUser(common, scopedSnapshot);
+  const user = findMobileScopedUserById(
+    scopedSnapshot,
+    getMobileDocumentSignatureAuthorizationIds(common, area)[0],
+  ) || getMobileSprResponsibleUser(common, scopedSnapshot);
+  const inspectorUser = findMobileScopedUserById(
+    scopedSnapshot,
+    getMobileDocumentSignatureInspectorIds(common, area)[0],
+  );
   return normalizeSignatureFieldOib(
     getMobileUserDocumentOib(user, area, scopedSnapshot)
       || getMobileUserDocumentOib(
-        findMobileScopedUserById(scopedSnapshot, common.electricalInspectorUserId || common.inspectorUserId),
+        inspectorUser,
         area,
         scopedSnapshot,
       ),
@@ -29459,7 +29470,10 @@ function getMobileSprSignatureOib(common = {}, scopedSnapshot = {}, area = "elek
 }
 
 function getMobileSprQualificationValue(common = {}, scopedSnapshot = {}, key = "", area = "elektro") {
-  const user = getMobileSprResponsibleUser(common, scopedSnapshot);
+  const user = findMobileScopedUserById(
+    scopedSnapshot,
+    getMobileDocumentSignatureAuthorizationIds(common, area)[0],
+  ) || getMobileSprResponsibleUser(common, scopedSnapshot);
   if (!user) {
     return "";
   }
@@ -33339,8 +33353,8 @@ function buildMobileDocumentationSprModel({
     legalFrameworkIds: common.selectedLegalFrameworkIds || [],
     customRegulations: [],
     customObjects: [],
-    inspectorUserIds: common.electricalInspectorUserIds?.length ? common.electricalInspectorUserIds : common.inspectorUserIds,
-    responsiblePersonUserId: common.electricalAuthorizationHolderUserId || common.authorizationHolderUserId,
+    inspectorUserIds: getMobileDocumentSignatureInspectorIds(common, signatureArea),
+    responsiblePersonUserId: getMobileDocumentSignatureAuthorizationIds(common, signatureArea)[0] || "",
     fieldSettings: {},
     attachments: resolveMobileDocumentationAttachmentsForTemplate(common, template.id),
     checklists: buildMobileDocumentationChecklists(template, reportDefaults, common),

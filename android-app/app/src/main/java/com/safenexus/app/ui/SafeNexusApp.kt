@@ -29014,7 +29014,7 @@ private fun inferDocumentationSignatureAreas(
         .lowercase(Locale.getDefault())
     return when {
         Regex("\\b(tzin|tipkalo)\\b").containsMatchIn(text) || text.contains("isklop napona") -> listOf("tipkalo")
-        Regex("\\b(spr|panik)\\b").containsMatchIn(text) || text.contains("panik rasvjet") -> listOf("elektro")
+        Regex("\\b(spr|panik)\\b").containsMatchIn(text) || text.contains("panik rasvjet") -> listOf("spr")
         Regex("\\b(no|strojevi)\\b").containsMatchIn(text) || text.contains("nadzor opreme") || text.contains("nadzor strojeva") -> listOf("strojevi", "radna_oprema")
         Regex("\\bro\\b").containsMatchIn(text) || text.contains("radna oprema") || text.contains("radne opreme") -> listOf("radna_oprema")
         Regex("\\bfc\\b").containsMatchIn(text) || text.contains("radni okoli") || text.contains("fizikalni") -> listOf("radni_okolis")
@@ -29028,6 +29028,7 @@ private fun List<WorkOrderDocumentationSignatureAreaOptions>.areaOptions(key: St
         ?: WorkOrderDocumentationSignatureAreaOptions(
             key = normalizedKey,
             label = when (normalizedKey) {
+                "spr" -> "SPR - Sigurnosna panik rasvjeta"
                 "tipkalo", "tzin" -> "Tipkalo za isklop napona"
                 "elektro" -> "Elektro usluga"
                 "radna_oprema", "ro" -> "Radna oprema"
@@ -29546,6 +29547,7 @@ private fun standardDocumentationSignatureValue(
     val normalizedRole = normalizeDocumentationSignatureRole(role, type)
     fun authorizationValue(): String =
         when (area) {
+            "spr" -> standard.authorizationHolderLabel.ifBlank { standard.authorizationHolderUserId }
             "tipkalo", "tzin" -> standard.tipkaloAuthorizationHolderLabel.ifBlank { standard.tipkaloAuthorizationHolderUserId }
             "elektro" -> standard.electricalAuthorizationHolderLabel.ifBlank { standard.electricalAuthorizationHolderUserId }
             "radna_oprema", "ro", "strojevi", "no" -> standard.workEquipmentAuthorizationHolderLabel.ifBlank { standard.workEquipmentAuthorizationHolderUserId }
@@ -29555,6 +29557,7 @@ private fun standardDocumentationSignatureValue(
 
     fun inspectorValue(): String =
         when (area) {
+            "spr" -> standard.inspectorLabel.ifBlank { standard.inspectorUserId }
             "tipkalo", "tzin" -> standard.tipkaloInspectorLabel.ifBlank { standard.tipkaloInspectorUserId }
             "elektro" -> standard.electricalInspectorLabel.ifBlank { standard.electricalInspectorUserId }
             "radna_oprema", "ro", "strojevi", "no" -> standard.workEquipmentInspectorLabel.ifBlank { standard.workEquipmentInspectorUserId }
@@ -30891,6 +30894,95 @@ private fun WorkOrderDocumentationWizardDialog(
     val missingRequiredFields = remember(requiredPromptTemplates, effectiveTemplateFieldValues, standardValues) {
         findMissingRequiredDocumentationFields(requiredPromptTemplates, effectiveTemplateFieldValues, standardValues)
     }
+    val completedDocumentationFlowTabKeys = remember(
+        flowTabs,
+        inspectionDate,
+        issuedDate,
+        testingLocation,
+        validityMonths,
+        serviceValidityMonths,
+        inspectorUserIds,
+        authorizationHolderUserId,
+        electricalInspectorUserIds,
+        electricalAuthorizationHolderUserId,
+        tipkaloInspectorUserIds,
+        tipkaloAuthorizationHolderUserId,
+        workEquipmentInspectorUserIds,
+        workEquipmentAuthorizationHolderUserId,
+        workEnvironmentInspectorUserIds,
+        workEnvironmentAuthorizationHolderUserId,
+        selectedEquipmentIds,
+        selectedLegalFrameworkIds,
+        missingRequiredFields,
+    ) {
+        fun inspectorIdsForArea(area: String): Set<String> =
+            when (normalizeDocumentationSignatureAreaKey(area)) {
+                "tipkalo", "tzin" -> tipkaloInspectorUserIds
+                "elektro" -> electricalInspectorUserIds
+                "radna_oprema", "ro", "strojevi", "no" -> workEquipmentInspectorUserIds
+                "radni_okolis", "fc" -> workEnvironmentInspectorUserIds
+                else -> inspectorUserIds
+            }
+
+        fun authorizationIdForArea(area: String): String =
+            when (normalizeDocumentationSignatureAreaKey(area)) {
+                "tipkalo", "tzin" -> tipkaloAuthorizationHolderUserId
+                "elektro" -> electricalAuthorizationHolderUserId
+                "radna_oprema", "ro", "strojevi", "no" -> workEquipmentAuthorizationHolderUserId
+                "radni_okolis", "fc" -> workEnvironmentAuthorizationHolderUserId
+                else -> authorizationHolderUserId
+            }
+
+        fun peopleCompleteForTab(tab: DocumentationFlowTab): Boolean {
+            val areas = tab.serviceItem
+                ?.let { inferDocumentationSignatureAreas(emptyList(), it) }
+                .orEmpty()
+                .ifEmpty { listOf("default") }
+            return areas.all { area -> inspectorIdsForArea(area).isNotEmpty() && authorizationIdForArea(area).isNotBlank() }
+        }
+
+        fun validityCompleteForTab(tab: DocumentationFlowTab): Boolean {
+            val item = tab.serviceItem ?: return validityMonths.trim().isNotBlank()
+            val months = serviceValidityMonths[item.serviceValidityKey()]
+                ?: serviceValidityMonths[item.serviceCode]
+                ?: serviceValidityMonths[item.serviceName]
+                ?: item.validityMonths.takeIf { it.isNotBlank() }
+                ?: validityMonths
+            return months.trim().isNotBlank()
+        }
+
+        fun nativeCodeForTab(tab: DocumentationFlowTab): String =
+            tab.serviceItem?.nativeDocumentationServiceCode()
+                ?: normalizeDocumentationFlowTabCode(tab.label)
+
+        val commonBasicsComplete = inspectionDate.trim().isNotBlank() &&
+            issuedDate.trim().isNotBlank() &&
+            testingLocation.trim().isNotBlank()
+        fun serviceTabComplete(tab: DocumentationFlowTab): Boolean {
+            if (tab.serviceItem == null) return false
+            val sprSourcesComplete = if (nativeCodeForTab(tab) == "SPR") {
+                selectedEquipmentIds.isNotEmpty() && selectedLegalFrameworkIds.isNotEmpty()
+            } else {
+                true
+            }
+            return commonBasicsComplete && validityCompleteForTab(tab) && peopleCompleteForTab(tab) && sprSourcesComplete
+        }
+
+        val completed = mutableSetOf<String>()
+        val serviceTabs = flowTabs.filter { it.serviceItem != null }
+        if (
+            commonBasicsComplete &&
+            serviceTabs.all(::validityCompleteForTab) &&
+            serviceTabs.all(::peopleCompleteForTab)
+        ) {
+            completed += DOCUMENTATION_BASICS_FLOW_KEY
+        }
+        serviceTabs.filter(::serviceTabComplete).forEach { tab -> completed += tab.key }
+        if (serviceTabs.isNotEmpty() && serviceTabs.all(::serviceTabComplete) && missingRequiredFields.isEmpty()) {
+            completed += DOCUMENTATION_SUMMARY_FLOW_KEY
+        }
+        completed
+    }
     val formLoading = isLoading || contextLoading
     val readyManualWorkEquipments = remember(manualWorkEquipments) {
         manualWorkEquipments.filter { it.isReadyForIsznrPost() }
@@ -31373,6 +31465,7 @@ private fun WorkOrderDocumentationWizardDialog(
                     DocumentationProcessToolbar(
                         flowTabs = flowTabs,
                         selectedService = selectedFlowService,
+                        completedTabKeys = completedDocumentationFlowTabKeys,
                         companyName = workOrder.companyName,
                         locationName = testingLocation.ifBlank { workOrder.objectName.ifBlank { activeSelectedObject?.name.orEmpty() } },
                         enabled = !formLoading,
@@ -38164,6 +38257,7 @@ private fun DocumentationMeasurementPreviewContent(
 private fun DocumentationProcessToolbar(
     flowTabs: List<DocumentationFlowTab>,
     selectedService: String,
+    completedTabKeys: Set<String> = emptySet(),
     companyName: String,
     locationName: String,
     enabled: Boolean,
@@ -38207,6 +38301,7 @@ private fun DocumentationProcessToolbar(
                         DocumentationProcessChip(
                             label = tab.label,
                             selected = tab.key.equals(selectedService, ignoreCase = true),
+                            complete = tab.key in completedTabKeys,
                             compact = true,
                             onClick = { onSelectService(tab.key) },
                             onLongClick = tab.serviceItem?.let { item -> { onLongPressService(item) } },
@@ -38246,6 +38341,7 @@ private fun DocumentationProcessToolbar(
                         DocumentationProcessChip(
                             label = tab.label,
                             selected = tab.key.equals(selectedService, ignoreCase = true),
+                            complete = tab.key in completedTabKeys,
                             onClick = { onSelectService(tab.key) },
                             onLongClick = tab.serviceItem?.let { item -> { onLongPressService(item) } },
                             enabled = enabled,
@@ -38262,6 +38358,7 @@ private fun DocumentationProcessToolbar(
 private fun DocumentationProcessChip(
     label: String,
     selected: Boolean,
+    complete: Boolean,
     enabled: Boolean,
     compact: Boolean = false,
     onClick: () -> Unit,
@@ -38282,8 +38379,7 @@ private fun DocumentationProcessChip(
         },
         tonalElevation = if (selected) 2.dp else 0.dp,
     ) {
-        Text(
-            label,
+        Row(
             modifier = Modifier
                 .border(
                     width = 1.dp,
@@ -38295,12 +38391,25 @@ private fun DocumentationProcessChip(
                     shape = shape,
                 )
                 .padding(horizontal = if (compact) 14.dp else 18.dp, vertical = if (compact) 8.dp else 10.dp),
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-            fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
-            style = if (compact) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                label,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
+                style = if (compact) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (complete) {
+                Box(
+                    modifier = Modifier
+                        .size(if (compact) 7.dp else 8.dp)
+                        .background(Color(0xFF16A34A), CircleShape),
+                )
+            }
+        }
     }
 }
 

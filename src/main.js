@@ -69894,6 +69894,13 @@ const BUILTIN_QUALIFICATION_EXAM_DEFINITIONS = Object.freeze([
 
 const LEGACY_QUALIFICATION_EXAM_DEFINITIONS = Object.freeze([
   Object.freeze({
+    key: "spr",
+    title: "SPR - Sigurnosna panik rasvjeta",
+    label: "SPR - Sigurnosna panik rasvjeta",
+    builtIn: false,
+    legacy: true,
+  }),
+  Object.freeze({
     key: "elektro",
     title: "Panik rasvjeta",
     label: "Panik rasvjeta",

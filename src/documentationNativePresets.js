@@ -4164,7 +4164,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     assessmentLabel: "Funkcionalnost sigurnosne protupanicne rasvjete",
     conclusionLead: "Temeljem rezultata mjerenja i ispitivanja te ocjene rezultata mjerenja moze se zakljuciti da ispitivana panik (sigurnosna) rasvjeta na dan predmetnog ispitivanja",
     validitySentence: "Zapisnik o ispitivanju vrijedi jednu (1) godinu, odnosno najkasnije do",
-    signatureAreas: ["elektro"],
+    signatureAreas: ["spr"],
     tables: [
       tableSpec({
         id: "spr-results",
