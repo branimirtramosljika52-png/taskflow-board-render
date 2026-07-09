@@ -30838,6 +30838,36 @@ private fun WorkOrderDocumentationWizardDialog(
     val selectedObject = remember(selectedObjectId, availableLocationObjects) {
         availableLocationObjects.firstOrNull { it.id == selectedObjectId }
     }
+    val previousRecordLocationObjects = remember(context.previousRecords, workOrder.companyId, workOrder.locationId) {
+        context.previousRecords
+            .mapNotNull { record ->
+                val objectId = record.objectId.trim()
+                val objectName = record.objectName.trim()
+                if (objectId.isBlank() && objectName.isBlank()) {
+                    null
+                } else {
+                    WorkOrderLocationObjectOption(
+                        id = objectId.ifBlank { "previous:${normalizeDocumentationWorkEquipmentText(objectName)}" },
+                        companyId = workOrder.companyId,
+                        locationId = workOrder.locationId,
+                        name = objectName.ifBlank { "Objekt" },
+                        code = "",
+                        description = "",
+                    )
+                }
+            }
+            .distinctBy { option ->
+                option.id.ifBlank { normalizeDocumentationWorkEquipmentText(option.name) }
+            }
+    }
+    val batchLocationObjects = remember(availableLocationObjects, previousRecordLocationObjects) {
+        val seen = mutableSetOf<String>()
+        (availableLocationObjects + previousRecordLocationObjects)
+            .filter { option ->
+                val key = option.id.ifBlank { normalizeDocumentationWorkEquipmentText(option.name) }
+                key.isNotBlank() && seen.add(key)
+            }
+    }
     val activeObjectId = selectedAdditionalRecord?.objectId ?: selectedObjectId
     val activeSelectedObject = remember(activeObjectId, availableLocationObjects, selectedAdditionalRecord) {
         availableLocationObjects.firstOrNull { it.id == activeObjectId }
@@ -30904,13 +30934,13 @@ private fun WorkOrderDocumentationWizardDialog(
 
     fun defaultBatchPrimaryObject(): WorkOrderLocationObjectOption? =
         if (selectedObjectId.isBlank()) {
-            availableLocationObjects.firstOrNull { objectOption -> objectHasPreviousRecordsForEverySelectedService(objectOption) }
+            batchLocationObjects.firstOrNull { objectOption -> objectHasPreviousRecordsForEverySelectedService(objectOption) }
         } else {
-            availableLocationObjects.firstOrNull { it.id == selectedObjectId }
+            batchLocationObjects.firstOrNull { it.id == selectedObjectId }
         }
 
     fun buildAdditionalRecordsForAllObjects(primaryObjectId: String = selectedObjectId): List<DocumentationAdditionalObjectRecord> {
-        if (serviceFlowItems.isEmpty() || availableLocationObjects.isEmpty()) return emptyList()
+        if (serviceFlowItems.isEmpty() || batchLocationObjects.isEmpty()) return emptyList()
         return selectedServiceBatchTargets().flatMap { target ->
             val usedObjectIds = additionalRecords
                 .filter { it.serviceKey == target.serviceKey }
@@ -30919,7 +30949,7 @@ private fun WorkOrderDocumentationWizardDialog(
                 .toMutableSet()
             primaryObjectId.trim().takeIf { it.isNotBlank() }?.let { usedObjectIds.add(it) }
             val targetExistingCount = additionalRecords.count { it.serviceKey == target.serviceKey }
-            availableLocationObjects
+            batchLocationObjects
                 .filter { objectOption ->
                     val objectId = objectOption.id.trim()
                     objectId.isNotBlank() &&
@@ -31676,7 +31706,7 @@ private fun WorkOrderDocumentationWizardDialog(
                             }
                         }
                     }
-                    if (availableLocationObjects.isNotEmpty() && serviceFlowItems.isNotEmpty()) {
+                    if (serviceFlowItems.isNotEmpty()) {
                         val batchPrimaryObject = defaultBatchPrimaryObject()
                         val batchPrimaryObjectId = batchPrimaryObject?.id.orEmpty().ifBlank { selectedObjectId }
                         val allObjectRecordCandidates = buildAdditionalRecordsForAllObjects(batchPrimaryObjectId)
@@ -31715,7 +31745,11 @@ private fun WorkOrderDocumentationWizardDialog(
                                                 }
                                             } else {
                                                 if (selectedObjectId.isBlank()) {
-                                                    "Nema starih zapisnika za objekte na ovoj lokaciji i odabrane usluge."
+                                                    if (batchLocationObjects.isEmpty()) {
+                                                        "Nema učitanih objekata ni starih zapisnika za ovu lokaciju."
+                                                    } else {
+                                                        "Nema starih zapisnika za objekte na ovoj lokaciji i odabrane usluge."
+                                                    }
                                                 } else {
                                                     "Svi stari zapisnici za preostale objekte već su dodani."
                                                 }
@@ -31732,7 +31766,7 @@ private fun WorkOrderDocumentationWizardDialog(
                                     ) {
                                         Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                                         Spacer(Modifier.width(6.dp))
-                                        Text("Dodaj sve", fontWeight = FontWeight.Black)
+                                        Text("Dodaj sve objekte", fontWeight = FontWeight.Black)
                                     }
                                 }
                                 if (additionalRecordsBatchMessage.isNotBlank()) {
