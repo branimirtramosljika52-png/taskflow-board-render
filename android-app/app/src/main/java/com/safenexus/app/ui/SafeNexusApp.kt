@@ -9876,6 +9876,7 @@ private fun DocumentationMultiSelectField(
     emptyText: String,
     singleSelection: Boolean = false,
     maxVisibleItems: Int = 96,
+    showOptionDetails: Boolean = true,
     onChange: (Set<String>) -> Unit,
 ) {
     val visibleOptions = if (maxVisibleItems > 0) {
@@ -9934,11 +9935,15 @@ private fun DocumentationMultiSelectField(
                     label = {
                         Column {
                             Text(option.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            val subtitle = listOf(option.subtitle, option.status)
-                                .map { it.trim() }
-                                .filter { it.isNotBlank() }
-                                .distinct()
-                                .joinToString(" · ")
+                            val subtitle = if (showOptionDetails) {
+                                listOf(option.subtitle, option.status)
+                                    .map { it.trim() }
+                                    .filter { it.isNotBlank() }
+                                    .distinct()
+                                    .joinToString(" · ")
+                            } else {
+                                ""
+                            }
                             if (subtitle.isNotBlank()) {
                                 Text(
                                     subtitle,
@@ -29080,6 +29085,12 @@ private fun WorkOrderDocumentationSignatureAreaOptions.defaultAuthorizationIdFor
     return authorizationOptions.firstOrNull { option -> option.matchesExecutorLabel(executors) }?.id.orEmpty().trim()
 }
 
+private fun WorkOrderDocumentationSignatureAreaOptions.defaultAuthorizationIdForInspectors(inspectorIds: Set<String>): String =
+    inspectorIds
+        .map { it.trim() }
+        .firstOrNull { id -> id.isNotBlank() && authorizationOptions.any { it.id == id } }
+        .orEmpty()
+
 private val documentationSignatureFieldTypes = setOf(
     "qualified_inspectors",
     "inspector_signature",
@@ -30389,6 +30400,7 @@ private fun WorkOrderDocumentationWizardDialog(
             val area = normalizeDocumentationSignatureAreaKey(options.key)
             val defaultInspectors = options.defaultInspectorIdsForExecutors(editableExecutors)
             val defaultAuthorization = options.defaultAuthorizationIdForExecutors(editableExecutors)
+                .ifBlank { options.defaultAuthorizationIdForInspectors(defaultInspectors) }
             when (area) {
                 "tipkalo", "tzin" -> {
                     if (tipkaloInspectorUserIds.isEmpty() && defaultInspectors.isNotEmpty()) {
@@ -43446,6 +43458,7 @@ private fun DocumentationServicePeopleSection(
                                             emptyText = "Nema aktivnih odgovornih osoba s ovlaštenjem za ovu uslugu.",
                                             singleSelection = true,
                                             maxVisibleItems = options.authorizationOptions.size,
+                                            showOptionDetails = false,
                                             onChange = { selected -> onAuthorizationChange(selected.firstOrNull().orEmpty()) },
                                         )
                                     }
@@ -43467,6 +43480,7 @@ private fun DocumentationServicePeopleSection(
                                                 enabled = enabled,
                                                 emptyText = "Nema aktivnih ispitivača s ovlaštenjem za ovu uslugu.",
                                                 maxVisibleItems = options.inspectorOptions.size,
+                                                showOptionDetails = false,
                                                 onChange = onInspectorChange,
                                             )
                                         }
@@ -43486,6 +43500,7 @@ private fun DocumentationServicePeopleSection(
                                                 emptyText = "Nema aktivnih ispitivača s ovlaštenjem za ovu uslugu.",
                                                 singleSelection = true,
                                                 maxVisibleItems = options.inspectorOptions.size,
+                                                showOptionDetails = false,
                                                 onChange = onInspectorChange,
                                             )
                                         }
