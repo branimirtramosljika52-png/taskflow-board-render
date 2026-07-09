@@ -24030,6 +24030,37 @@ function buildMobileDocumentTemplateFieldSheets(template = {}, workOrder = {}, s
   );
 }
 
+function buildMobileDocumentTemplateMeasurementTableFieldSheets(template = {}, workOrder = {}, service = {}, scopedSnapshot = {}, common = {}, entry = {}) {
+  const serviceCode = normalizeMobileNativeMeasurementServiceCode(
+    getMobileTemplateNativeDocumentationServiceCode(template)
+      || getMobileDocumentTemplateServiceCode(service, Number(template?.serviceIndex) || 0)
+      || template?.serviceCode,
+  ) || normalizeInputValue(template?.serviceCode || getMobileDocumentTemplateServiceCode(service, Number(template?.serviceIndex) || 0));
+  const measurementTables = buildMobileDocumentationMeasurementTables(
+    entry && typeof entry === "object" && !Array.isArray(entry) ? entry : {},
+    template,
+    common,
+    serviceCode || "SPR",
+  );
+  const fieldSheets = {};
+  (Array.isArray(measurementTables) ? measurementTables : []).forEach((table, index) => {
+    const sheet = normalizeWorkOrderMeasurementSheet(table?.sheet);
+    if (!sheet) {
+      return;
+    }
+    getMobileDocumentationMeasurementPresetTableKeys(
+      table,
+      index === 0 ? "gridline-results" : `gridline-results-${index + 1}`,
+    ).forEach((key) => {
+      const normalizedKey = normalizeInputValue(key);
+      if (normalizedKey && !fieldSheets[normalizedKey]) {
+        fieldSheets[normalizedKey] = sheet;
+      }
+    });
+  });
+  return fieldSheets;
+}
+
 function normalizeMobileDocumentTemplateFieldTokenKey(value = "", fallback = "FIELD_1") {
   const normalized = String(value ?? "")
     .trim()
@@ -34159,7 +34190,19 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
       }
       seenPairs.add(pairKey);
       const basePlaceholders = buildMobileGeneratedDocumentPlaceholders(generationWorkOrder, service, scopedSnapshot, common);
-      const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, generationWorkOrder, service, scopedSnapshot, common);
+      const customFieldSheets = buildMobileDocumentTemplateFieldSheets(template, generationWorkOrder, service, scopedSnapshot, common);
+      const measurementTableFieldSheets = buildMobileDocumentTemplateMeasurementTableFieldSheets(
+        template,
+        generationWorkOrder,
+        service,
+        scopedSnapshot,
+        common,
+        { documentRecord: { fieldSheets: customFieldSheets } },
+      );
+      const fieldSheets = {
+        ...measurementTableFieldSheets,
+        ...customFieldSheets,
+      };
       const measurementPlaceholders = buildMobileDocumentTemplateMeasurementPlaceholders(template, fieldSheets);
       const customFieldPayload = buildMobileDocumentTemplateCustomFieldPayload(template, common, {
         ...basePlaceholders,
