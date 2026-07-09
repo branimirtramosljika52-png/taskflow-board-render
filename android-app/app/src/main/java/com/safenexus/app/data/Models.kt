@@ -626,6 +626,11 @@ data class WorkEquipmentImageRecognitionResult(
     val workEquipments: List<WorkEquipmentImageRecognitionResult> = emptyList(),
 )
 
+data class WorkEquipmentAssessmentVoiceResult(
+    val item: IsznrRoAssessmentItem = IsznrRoAssessmentItem(),
+    val message: String = "",
+)
+
 data class IsznrManualWorkEquipment(
     val name: String = "",
     val manufacturer: String = "",

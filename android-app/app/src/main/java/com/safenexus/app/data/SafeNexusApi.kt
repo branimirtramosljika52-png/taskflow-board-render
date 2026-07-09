@@ -1973,6 +1973,90 @@ class SafeNexusApi(
         }
     }
 
+    suspend fun recognizeWorkEquipmentAssessmentItemFromText(
+        workOrder: WorkOrder,
+        equipment: IsznrManualWorkEquipment,
+        transcript: String,
+        sectionTitle: String,
+        itemLabel: String,
+        registerIri: String = "",
+        currentValue: String = "",
+        currentMeetsConditions: Boolean = true,
+        isStrojeviTemplate: Boolean = false,
+        modelTier: String = "fast",
+    ): Result<WorkEquipmentAssessmentVoiceResult> = withContext(Dispatchers.IO) {
+        runCatching {
+            val cleanTranscript = transcript.trim()
+            val cleanLabel = itemLabel.trim()
+            val fields = JSONArray().put(
+                JSONObject()
+                    .put("id", "assessmentItem")
+                    .put("key", "assessmentItem")
+                    .put("label", cleanLabel.ifBlank { sectionTitle.ifBlank { "Stavka" } })
+                    .put(
+                        "instructions",
+                        "Popuni samo ovu jednu RO stavku iz diktata. Vrati gotovu napomenu/vrijednost do $RO_ASSESSMENT_NOTE_MAX_LENGTH znakova i status meetsConditions.",
+                    ),
+            )
+            val body = JSONObject()
+                .put("purpose", "mobile-work-equipment-text-recognition")
+                .put("dryRun", false)
+                .put("modelTier", modelTier.ifBlank { "fast" })
+                .put("modelPreference", JSONObject().put("tier", modelTier.ifBlank { "fast" }))
+                .put("workOrderId", workOrder.id)
+                .put("workOrderNumber", workOrder.displayNumber)
+                .put("fields", fields)
+                .put(
+                    "context",
+                    JSONObject()
+                        .put("mode", "assessment-item")
+                        .put("inputKind", "voice-dictation")
+                        .put("templateKind", if (isStrojeviTemplate) "STROJEVI" else "RO")
+                        .put("sectionTitle", sectionTitle.trim())
+                        .put("itemLabel", cleanLabel)
+                        .put("registerIri", registerIri.trim())
+                        .put("currentValue", currentValue.trim())
+                        .put("currentMeetsConditions", currentMeetsConditions)
+                        .put("transcript", cleanTranscript)
+                        .put("companyName", workOrder.companyName)
+                        .put("locationName", workOrder.locationName)
+                        .put("currentEquipment", equipment.toJsonObject())
+                        .put(
+                            "textRule",
+                            "Ovo je ultra brzi diktat za jednu stavku zapisnika. Ne mijenjaj naziv opreme ni ostala polja. Ne prepisuj sirovi tekst. Ako korisnik kaze uredno, ispravno, zadovoljava ili nema nedostataka, meetsConditions=true. Ako kaze ne zadovoljava, osteceno, neispravno ili nedostatak, meetsConditions=false. Tekst pisi strucno, kratko i blago.",
+                        ),
+                )
+                .put(
+                    "expectedJsonShape",
+                    JSONObject()
+                        .put(
+                            "assessmentItem",
+                            JSONObject()
+                                .put("registerIri", "isto kao context.registerIri ako postoji")
+                                .put("label", "isto kao context.itemLabel ako postoji")
+                                .put("meetsConditions", true)
+                                .put("customContent", "gotova napomena/vrijednost do 255 znakova")
+                                .put("measuredValue", ""),
+                        )
+                        .put("summary", "kratko sto je upisano"),
+                )
+                .toString()
+            val json = JSONObject(
+                request(
+                    "/api/ai/openai/prepare",
+                    method = "POST",
+                    body = body,
+                    readTimeoutMs = OPENAI_PREPARE_READ_TIMEOUT_MS,
+                ),
+            )
+            json.toWorkEquipmentAssessmentVoiceResult(
+                fallbackLabel = cleanLabel,
+                fallbackRegisterIri = registerIri,
+                fallbackMeetsConditions = currentMeetsConditions,
+            )
+        }
+    }
+
     suspend fun prepareSprVoiceMeasurementRows(
         workOrderId: String,
         workOrderNumber: String,
@@ -3128,6 +3212,64 @@ private fun JSONObject.roVerificationQuestions(): List<String> =
 
 private fun JSONObject.roAssessmentItems(vararg keys: String): List<IsznrRoAssessmentItem> =
     firstJSONArray(*keys).toRoAssessmentItems()
+
+private fun JSONObject.toWorkEquipmentAssessmentVoiceResult(
+    fallbackLabel: String = "",
+    fallbackRegisterIri: String = "",
+    fallbackMeetsConditions: Boolean = true,
+): WorkEquipmentAssessmentVoiceResult {
+    val root = this
+    val outputObject = parseJsonObject(root.firstClean("outputText"))
+    val result = root.optJSONObject("result")
+        ?: outputObject?.optJSONObject("result")
+        ?: outputObject
+        ?: root
+    val itemObject = result.optJSONObject("assessmentItem")
+        ?: result.optJSONObject("item")
+        ?: result.optJSONArray("assessmentItems")?.optJSONObject(0)
+        ?: result.optJSONArray("items")?.optJSONObject(0)
+        ?: result.optJSONArray("mechanicalItems")?.optJSONObject(0)
+        ?: result.optJSONArray("electricalItems")?.optJSONObject(0)
+        ?: result.optJSONArray("workEquipments")?.optJSONObject(0)?.let { equipment ->
+            equipment.optJSONArray("mechanicalItems")?.optJSONObject(0)
+                ?: equipment.optJSONArray("electricalItems")?.optJSONObject(0)
+        }
+    val parsedItem = itemObject?.let { JSONArray().put(it).toRoAssessmentItems().firstOrNull() }
+    val directValue = result.firstClean(
+        "customContent",
+        "value",
+        "note",
+        "napomena",
+        "vrijednost",
+        "text",
+        "content",
+    ).toRoAssessmentNote()
+    val status = result.firstClean("status", "grade", "result").lowercase(Locale.getDefault())
+    val directMeets = result.firstNullableBoolean("meetsConditions", "satisfactory", "zadovoljava", "isOk")
+        ?: !status.contains("ne zadovoljava")
+    val fallbackItem = IsznrRoAssessmentItem(
+        registerIri = fallbackRegisterIri.trim(),
+        label = fallbackLabel.trim(),
+        customContent = directValue,
+        measuredValue = "",
+        meetsConditions = directMeets,
+    )
+    val item = (parsedItem ?: fallbackItem).let { candidate ->
+        candidate.copy(
+            registerIri = candidate.registerIri.ifBlank { fallbackRegisterIri.trim() },
+            label = candidate.label.ifBlank { fallbackLabel.trim() },
+            customContent = candidate.customContent.ifBlank { directValue }.toRoAssessmentNote(),
+            measuredValue = candidate.measuredValue.toRoAssessmentNote(),
+            meetsConditions = parsedItem?.meetsConditions ?: directMeets.takeIf { directValue.isNotBlank() } ?: fallbackMeetsConditions,
+        )
+    }
+    return WorkEquipmentAssessmentVoiceResult(
+        item = item,
+        message = result.firstClean("summary", "message")
+            .ifBlank { root.firstClean("nextStep", "message") }
+            .ifBlank { outputObject?.firstClean("summary", "message").orEmpty() },
+    )
+}
 
 private fun JSONObject.roIriList(vararg keys: String): List<String> =
     keys.flatMap { key -> optJSONArray(key).toStringList("registerIri", "iri", "@id", "id", "value", "label", "name") }

@@ -270,6 +270,7 @@ import com.safenexus.app.data.SprVoiceAiRow
 import com.safenexus.app.data.isClientPortalUser
 import com.safenexus.app.data.WorkOrder
 import com.safenexus.app.data.WorkOrderCompanyOption
+import com.safenexus.app.data.WorkEquipmentAssessmentVoiceResult
 import com.safenexus.app.data.WorkEquipmentImageRecognitionResult
 import com.safenexus.app.data.WorkOrderCreateDraft
 import com.safenexus.app.data.WorkOrderDocumentationContext
@@ -2650,6 +2651,49 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun recognizeWorkEquipmentAssessmentItemFromText(
+        workOrder: WorkOrder,
+        equipment: IsznrManualWorkEquipment,
+        transcript: String,
+        sectionTitle: String,
+        itemLabel: String,
+        registerIri: String,
+        currentValue: String,
+        currentMeetsConditions: Boolean,
+        isStrojeviTemplate: Boolean,
+        onSuccess: (WorkEquipmentAssessmentVoiceResult) -> Unit,
+        onFailure: (String) -> Unit,
+    ) {
+        if (workOrder.id.isBlank()) {
+            onFailure("RN nema ispravan ID za NexAI tekst stavke.")
+            return
+        }
+        val cleanTranscript = transcript.trim()
+        if (cleanTranscript.isBlank()) {
+            onFailure("Izdiktiraj tekst za ovu stavku.")
+            return
+        }
+        viewModelScope.launch {
+            api.recognizeWorkEquipmentAssessmentItemFromText(
+                workOrder = workOrder,
+                equipment = equipment,
+                transcript = cleanTranscript,
+                sectionTitle = sectionTitle,
+                itemLabel = itemLabel,
+                registerIri = registerIri,
+                currentValue = currentValue,
+                currentMeetsConditions = currentMeetsConditions,
+                isStrojeviTemplate = isStrojeviTemplate,
+                modelTier = "fast",
+            )
+                .onSuccess(onSuccess)
+                .onFailure { error ->
+                    val message = error.message ?: "NexAI trenutno ne može obraditi ovu stavku."
+                    onFailure(message)
+                }
+        }
+    }
+
     fun prepareSprVoiceMeasurementRows(
         workOrder: WorkOrder,
         template: WorkOrderDocumentationTemplate,
@@ -3867,6 +3911,21 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     workOrder = workOrder,
                     equipment = equipment,
                     transcript = transcript,
+                    isStrojeviTemplate = isStrojeviTemplate,
+                    onSuccess = onSuccess,
+                    onFailure = onFailure,
+                )
+            },
+            onRecognizeWorkEquipmentAssessmentText = { equipment, transcript, sectionTitle, itemLabel, registerIri, currentValue, currentMeetsConditions, isStrojeviTemplate, onSuccess, onFailure ->
+                viewModel.recognizeWorkEquipmentAssessmentItemFromText(
+                    workOrder = workOrder,
+                    equipment = equipment,
+                    transcript = transcript,
+                    sectionTitle = sectionTitle,
+                    itemLabel = itemLabel,
+                    registerIri = registerIri,
+                    currentValue = currentValue,
+                    currentMeetsConditions = currentMeetsConditions,
                     isStrojeviTemplate = isStrojeviTemplate,
                     onSuccess = onSuccess,
                     onFailure = onFailure,
@@ -11236,6 +11295,18 @@ private fun DocumentationWorkEquipmentOptionList(
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
+    onRecognizeWorkEquipmentAssessmentText: (
+        IsznrManualWorkEquipment,
+        String,
+        String,
+        String,
+        String,
+        String,
+        Boolean,
+        Boolean,
+        (WorkEquipmentAssessmentVoiceResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
 ) {
     val today = remember { LocalDate.now() }
     var selectedFilter by remember(options) { mutableStateOf(DocumentationWorkEquipmentFilter.All) }
@@ -11510,6 +11581,20 @@ private fun DocumentationWorkEquipmentOptionList(
                     onRecognizeText = { equipmentForRecognition, transcript, isStrojeviTemplate, onSuccess, onFailure ->
                         onRecognizeWorkEquipmentText(equipmentForRecognition, transcript, isStrojeviTemplate, onSuccess, onFailure)
                     },
+                    onRecognizeAssessmentText = { equipmentForRecognition, transcript, sectionTitle, itemLabel, registerIri, currentValue, currentMeetsConditions, isStrojeviTemplate, onSuccess, onFailure ->
+                        onRecognizeWorkEquipmentAssessmentText(
+                            equipmentForRecognition,
+                            transcript,
+                            sectionTitle,
+                            itemLabel,
+                            registerIri,
+                            currentValue,
+                            currentMeetsConditions,
+                            isStrojeviTemplate,
+                            onSuccess,
+                            onFailure,
+                        )
+                    },
                     onCopyFrom = { sourceIndex, copyOptions ->
                         manualEquipments.getOrNull(sourceIndex)?.let { source ->
                             onManualEquipmentsChange(
@@ -11600,6 +11685,18 @@ private fun DocumentationEquipmentInspectionLocalList(
         String,
         Boolean,
         (WorkEquipmentImageRecognitionResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
+    onRecognizeWorkEquipmentAssessmentText: (
+        IsznrManualWorkEquipment,
+        String,
+        String,
+        String,
+        String,
+        String,
+        Boolean,
+        Boolean,
+        (WorkEquipmentAssessmentVoiceResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
 ) {
@@ -11720,6 +11817,7 @@ private fun DocumentationEquipmentInspectionLocalList(
                 },
                     onRecognizeImages = onRecognizeWorkEquipmentImages,
                     onRecognizeText = onRecognizeWorkEquipmentText,
+                    onRecognizeAssessmentText = onRecognizeWorkEquipmentAssessmentText,
                     onCopyFrom = { sourceIndex, copyOptions ->
                         manualEquipments.getOrNull(sourceIndex)?.let { source ->
                             onManualEquipmentsChange(
@@ -13966,6 +14064,18 @@ private fun ManualWorkEquipmentInlineEditor(
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
+    onRecognizeAssessmentText: (
+        IsznrManualWorkEquipment,
+        String,
+        String,
+        String,
+        String,
+        String,
+        Boolean,
+        Boolean,
+        (WorkEquipmentAssessmentVoiceResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
     onCopyFrom: (Int, WorkEquipmentColumnCopyOptions) -> Unit = { _, _ -> },
     onEquipmentChange: (IsznrManualWorkEquipment) -> Unit,
 ) {
@@ -14908,22 +15018,33 @@ private fun ManualWorkEquipmentInlineEditor(
             if (isStrojeviTemplate) {
                 ManualStrojeviSequentialInspectionEditor(
                     title = "Ispitne stavke",
+                    equipment = equipment,
                     items = equipment.mechanicalItems,
                     onItemsChange = { onEquipmentChange(equipment.copy(mechanicalItems = it)) },
                     enabled = enabled,
+                    isStrojeviTemplate = isStrojeviTemplate,
+                    onRecognizeAssessmentText = onRecognizeAssessmentText,
                 )
             } else {
                 ManualWorkEquipmentAssessmentEditor(
                     title = "Strojarski dio",
+                    equipment = equipment,
                     options = mechanicalOptions,
                     items = equipment.mechanicalItems,
                     onItemsChange = { onEquipmentChange(equipment.copy(mechanicalItems = it)) },
+                    enabled = enabled,
+                    isStrojeviTemplate = isStrojeviTemplate,
+                    onRecognizeAssessmentText = onRecognizeAssessmentText,
                 )
                 ManualWorkEquipmentAssessmentEditor(
                     title = "Elektro dio",
+                    equipment = equipment,
                     options = electricalOptions,
                     items = equipment.electricalItems,
                     onItemsChange = { onEquipmentChange(equipment.copy(electricalItems = it)) },
+                    enabled = enabled,
+                    isStrojeviTemplate = isStrojeviTemplate,
+                    onRecognizeAssessmentText = onRecognizeAssessmentText,
                 )
             }
 
@@ -15680,20 +15801,32 @@ private fun ManualWorkEquipmentDialog(
                     2 -> {
                         ManualWorkEquipmentAssessmentEditor(
                             title = "Strojarski dio",
+                            equipment = equipment,
                             options = mechanicalOptions,
                             items = mechanicalItems,
                             onItemsChange = { nextItems ->
                                 mechanicalItems.clear()
                                 mechanicalItems.addAll(nextItems)
                             },
+                            enabled = true,
+                            isStrojeviTemplate = false,
+                            onRecognizeAssessmentText = { _, _, _, _, _, _, _, _, _, onFailure ->
+                                onFailure("NexAI diktat je dostupan u glavnom RO editoru.")
+                            },
                         )
                         ManualWorkEquipmentAssessmentEditor(
                             title = "Elektro dio",
+                            equipment = equipment,
                             options = electricalOptions,
                             items = electricalItems,
                             onItemsChange = { nextItems ->
                                 electricalItems.clear()
                                 electricalItems.addAll(nextItems)
+                            },
+                            enabled = true,
+                            isStrojeviTemplate = false,
+                            onRecognizeAssessmentText = { _, _, _, _, _, _, _, _, _, onFailure ->
+                                onFailure("NexAI diktat je dostupan u glavnom RO editoru.")
                             },
                         )
                     }
@@ -15849,6 +15982,15 @@ private fun IsznrRoAssessmentItem.previewTitle(): String =
     label.ifBlank {
         registerIri.substringAfterLast('/').takeIf { it.isNotBlank() }?.let { "Stavka $it" }.orEmpty()
     }.ifBlank { "Stavka" }
+
+private data class WorkEquipmentAssessmentVoiceTarget(
+    val key: String,
+    val sectionTitle: String,
+    val itemLabel: String,
+    val registerIri: String,
+    val currentValue: String,
+    val currentMeetsConditions: Boolean,
+)
 
 private fun workEquipmentRiskPreviewLabel(
     iri: String,
@@ -16041,13 +16183,116 @@ private fun WorkEquipmentRecognitionRiskSection(
 @Composable
 private fun ManualStrojeviSequentialInspectionEditor(
     title: String,
+    equipment: IsznrManualWorkEquipment,
     items: List<IsznrRoAssessmentItem>,
     onItemsChange: (List<IsznrRoAssessmentItem>) -> Unit,
     enabled: Boolean,
+    isStrojeviTemplate: Boolean,
+    onRecognizeAssessmentText: (
+        IsznrManualWorkEquipment,
+        String,
+        String,
+        String,
+        String,
+        String,
+        Boolean,
+        Boolean,
+        (WorkEquipmentAssessmentVoiceResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
 ) {
+    val context = LocalContext.current
+    var voiceTarget by remember { mutableStateOf<WorkEquipmentAssessmentVoiceTarget?>(null) }
+    var voiceTargetIndex by remember { mutableStateOf(-1) }
+    var voiceLaunchPending by remember { mutableStateOf(false) }
+    var voiceProcessingKey by remember { mutableStateOf("") }
+    var voiceMessage by remember { mutableStateOf("") }
+    val voicePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            voiceLaunchPending = true
+        } else {
+            voiceMessage = "Mikrofon nije dopušten."
+        }
+    }
+
     fun updateItem(index: Int, item: IsznrRoAssessmentItem) {
         val baseItems = if (items.isEmpty()) listOf(IsznrRoAssessmentItem()) else items
         onItemsChange(baseItems.mapIndexed { itemIndex, current -> if (itemIndex == index) item else current })
+    }
+
+    fun launchVoiceFor(index: Int, item: IsznrRoAssessmentItem) {
+        val key = "strojevi-$index"
+        voiceTarget = WorkEquipmentAssessmentVoiceTarget(
+            key = key,
+            sectionTitle = title,
+            itemLabel = "Stavka ${index + 1}",
+            registerIri = item.registerIri,
+            currentValue = item.noteValue(),
+            currentMeetsConditions = item.meetsConditions,
+        )
+        voiceTargetIndex = index
+        voiceMessage = ""
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            voiceLaunchPending = true
+        } else {
+            voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    val voiceLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val target = voiceTarget
+        val targetIndex = voiceTargetIndex
+        voiceLaunchPending = false
+        if (result.resultCode != Activity.RESULT_OK || target == null || targetIndex < 0) return@rememberLauncherForActivityResult
+        val spoken = result.data
+            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull()
+            .orEmpty()
+            .trim()
+        if (spoken.isBlank()) return@rememberLauncherForActivityResult
+        voiceProcessingKey = target.key
+        voiceMessage = "NexAI obrađuje diktat..."
+        onRecognizeAssessmentText(
+            equipment,
+            spoken,
+            target.sectionTitle,
+            target.itemLabel,
+            target.registerIri,
+            target.currentValue,
+            target.currentMeetsConditions,
+            isStrojeviTemplate,
+            { aiResult ->
+                val current = (if (items.isEmpty()) listOf(IsznrRoAssessmentItem()) else items).getOrNull(targetIndex) ?: IsznrRoAssessmentItem()
+                updateItem(
+                    targetIndex,
+                    current.copy(
+                        label = "",
+                        customContent = normalizeRoAssessmentNote(aiResult.item.noteValue().ifBlank { aiResult.item.customContent }),
+                        measuredValue = "",
+                        meetsConditions = aiResult.item.meetsConditions,
+                    ),
+                )
+                voiceMessage = aiResult.message.ifBlank { "NexAI je popunio stavku ${targetIndex + 1}." }
+                voiceProcessingKey = ""
+            },
+            { message ->
+                voiceMessage = message
+                voiceProcessingKey = ""
+            },
+        )
+    }
+    LaunchedEffect(voiceLaunchPending, voiceTarget) {
+        val target = voiceTarget
+        if (!voiceLaunchPending || target == null) return@LaunchedEffect
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hr-HR")
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, "Diktiraj ${target.itemLabel.lowercase(Locale.getDefault())}")
+        runCatching { voiceLauncher.launch(intent) }
+            .onFailure {
+                voiceMessage = "Govorni unos nije dostupan na ovom uređaju."
+                voiceLaunchPending = false
+            }
     }
 
     LaunchedEffect(items) {
@@ -16085,8 +16330,17 @@ private fun ManualStrojeviSequentialInspectionEditor(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
             )
+            if (voiceMessage.isNotBlank()) {
+                Text(
+                    voiceMessage,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (voiceProcessingKey.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                    fontWeight = FontWeight.Bold,
+                )
+            }
             visibleItems.forEachIndexed { index, item ->
                 val noteValue = item.noteValue()
+                val voiceKey = "strojevi-$index"
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
@@ -16113,6 +16367,20 @@ private fun ManualStrojeviSequentialInspectionEditor(
                                 }
                             }
                             Spacer(modifier = Modifier.weight(1f))
+                            IconButton(
+                                onClick = { launchVoiceFor(index, item) },
+                                enabled = enabled && voiceProcessingKey != voiceKey,
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
+                            ) {
+                                if (voiceProcessingKey == voiceKey) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(Icons.Rounded.Mic, contentDescription = "Diktiraj stavku", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                }
+                            }
                             StrojeviStatusIconButton(
                                 selected = item.meetsConditions,
                                 icon = Icons.Rounded.CheckCircle,
@@ -16210,14 +16478,107 @@ private fun StrojeviStatusIconButton(
 @Composable
 private fun ManualWorkEquipmentAssessmentEditor(
     title: String,
+    equipment: IsznrManualWorkEquipment,
     options: List<WorkOrderDocumentationOption>,
     items: List<IsznrRoAssessmentItem>,
     onItemsChange: (List<IsznrRoAssessmentItem>) -> Unit,
+    enabled: Boolean,
+    isStrojeviTemplate: Boolean,
+    onRecognizeAssessmentText: (
+        IsznrManualWorkEquipment,
+        String,
+        String,
+        String,
+        String,
+        String,
+        Boolean,
+        Boolean,
+        (WorkEquipmentAssessmentVoiceResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
 ) {
+    val context = LocalContext.current
     var customContent by remember { mutableStateOf("") }
     var customMeasuredValue by remember { mutableStateOf("") }
     var customMeetsConditions by remember { mutableStateOf(true) }
+    var voiceTarget by remember { mutableStateOf<WorkEquipmentAssessmentVoiceTarget?>(null) }
+    var voiceLaunchPending by remember { mutableStateOf(false) }
+    var voiceProcessingKey by remember { mutableStateOf("") }
+    var voiceMessage by remember { mutableStateOf("") }
     val customItems = items.filter { item -> options.none { option -> roAssessmentItemMatchesOption(item, option) } }
+    val voicePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            voiceLaunchPending = true
+        } else {
+            voiceMessage = "Mikrofon nije dopušten."
+        }
+    }
+
+    fun launchVoiceFor(target: WorkEquipmentAssessmentVoiceTarget) {
+        voiceTarget = target
+        voiceMessage = ""
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            voiceLaunchPending = true
+        } else {
+            voicePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    fun applyVoiceResult(target: WorkEquipmentAssessmentVoiceTarget, result: WorkEquipmentAssessmentVoiceResult) {
+        val nextItem = result.item.copy(
+            registerIri = target.registerIri,
+            label = target.itemLabel,
+            customContent = normalizeRoAssessmentNote(result.item.noteValue().ifBlank { result.item.customContent }),
+            measuredValue = "",
+        )
+        onItemsChange(upsertRoAssessmentItem(items, nextItem))
+        voiceMessage = result.message.ifBlank { "NexAI je popunio stavku \"${target.itemLabel}\"." }
+    }
+
+    val voiceLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val target = voiceTarget
+        voiceLaunchPending = false
+        if (result.resultCode != Activity.RESULT_OK || target == null) return@rememberLauncherForActivityResult
+        val spoken = result.data
+            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull()
+            .orEmpty()
+            .trim()
+        if (spoken.isBlank()) return@rememberLauncherForActivityResult
+        voiceProcessingKey = target.key
+        voiceMessage = "NexAI obrađuje diktat..."
+        onRecognizeAssessmentText(
+            equipment,
+            spoken,
+            target.sectionTitle,
+            target.itemLabel,
+            target.registerIri,
+            target.currentValue,
+            target.currentMeetsConditions,
+            isStrojeviTemplate,
+            { aiResult ->
+                applyVoiceResult(target, aiResult)
+                voiceProcessingKey = ""
+            },
+            { message ->
+                voiceMessage = message
+                voiceProcessingKey = ""
+            },
+        )
+    }
+    LaunchedEffect(voiceLaunchPending, voiceTarget) {
+        val target = voiceTarget
+        if (!voiceLaunchPending || target == null) return@LaunchedEffect
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hr-HR")
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, "Diktiraj vrijednost za: ${target.itemLabel}")
+        runCatching { voiceLauncher.launch(intent) }
+            .onFailure {
+                voiceMessage = "Govorni unos nije dostupan na ovom uređaju."
+                voiceLaunchPending = false
+            }
+    }
 
     ManualWorkEquipmentSectionTitle(title)
     Surface(
@@ -16238,10 +16599,34 @@ private fun ManualWorkEquipmentAssessmentEditor(
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                 )
             }
+            if (voiceMessage.isNotBlank()) {
+                Text(
+                    voiceMessage,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (voiceProcessingKey.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                    fontWeight = FontWeight.Bold,
+                )
+            }
             options.forEach { option ->
+                val existingItem = items.firstOrNull { roAssessmentItemMatchesOption(it, option) }
+                val voiceKey = option.id.ifBlank { option.label }
                 ManualWorkEquipmentAssessmentRow(
                     option = option,
-                    item = items.firstOrNull { roAssessmentItemMatchesOption(it, option) },
+                    item = existingItem,
+                    enabled = enabled,
+                    voiceLoading = voiceProcessingKey == voiceKey,
+                    onVoiceClick = {
+                        launchVoiceFor(
+                            WorkEquipmentAssessmentVoiceTarget(
+                                key = voiceKey,
+                                sectionTitle = title,
+                                itemLabel = option.label,
+                                registerIri = option.id,
+                                currentValue = existingItem?.noteValue().orEmpty(),
+                                currentMeetsConditions = existingItem?.meetsConditions ?: true,
+                            ),
+                        )
+                    },
                     onUpsert = { nextItem -> onItemsChange(upsertRoAssessmentItem(items, nextItem)) },
                     onRemove = { onItemsChange(items.filterNot { roAssessmentItemMatchesOption(it, option) }) },
                 )
@@ -16253,6 +16638,7 @@ private fun ManualWorkEquipmentAssessmentEditor(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text("Naziv dodatne stavke") },
                 singleLine = true,
+                enabled = enabled,
                 shape = RoundedCornerShape(14.dp),
             )
             OutlinedTextField(
@@ -16265,6 +16651,7 @@ private fun ManualWorkEquipmentAssessmentEditor(
                 placeholder = { Text("Upiši vrijednost ili kratku napomenu") },
                 minLines = 3,
                 maxLines = 6,
+                enabled = enabled,
                 shape = RoundedCornerShape(14.dp),
             )
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -16272,11 +16659,13 @@ private fun ManualWorkEquipmentAssessmentEditor(
                     selected = customMeetsConditions,
                     onClick = { customMeetsConditions = true },
                     label = { Text("Zadovoljava") },
+                    enabled = enabled,
                 )
                 FilterChip(
                     selected = !customMeetsConditions,
                     onClick = { customMeetsConditions = false },
                     label = { Text("Ne zadovoljava") },
+                    enabled = enabled,
                 )
                 Button(
                     onClick = {
@@ -16291,7 +16680,7 @@ private fun ManualWorkEquipmentAssessmentEditor(
                         customMeasuredValue = ""
                         customMeetsConditions = true
                     },
-                    enabled = customContent.isNotBlank() && customMeasuredValue.isNotBlank(),
+                    enabled = enabled && customContent.isNotBlank() && customMeasuredValue.isNotBlank(),
                     shape = RoundedCornerShape(14.dp),
                 ) {
                     Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -16322,6 +16711,9 @@ private fun ManualWorkEquipmentAssessmentEditor(
 private fun ManualWorkEquipmentAssessmentRow(
     option: WorkOrderDocumentationOption,
     item: IsznrRoAssessmentItem?,
+    enabled: Boolean,
+    voiceLoading: Boolean,
+    onVoiceClick: () -> Unit,
     onUpsert: (IsznrRoAssessmentItem) -> Unit,
     onRemove: () -> Unit,
 ) {
@@ -16369,6 +16761,24 @@ private fun ManualWorkEquipmentAssessmentRow(
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 IconButton(
+                    onClick = onVoiceClick,
+                    enabled = enabled && !voiceLoading,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
+                ) {
+                    if (voiceLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(
+                            Icons.Rounded.Mic,
+                            contentDescription = "Diktiraj i obradi NexAI",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+                IconButton(
                     onClick = {
                         val nextMeetsConditions = item?.meetsConditions != true
                         noteEditorOpen = true
@@ -16380,6 +16790,7 @@ private fun ManualWorkEquipmentAssessmentRow(
                             ),
                         )
                     },
+                    enabled = enabled,
                     modifier = Modifier
                         .size(42.dp)
                         .clip(CircleShape)
@@ -16421,6 +16832,7 @@ private fun ManualWorkEquipmentAssessmentRow(
                     placeholder = { Text("Upiši vrijednost ili kratku napomenu") },
                     minLines = 4,
                     maxLines = 7,
+                    enabled = enabled,
                     shape = RoundedCornerShape(16.dp),
                 )
                 Text(
@@ -16442,6 +16854,7 @@ private fun ManualWorkEquipmentAssessmentRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 58.dp),
+                    enabled = enabled,
                     shape = RoundedCornerShape(16.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                 ) {
@@ -16454,6 +16867,7 @@ private fun ManualWorkEquipmentAssessmentRow(
                         noteEditorOpen = false
                         onRemove()
                     },
+                    enabled = enabled,
                     contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
                 ) {
                     Text("Očisti stavku", style = MaterialTheme.typography.labelSmall)
@@ -30246,6 +30660,18 @@ private fun WorkOrderDocumentationWizardDialog(
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
+    onRecognizeWorkEquipmentAssessmentText: (
+        IsznrManualWorkEquipment,
+        String,
+        String,
+        String,
+        String,
+        String,
+        Boolean,
+        Boolean,
+        (WorkEquipmentAssessmentVoiceResult) -> Unit,
+        (String) -> Unit,
+    ) -> Unit,
     onSubmitIsznrWorkEquipment: (List<String>, List<IsznrManualWorkEquipment>) -> Unit,
     onSubmitIsznrPhysicalFactors: (List<String>, IsznrManualPhysicalFactors) -> Unit,
     onConfirmTraining: (String, List<String>, List<String>, Boolean, Boolean) -> Unit,
@@ -32251,6 +32677,7 @@ private fun WorkOrderDocumentationWizardDialog(
                             onManualEquipmentsChange = { manualEquipmentInspectionEquipments = it },
                             onRecognizeWorkEquipmentImages = onRecognizeWorkEquipmentImages,
                             onRecognizeWorkEquipmentText = onRecognizeWorkEquipmentText,
+                            onRecognizeWorkEquipmentAssessmentText = onRecognizeWorkEquipmentAssessmentText,
                         )
                     }
                 } else if (workEquipmentFlowSelected) {
@@ -32275,6 +32702,7 @@ private fun WorkOrderDocumentationWizardDialog(
                             onRecognizeWorkEquipmentImages = onRecognizeWorkEquipmentImages,
                             onRecognizeWorkEquipmentBatchImages = onRecognizeWorkEquipmentBatchImages,
                             onRecognizeWorkEquipmentText = onRecognizeWorkEquipmentText,
+                            onRecognizeWorkEquipmentAssessmentText = onRecognizeWorkEquipmentAssessmentText,
                         )
                     }
                 } else if (physicalFactorsFlowSelected) {

@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.390.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.391.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -8316,6 +8316,16 @@ function buildOpenAiPurposeInstructions(body = {}) {
   const textMode = purpose === "mobile-work-equipment-text-recognition";
   const templateMode = !textMode && ["template", "profile", "profil", "fast", "quick", "brzo"].includes(recognitionMode);
 
+  if (textMode && mode === "assessment-item") {
+    return [
+      "Ovo je ultra brzi diktat za jednu stavku RO/STROJEVI zapisnika. Koristi samo context.transcript, context.sectionTitle, context.itemLabel i context.currentValue.",
+      "Vrati iskljucivo JSON u expectedJsonShape obliku. Ne mijenjaj naziv opreme, ne dodaj druge stavke i ne popunjavaj cijeli zapisnik.",
+      "customContent mora biti gotova kratka napomena/vrijednost do 255 znakova, strucno i jasno, bez uvoda poput 'korisnik je rekao' ili 'na fotografiji se vidi'.",
+      "Ako diktat znaci uredno, ispravno, zadovoljava, u funkciji ili nema nedostataka, postavi meetsConditions=true. Ako znaci neispravno, osteceno, ne zadovoljava ili postoji nedostatak, postavi meetsConditions=false.",
+      "Ako je tekst nepotpun, ipak vrati najkorisniju kratku formulaciju iz izrecenog; ne vracaj prazno osim ako nema nikakvog tehnickog sadrzaja.",
+    ];
+  }
+
   return [
     textMode
       ? "Za mobile-work-equipment-text-recognition radi kao tehnicki asistent za radnu opremu koji strukturira diktirani ili upisani tekst, bez izmisljanja podataka koji nisu navedeni ili razumno zakljucivi iz teksta."
@@ -10620,7 +10630,9 @@ async function buildOpenAiLivePlan(body = {}, user = null) {
         content: buildOpenAiResponseInputContent(body, user, selectedModel),
       },
     ],
-    max_output_tokens: getOpenAiMaxOutputTokens(modelTier, serviceCode, body.files),
+    max_output_tokens: body?.purpose === "mobile-work-equipment-text-recognition" && body?.context?.mode === "assessment-item"
+      ? 700
+      : getOpenAiMaxOutputTokens(modelTier, serviceCode, body.files),
   };
 
   const requestStartedAt = Date.now();
