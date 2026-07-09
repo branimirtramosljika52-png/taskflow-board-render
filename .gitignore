@@ -14,5 +14,6 @@ android-app/local.properties
 android-app/captures
 assets/mobile/*.apk
 !assets/mobile/SafeNexus-0.1.382.apk
+!assets/mobile/SafeNexus-0.1.383.apk
 *-firebase-adminsdk-*.json
 firebase-service-account*.json
