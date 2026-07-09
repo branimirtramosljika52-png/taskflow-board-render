@@ -26451,13 +26451,21 @@ function getMobileDocumentRecordSortKey(record = {}) {
   return String(record?.updatedAt || record?.inspectionDate || record?.issuedDate || record?.createdAt || "");
 }
 
-function findLatestMobileDocumentRecordForTemplate(template = {}, workOrder = {}, scopedSnapshot = {}) {
+function hasMobileDocumentRecordMeaningfulFieldSheets(record = {}) {
+  const fieldSheets = record?.fieldSheets && typeof record.fieldSheets === "object" && !Array.isArray(record.fieldSheets)
+    ? record.fieldSheets
+    : {};
+  return Object.values(fieldSheets).some((sheet) => isMobileDocumentationMeasurementSheetFilled(sheet));
+}
+
+function findLatestMobileDocumentRecordForTemplate(template = {}, workOrder = {}, scopedSnapshot = {}, options = {}) {
   const companyId = normalizeInputValue(workOrder?.companyId);
   const locationId = normalizeInputValue(workOrder?.locationId);
   if (!locationId) {
     return null;
   }
   const records = Array.isArray(scopedSnapshot.documentRecords) ? scopedSnapshot.documentRecords : [];
+  const requireMeaningfulFieldSheets = options?.requireMeaningfulFieldSheets === true;
   return records
     .map((record) => ({
       record,
@@ -26471,7 +26479,8 @@ function findLatestMobileDocumentRecordForTemplate(template = {}, workOrder = {}
         && candidate.objectScore > 0
         && mobileDocumentRecordMatchesTemplateService(record, template)
         && (!companyId || normalizeInputValue(record?.companyId) === companyId)
-        && normalizeInputValue(record?.locationId) === locationId;
+        && normalizeInputValue(record?.locationId) === locationId
+        && (!requireMeaningfulFieldSheets || hasMobileDocumentRecordMeaningfulFieldSheets(record));
     })
     .sort((left, right) => (
       right.draftScore - left.draftScore
@@ -28559,12 +28568,23 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     const nativeTemplate = buildMobileNativeDocumentationTemplate(service, serviceIndex, workOrder, scopedSnapshot);
     if (nativeTemplate) {
       const latestRecord = findLatestMobileDocumentRecordForTemplate(nativeTemplate, workOrder, scopedSnapshot);
+      const latestMeasurementRecord = findLatestMobileDocumentRecordForTemplate(
+        nativeTemplate,
+        workOrder,
+        scopedSnapshot,
+        { requireMeaningfulFieldSheets: true },
+      );
       const dataSource = buildMobileDocumentTemplateDataSource(nativeTemplate, latestRecord);
       const presetDefaults = buildMobileDocumentationMeasurementPresetDefaults(nativeTemplate, workOrder, scopedSnapshot);
+      const measurementRecordDefaults = latestMeasurementRecord && latestMeasurementRecord !== latestRecord
+        ? buildMobileDocumentRecordWizardDefaults(latestMeasurementRecord, workOrder)
+        : {};
       const recordDefaults = buildMobileDocumentRecordWizardDefaults(latestRecord, workOrder);
       mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, presetDefaults, nativeTemplate);
+      mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, measurementRecordDefaults, nativeTemplate, { overwrite: true });
       mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, recordDefaults, nativeTemplate, { overwrite: true });
       let nativeContextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(null, presetDefaults, nativeTemplate);
+      nativeContextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(nativeContextDefaults, measurementRecordDefaults, nativeTemplate, { overwrite: true });
       nativeContextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(nativeContextDefaults, recordDefaults, nativeTemplate, { overwrite: true }) || recordDefaults;
       const contextNativeTemplate = applyMobileDocumentationDefaultSheetsToTemplate(nativeTemplate, nativeContextDefaults);
       const templateServiceKey = `${serviceIndex}::native::${nativeTemplate.serviceCode}`;
@@ -28590,12 +28610,23 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
       }
       seenTemplateKeys.add(templateServiceKey);
       const latestRecord = findLatestMobileDocumentRecordForTemplate(template, workOrder, scopedSnapshot);
+      const latestMeasurementRecord = findLatestMobileDocumentRecordForTemplate(
+        template,
+        workOrder,
+        scopedSnapshot,
+        { requireMeaningfulFieldSheets: true },
+      );
       const dataSource = buildMobileDocumentTemplateDataSource(template, latestRecord);
       const presetDefaults = buildMobileDocumentationMeasurementPresetDefaults(template, workOrder, scopedSnapshot);
+      const measurementRecordDefaults = latestMeasurementRecord && latestMeasurementRecord !== latestRecord
+        ? buildMobileDocumentRecordWizardDefaults(latestMeasurementRecord, workOrder)
+        : {};
       const recordDefaults = buildMobileDocumentRecordWizardDefaults(latestRecord, workOrder);
       let contextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(null, presetDefaults, template);
+      contextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(contextDefaults, measurementRecordDefaults, template, { overwrite: true });
       contextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(contextDefaults, recordDefaults, template, { overwrite: true }) || recordDefaults;
       mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, presetDefaults, template);
+      mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, measurementRecordDefaults, template, { overwrite: true });
       mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, recordDefaults, template, { overwrite: true });
       const common = normalizeMobileWorkOrderDocumentWizardInput(contextDefaults);
       const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, workOrder, service, scopedSnapshot, common);
