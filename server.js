@@ -24031,16 +24031,20 @@ function buildMobileDocumentTemplateFieldSheets(template = {}, workOrder = {}, s
 }
 
 function buildMobileDocumentTemplateMeasurementTableFieldSheets(template = {}, workOrder = {}, service = {}, scopedSnapshot = {}, common = {}, entry = {}) {
-  const serviceCode = normalizeMobileNativeMeasurementServiceCode(
+  const nativeServiceCode = normalizeMobileNativeMeasurementServiceCode(
     getMobileTemplateNativeDocumentationServiceCode(template)
       || getMobileDocumentTemplateServiceCode(service, Number(template?.serviceIndex) || 0)
       || template?.serviceCode,
-  ) || normalizeInputValue(template?.serviceCode || getMobileDocumentTemplateServiceCode(service, Number(template?.serviceIndex) || 0));
+  );
+  const hasTemplateMeasurementTables = Array.isArray(template?.measurementTables) && template.measurementTables.length > 0;
+  if (!nativeServiceCode && !hasTemplateMeasurementTables) {
+    return {};
+  }
   const measurementTables = buildMobileDocumentationMeasurementTables(
     entry && typeof entry === "object" && !Array.isArray(entry) ? entry : {},
     template,
     common,
-    serviceCode || "SPR",
+    nativeServiceCode,
   );
   const fieldSheets = {};
   (Array.isArray(measurementTables) ? measurementTables : []).forEach((table, index) => {
