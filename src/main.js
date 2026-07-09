@@ -134253,21 +134253,21 @@ function buildWorkOrderDocumentRoAiExpectedJsonShape() {
         groupStartIndex: 1,
         groupEndIndex: 3,
         groupingReason: "zašto te slike pripadaju istoj opremi",
-        assessmentRule: `Popuni samo relevantne stavke. Ako je moguće, vrati barem 12 strojarskih stavki. Uz svaku stavku obavezno ide customContent kao konkretna napomena/vrijednost do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova; measuredValue koristi samo za stvarno mjerenje. Ne piši "vidi se na fotografiji/slici", nego direktan nalaz.`,
+        assessmentRule: `Popuni samo relevantne stavke. Ako je moguće, vrati barem 12 strojarskih stavki. Napomena/vrijednost nije ručni uvjet ni IS ZNR blocker, ali AI preview ne smije vraćati prazne stavke: uz svaku vraćenu stavku upiši konkretan customContent do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova kada postoji siguran izvor; measuredValue koristi samo za stvarno mjerenje. Ne piši "vidi se na fotografiji/slici", nego direktan nalaz.`,
         verificationRule: "Ako bi u customContent napisao da nešto treba provjeriti/potvrditi/utvrditi, nemoj vratiti tu stavku kao nalaz. Umjesto toga dodaj pitanje u verificationQuestions. Ako je nalaz siguran, napiši ga kao činjenicu bez pozivanja na fotografiju.",
         verificationQuestions: ["pitanje za korisnika kada nalaz treba funkcionalnu provjeru ili ručnu potvrdu"],
         mechanicalItems: [{
           registerIri: "IRI iz šifrarnika ili prazno ako nije siguran",
           label: "naziv relevantne strojarske stavke",
           meetsConditions: 1,
-          customContent: "obavezna konkretna napomena do 255 znakova, npr. Uključivanje je izvedeno ključem; upravljanje ručicama i volanom.",
+          customContent: "konkretna napomena do 255 znakova kada postoji siguran izvor, npr. Uključivanje je izvedeno ključem; upravljanje ručicama i volanom.",
           measuredValue: "izmjerena vrijednost ako postoji",
         }],
         electricalItems: [{
           registerIri: "IRI iz šifrarnika ili prazno ako nije siguran",
           label: "naziv relevantne elektro stavke",
           meetsConditions: 1,
-          customContent: "obavezna konkretna napomena do 255 znakova, npr. Priključni kabel i utikač su neoštećeni.",
+          customContent: "konkretna napomena do 255 znakova kada postoji siguran izvor, npr. Priključni kabel i utikač su neoštećeni.",
           measuredValue: "izmjerena vrijednost ako postoji",
         }],
         hazardRegisterIris: ["IRI opasnosti iz hazard_registers"],
@@ -134311,7 +134311,7 @@ function buildWorkOrderDocumentRoAiContext(workOrder = {}, entry = {}) {
       : "Ovo je WEB upload za jednu radnu opremu. Sve dodane slike/PDF tretiraj kao podatke istog stroja, osim ako dokument izričito navodi drugu opremu.",
     fields: WORK_EQUIPMENT_AI_FIELD_DEFINITIONS,
     registers: getWorkEquipmentAiRegisterPromptGroups(entry),
-    assessmentInstruction: `RO AI popunjava strojarski dio, elektro dio, opasnosti, štetnosti i napore iz slika/PDF-a. Ne smije mehanički popuniti sve stavke. Biraj stavke iz registers i poštuj aiInstruction uz svaku stavku. Vrati samo relevantne stavke za prepoznatu opremu, ali za strojarski dio ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Svaka vraćena strojarska/elektro stavka mora imati customContent: konkretnu napomenu/vrijednost do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova; measuredValue koristi samo ako postoji stvarno mjerenje. Ne vraćaj stavku bez napomene. U customContent ne smiješ pisati "treba provjeriti", "treba potvrditi", "potrebno je utvrditi", "za ručnu provjeru", "vidi se na fotografiji", "na slici se vidi" ni slične nesigurne ili izvorne formulacije. Kada je nalaz siguran, napiši ga direktno kao činjenicu. Kada je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj tu stavku vratiti kao gotov nalaz. Primjeri gotovog nalaza: "Uključivanje je izvedeno ključem.", "Upravljanje je pomoću ručica i volana.", "Priključni kabel i utikač su neoštećeni." Elektro dio popuni samo kada postoje električna priključna oprema, napajanje, izolacija, kabeli, sklopke ili drugi relevantni elektro rizici. Prve dvije slike grupe tretiraj kao sliku stroja i sliku pločice te ih vrati kroz imageIndexes/sourceFileNames da uđu u zapisnik kao upload.`,
+    assessmentInstruction: `RO AI popunjava strojarski dio, elektro dio, opasnosti, štetnosti i napore iz slika/PDF-a. Ne smije mehanički popuniti sve stavke. Biraj stavke iz registers i poštuj aiInstruction uz svaku stavku. Ako je profil odabran ili prepoznat, koristi profiles[].registerInstructions kao više primjera/uputa po strojarskoj i elektro stavci. Vrati samo relevantne stavke za prepoznatu opremu, ali za strojarski dio ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Napomena/vrijednost nije ručni uvjet ni IS ZNR blocker, ali AI preview ne smije vraćati prazne stavke: svaka vraćena strojarska/elektro stavka treba imati konkretan customContent do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova kada postoji siguran izvor; measuredValue koristi samo ako postoji stvarno mjerenje. U customContent ne smiješ pisati "treba provjeriti", "treba potvrditi", "potrebno je utvrditi", "za ručnu provjeru", "vidi se na fotografiji", "na slici se vidi" ni slične nesigurne ili izvorne formulacije. Kada je nalaz siguran, napiši ga direktno kao činjenicu. Kada je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj tu stavku vratiti kao gotov nalaz. Primjeri gotovog nalaza: "Uključivanje je izvedeno ključem.", "Upravljanje je pomoću ručica i volana.", "Priključni kabel i utikač su neoštećeni." Elektro dio popuni samo kada postoje električna priključna oprema, napajanje, izolacija, kabeli, sklopke ili drugi relevantni elektro rizici. Prve dvije slike grupe tretiraj kao sliku stroja i sliku pločice te ih vrati kroz imageIndexes/sourceFileNames da uđu u zapisnik kao upload.`,
     existingEquipment: (Array.isArray(entry.items) ? entry.items : []).slice(0, 80).map((item) => ({
       id: String(item.id || ""),
       recordNumber: String(item.recordNumber || ""),
@@ -165948,18 +165948,18 @@ function buildWorkEquipmentAiRegisterDefaultInstruction(kind = "mechanical", ite
       `Stavka: ${label}.`,
       rule.instruction,
       "NexAI ju smije predložiti samo ako postoji veza s vrstom opreme, fotografijom, natpisnom pločicom, starim zapisnikom ili dokumentom.",
-      `customContent je obavezan i ne smije biti prazan; napiši jednu konkretnu napomenu/vrijednost do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova, npr. kako je izvedeno uključivanje, upravljanje, zaštita, oznaka ili stanje opreme.`,
+      `Napomena/vrijednost nije ručni uvjet ni IS ZNR blocker, ali AI preview ne smije vraćati prazne stavke. Kada ima siguran izvor, napiši jedan konkretan customContent do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova, npr. kako je izvedeno uključivanje, upravljanje, zaštita, oznaka ili stanje opreme.`,
       "U customContent ne smiješ pisati 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi', 'vidi se na fotografiji', 'na slici se vidi' niti slične nesigurne ili izvorne formulacije. Ako nešto treba korisnik potvrditi, ne vraćaj tu stavku kao nalaz nego dodaj pitanje u verificationQuestions.",
       "Ako postoji stvarno mjerenje, upiši ga u measuredValue, ali customContent svejedno mora objasniti nalaz.",
       "Ako je stavka relevantna i nema vidljivih nedostataka, meetsConditions je true; ako je vidljiv nedostatak, meetsConditions je false i napiši razlog.",
     ].filter(Boolean).join(" "),
-    mustInclude: [rule.mustInclude, riskRegister ? "jasan dokaz zasto se IRI smije odabrati" : "konkretna napomena/vrijednost za ovu stavku"].filter(Boolean).join("; "),
+    mustInclude: [rule.mustInclude, riskRegister ? "jasan dokaz zasto se IRI smije odabrati" : "konkretna napomena/vrijednost za ovu stavku kada postoji siguran izvor"].filter(Boolean).join("; "),
     avoid: rule.avoid,
     style: "professional",
     confidenceRequired: normalizedKind === "electrical" ? "high" : "medium",
     textLength: riskRegister
       ? "Vrati samo IRI odabir za ovu rizicnu stavku; bez opisnog teksta osim kratkog pitanja ako nisi siguran."
-      : `customContent: 1 konkretna rečenica do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova; measuredValue samo za stvarno mjerenje.`,
+      : `customContent: 1 konkretna rečenica do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova kada postoji siguran izvor; measuredValue samo za stvarno mjerenje.`,
     fallbackValue: riskRegister
       ? "Ako nema dovoljno dokaza, ne odabiri ovu rizicnu stavku; dodaj kratko pitanje u verificationQuestions."
       : "Ako nema dovoljno dokaza, ne predlaži ovu stavku kao nalaz; dodaj kratko pitanje u verificationQuestions.",
@@ -166154,11 +166154,26 @@ function normalizeWorkEquipmentAiProfileVariants(value = []) {
     .filter(hasWorkEquipmentAiProfileVariant);
 }
 
+function normalizeWorkEquipmentAiProfileRegisterInstructions(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([key, text]) => [
+        String(key || "").trim(),
+        String(text || "").trim().slice(0, 2000),
+      ])
+      .filter(([key, text]) => key && text),
+  );
+}
+
 function normalizeWorkEquipmentAiProfile(profile = {}, index = 0) {
   const source = profile && typeof profile === "object" ? profile : {};
   const id = String(source.id || "").trim() || createClientSideId(`ro-ai-profile-${index + 1}`);
   const fieldDefaults = source.fieldDefaults && typeof source.fieldDefaults === "object" ? source.fieldDefaults : {};
   const registerDefaults = source.registerDefaults && typeof source.registerDefaults === "object" ? source.registerDefaults : {};
+  const registerInstructions = normalizeWorkEquipmentAiProfileRegisterInstructions(
+    source.registerInstructions || source.registryInstructions || source.itemInstructions,
+  );
   const sentenceBank = normalizeWorkEquipmentAiSentenceBank(source.sentenceBank || source.commonSentences || source.sentences);
   return {
     id,
@@ -166185,6 +166200,7 @@ function normalizeWorkEquipmentAiProfile(profile = {}, index = 0) {
       harmfulnesses: normalizeAiConfigListLocal(registerDefaults.harmfulnesses || source.harmfulnessRegisterIris, 80),
       strains: normalizeAiConfigListLocal(registerDefaults.strains || source.strainRegisterIris, 80),
     },
+    registerInstructions,
   };
 }
 
@@ -166202,6 +166218,7 @@ function hasWorkEquipmentAiProfile(profile = {}) {
     || normalized.variants.length
     || Object.values(normalized.fieldDefaults).some(Boolean)
     || Object.values(normalized.registerDefaults).some((list) => list.length > 0)
+    || Object.values(normalized.registerInstructions).some(Boolean)
   );
 }
 
@@ -166303,7 +166320,7 @@ function createDefaultWorkEquipmentAiProfiles() {
       name: "Kompresor",
       aliases: ["kompresor", "compressor", "atlas copco", "kaeser", "fini", "boge"],
       generalInstruction: "Prepoznaj kompresor prema spremniku, tlačnim vodovima, manometru, sigurnosnom ventilu, motoru, kućištu ili natpisnoj pločici.",
-      breakdownInstruction: "Naglasak je na tlaku, sigurnosnom ventilu, manometru, curenju zraka/ulja, buci, vibracijama, ventilaciji, priključku na električnu mrežu i dokumentaciji. Svaka stavka mora imati kratku konkretnu napomenu.",
+      breakdownInstruction: "Naglasak je na tlaku, sigurnosnom ventilu, manometru, curenju zraka/ulja, buci, vibracijama, ventilaciji, priključku na električnu mrežu i dokumentaciji. AI neka vraća samo stavke za koje može napisati kratku konkretnu napomenu.",
       appliesWhen: "Koristi za stacionarne i mobilne kompresore te tlačnu opremu s kompresorskim sklopom.",
       registerDefaults: {
         mechanical: [1, 2, 3, 6, 7, 8, 9, 10, 12, 13, 14, 15, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 29, 30, 31, 32].map((id) => `/api/v3/ro_mechanical_engineering_registers/${id}`),
@@ -168405,6 +168422,13 @@ function collectSettingsWorkEquipmentAiProfileFromNode(node = null, index = 0) {
       registerDefaults[bucket].push(input.value || "");
     }
   });
+  const registerInstructions = {};
+  node.querySelectorAll("[data-ro-ai-profile-register-instruction]").forEach((input) => {
+    const key = String(input.dataset.roAiProfileRegisterInstruction || "").trim();
+    if (key) {
+      registerInstructions[key] = input.value || "";
+    }
+  });
   const sentenceBank = {};
   node.querySelectorAll("[data-ro-ai-profile-sentence]").forEach((input) => {
     const key = String(input.dataset.roAiProfileSentence || "").trim();
@@ -168449,6 +168473,7 @@ function collectSettingsWorkEquipmentAiProfileFromNode(node = null, index = 0) {
     variants,
     fieldDefaults,
     registerDefaults,
+    registerInstructions,
   }, index);
 }
 
@@ -168487,6 +168512,7 @@ function renderSettingsWorkEquipmentAiProfileRegisterPicker(profile = {}, canMan
       return "";
     }
     const selected = new Set(normalized.registerDefaults[bucket.key] || []);
+    const supportsItemInstruction = bucket.key === "mechanical" || bucket.key === "electrical";
     return `
       <section class="settings-work-equipment-ai-register-picker">
         <div class="settings-work-equipment-ai-group-head">
@@ -168499,11 +168525,23 @@ function renderSettingsWorkEquipmentAiProfileRegisterPicker(profile = {}, canMan
             if (!value) {
               return "";
             }
+            const itemInstruction = normalized.registerInstructions[value] || "";
             return `
-              <label class="settings-work-equipment-ai-register-choice">
-                <input type="checkbox" data-ro-ai-profile-register-default="${escapeHtml(bucket.key)}" value="${escapeHtml(value)}"${selected.has(value) ? " checked" : ""} ${canManage ? "" : "disabled"} />
-                <span>${escapeHtml(getWorkEquipmentAiRegisterItemLabel(item, bucket.label))}</span>
-              </label>
+              <div class="settings-work-equipment-ai-register-choice-wrap">
+                <label class="settings-work-equipment-ai-register-choice">
+                  <input type="checkbox" data-ro-ai-profile-register-default="${escapeHtml(bucket.key)}" value="${escapeHtml(value)}"${selected.has(value) ? " checked" : ""} ${canManage ? "" : "disabled"} />
+                  <span>${escapeHtml(getWorkEquipmentAiRegisterItemLabel(item, bucket.label))}</span>
+                </label>
+                ${supportsItemInstruction ? `
+                  <textarea
+                    class="settings-work-equipment-ai-register-choice-instruction"
+                    data-ro-ai-profile-register-instruction="${escapeHtml(value)}"
+                    rows="3"
+                    placeholder="Primjeri / upute za ovaj profil. Upisi više rečenica, svaku u novi red. Npr. Uključivanje je izvedeno ključem."
+                    ${canManage ? "" : "disabled"}
+                  >${escapeHtml(itemInstruction)}</textarea>
+                ` : ""}
+              </div>
             `;
           }).join("")}
         </div>

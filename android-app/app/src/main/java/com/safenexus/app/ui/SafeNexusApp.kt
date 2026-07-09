@@ -109,6 +109,7 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Download
@@ -11483,6 +11484,7 @@ private fun DocumentationWorkEquipmentOptionList(
                     hazardOptions = hazardOptions,
                     harmfulnessOptions = harmfulnessOptions,
                     strainOptions = strainOptions,
+                    copySources = workEquipmentColumnCopySources(manualEquipments, safeIndex),
                     onPrevious = { activeManualEquipmentIndex = (safeIndex - 1).coerceAtLeast(0) },
                     onNext = { activeManualEquipmentIndex = (safeIndex + 1).coerceAtMost(manualEquipments.lastIndex) },
                     onAddColumn = {
@@ -11498,6 +11500,15 @@ private fun DocumentationWorkEquipmentOptionList(
                     },
                     onRecognizeText = { equipmentForRecognition, transcript, isStrojeviTemplate, onSuccess, onFailure ->
                         onRecognizeWorkEquipmentText(equipmentForRecognition, transcript, isStrojeviTemplate, onSuccess, onFailure)
+                    },
+                    onCopyFrom = { sourceIndex, copyOptions ->
+                        manualEquipments.getOrNull(sourceIndex)?.let { source ->
+                            onManualEquipmentsChange(
+                                manualEquipments.mapIndexed { index, item ->
+                                    if (index == safeIndex) item.applyColumnCopy(source, copyOptions) else item
+                                },
+                            )
+                        }
                     },
                     onEquipmentChange = { updatedEquipment ->
                         onManualEquipmentsChange(
@@ -11675,30 +11686,44 @@ private fun DocumentationEquipmentInspectionLocalList(
                 recordLabel = if (isStrojeviTemplate) "STROJEVI" else "NO",
                 isStrojeviTemplate = isStrojeviTemplate,
                 showRecognition = false,
-                showRiskRegisters = !isStrojeviTemplate,
-                mechanicalOptions = resolvedMechanicalOptions,
-                electricalOptions = resolvedElectricalOptions,
-                hazardOptions = hazardOptions,
-                harmfulnessOptions = harmfulnessOptions,
-                strainOptions = strainOptions,
-                onPrevious = { activeManualEquipmentIndex = (safeIndex - 1).coerceAtLeast(0) },
-                onNext = { activeManualEquipmentIndex = (safeIndex + 1).coerceAtMost(manualEquipments.lastIndex) },
-                onAddColumn = {
-                    onManualEquipmentsChange(manualEquipments + IsznrManualWorkEquipment())
-                    activeManualEquipmentIndex = manualEquipments.size
+                    showRiskRegisters = !isStrojeviTemplate,
+                    mechanicalOptions = resolvedMechanicalOptions,
+                    electricalOptions = resolvedElectricalOptions,
+                    hazardOptions = hazardOptions,
+                    harmfulnessOptions = harmfulnessOptions,
+                    strainOptions = strainOptions,
+                    copySources = workEquipmentColumnCopySources(
+                        manualEquipments,
+                        safeIndex,
+                        if (isStrojeviTemplate) "Stroj / uređaj" else "Oprema",
+                    ),
+                    onPrevious = { activeManualEquipmentIndex = (safeIndex - 1).coerceAtLeast(0) },
+                    onNext = { activeManualEquipmentIndex = (safeIndex + 1).coerceAtMost(manualEquipments.lastIndex) },
+                    onAddColumn = {
+                        onManualEquipmentsChange(manualEquipments + IsznrManualWorkEquipment())
+                        activeManualEquipmentIndex = manualEquipments.size
                 },
                 onRemove = {
                     val nextEquipments = manualEquipments.filterIndexed { index, _ -> index != safeIndex }
                     onManualEquipmentsChange(nextEquipments.ifEmpty { listOf(IsznrManualWorkEquipment()) })
                     activeManualEquipmentIndex = (safeIndex - 1).coerceAtLeast(0)
                 },
-                onRecognizeImages = onRecognizeWorkEquipmentImages,
-                onRecognizeText = onRecognizeWorkEquipmentText,
-                onEquipmentChange = { updatedEquipment ->
-                    onManualEquipmentsChange(
-                        manualEquipments.mapIndexed { index, item ->
-                            if (index == safeIndex) updatedEquipment else item
-                        },
+                    onRecognizeImages = onRecognizeWorkEquipmentImages,
+                    onRecognizeText = onRecognizeWorkEquipmentText,
+                    onCopyFrom = { sourceIndex, copyOptions ->
+                        manualEquipments.getOrNull(sourceIndex)?.let { source ->
+                            onManualEquipmentsChange(
+                                manualEquipments.mapIndexed { index, item ->
+                                    if (index == safeIndex) item.applyColumnCopy(source, copyOptions) else item
+                                },
+                            )
+                        }
+                    },
+                    onEquipmentChange = { updatedEquipment ->
+                        onManualEquipmentsChange(
+                            manualEquipments.mapIndexed { index, item ->
+                                if (index == safeIndex) updatedEquipment else item
+                            },
                     )
                 },
             )
@@ -12567,6 +12592,41 @@ private data class WorkEquipmentReportTemplate(
     val equipment: IsznrManualWorkEquipment,
 )
 
+private data class WorkEquipmentColumnCopySource(
+    val index: Int,
+    val label: String,
+    val subtitle: String,
+    val equipment: IsznrManualWorkEquipment,
+)
+
+private data class WorkEquipmentColumnCopyOptions(
+    val name: Boolean = true,
+    val manufacturer: Boolean = true,
+    val model: Boolean = true,
+    val purposeDescription: Boolean = true,
+    val workingSubstancesAndRawMaterials: Boolean = true,
+    val workspacePosition: Boolean = true,
+    val technicalData: Boolean = true,
+)
+
+private fun workEquipmentColumnCopySources(
+    equipments: List<IsznrManualWorkEquipment>,
+    activeIndex: Int,
+    defaultTitle: String = "Radna oprema",
+): List<WorkEquipmentColumnCopySource> =
+    equipments.mapIndexedNotNull { index, item ->
+        if (index == activeIndex) {
+            null
+        } else {
+            WorkEquipmentColumnCopySource(
+                index = index,
+                label = "Stupac ${index + 1} - ${item.name.ifBlank { "$defaultTitle ${index + 1}" }}",
+                subtitle = item.subtitle().ifBlank { "Opis, kontrole, rizici i zaključak" },
+                equipment = item,
+            )
+        }
+    }
+
 private fun IsznrManualWorkEquipment.asReportTemplatePart(): IsznrManualWorkEquipment =
     copy(
         serialNumber = "",
@@ -12608,6 +12668,27 @@ private fun IsznrManualWorkEquipment.applyReportTemplate(template: IsznrManualWo
         hasParts = hasParts || template.hasParts || template.parts.isNotEmpty(),
         parts = template.parts.takeIf { it.isNotEmpty() } ?: parts,
     )
+
+private fun IsznrManualWorkEquipment.applyColumnCopy(
+    source: IsznrManualWorkEquipment,
+    options: WorkEquipmentColumnCopyOptions = WorkEquipmentColumnCopyOptions(),
+): IsznrManualWorkEquipment {
+    val original = this
+    val copied = applyReportTemplate(source.asReportTemplateEquipment())
+    return copied.copy(
+        name = if (options.name) copied.name else original.name,
+        manufacturer = if (options.manufacturer) copied.manufacturer else original.manufacturer,
+        model = if (options.model) copied.model else original.model,
+        purposeDescription = if (options.purposeDescription) copied.purposeDescription else original.purposeDescription,
+        workingSubstancesAndRawMaterials = if (options.workingSubstancesAndRawMaterials) {
+            copied.workingSubstancesAndRawMaterials
+        } else {
+            original.workingSubstancesAndRawMaterials
+        },
+        workspacePosition = if (options.workspacePosition) copied.workspacePosition else original.workspacePosition,
+        technicalData = if (options.technicalData) copied.technicalData else original.technicalData,
+    )
+}
 
 private fun Context.loadWorkEquipmentReportTemplates(): List<WorkEquipmentReportTemplate> =
     runCatching {
@@ -13806,6 +13887,32 @@ private fun ManualWorkEquipmentColumnCell(
 }
 
 @Composable
+private fun WorkEquipmentCopyOptionRow(
+    label: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled) { onCheckedChange(!checked) },
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+            Text(label, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
 private fun ManualWorkEquipmentInlineEditor(
     equipment: IsznrManualWorkEquipment,
     columnIndex: Int,
@@ -13821,6 +13928,7 @@ private fun ManualWorkEquipmentInlineEditor(
     hazardOptions: List<WorkOrderDocumentationOption>,
     harmfulnessOptions: List<WorkOrderDocumentationOption>,
     strainOptions: List<WorkOrderDocumentationOption>,
+    copySources: List<WorkEquipmentColumnCopySource> = emptyList(),
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onAddColumn: () -> Unit,
@@ -13838,6 +13946,7 @@ private fun ManualWorkEquipmentInlineEditor(
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
+    onCopyFrom: (Int, WorkEquipmentColumnCopyOptions) -> Unit = { _, _ -> },
     onEquipmentChange: (IsznrManualWorkEquipment) -> Unit,
 ) {
     val context = LocalContext.current
@@ -13854,6 +13963,9 @@ private fun ManualWorkEquipmentInlineEditor(
     var documentsLoading by remember(equipment.attachments) { mutableStateOf(false) }
     var reportTemplates by remember { mutableStateOf(context.loadWorkEquipmentReportTemplates()) }
     var templateMenuOpen by remember { mutableStateOf(false) }
+    var copyMenuOpen by remember { mutableStateOf(false) }
+    var copyDialogSource by remember { mutableStateOf<WorkEquipmentColumnCopySource?>(null) }
+    var copyDialogOptions by remember { mutableStateOf(WorkEquipmentColumnCopyOptions()) }
     var saveTemplateDialogOpen by remember { mutableStateOf(false) }
     var templateMessage by remember { mutableStateOf("") }
     var templateTitle by remember(equipment.name, equipment.manufacturer, equipment.model) {
@@ -14241,6 +14353,68 @@ private fun ManualWorkEquipmentInlineEditor(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Nova kolona")
                 }
+                Box {
+                    OutlinedButton(
+                        onClick = { copyMenuOpen = true },
+                        enabled = enabled && copySources.isNotEmpty(),
+                        shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Kopiraj iz")
+                    }
+                    DropdownMenu(
+                        expanded = copyMenuOpen,
+                        onDismissRequest = { copyMenuOpen = false },
+                    ) {
+                        if (columnIndex > 0 && copySources.any { it.index == columnIndex - 1 }) {
+                            val previous = copySources.first { it.index == columnIndex - 1 }
+                            DropdownMenuItem(
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                        Text("Prethodni stupac", fontWeight = FontWeight.Black)
+                                        Text(
+                                            previous.label,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    copyDialogOptions = WorkEquipmentColumnCopyOptions()
+                                    copyDialogSource = previous
+                                    copyMenuOpen = false
+                                },
+                            )
+                        }
+                        copySources
+                            .filterNot { columnIndex > 0 && it.index == columnIndex - 1 }
+                            .forEach { source ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                        Text(source.label, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(
+                                            source.subtitle,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    copyDialogOptions = WorkEquipmentColumnCopyOptions()
+                                    copyDialogSource = source
+                                    copyMenuOpen = false
+                                },
+                            )
+                        }
+                    }
+                }
                 OutlinedButton(
                     onClick = onRemove,
                     enabled = enabled && columnCount > 1,
@@ -14251,6 +14425,86 @@ private fun ManualWorkEquipmentInlineEditor(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Ukloni")
                 }
+            }
+
+            copyDialogSource?.let { source ->
+                AlertDialog(
+                    onDismissRequest = { copyDialogSource = null },
+                    title = { Text("Kopiraj iz stupca") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                source.label,
+                                fontWeight = FontWeight.Black,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                "Stavke pregleda, rizici, napomene i zaključak kopiraju se zajedno s odabranim opisnim poljima.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                            )
+                            WorkEquipmentCopyOptionRow(
+                                label = "Naziv opreme",
+                                checked = copyDialogOptions.name,
+                                enabled = enabled,
+                                onCheckedChange = { copyDialogOptions = copyDialogOptions.copy(name = it) },
+                            )
+                            WorkEquipmentCopyOptionRow(
+                                label = "Proizvođač",
+                                checked = copyDialogOptions.manufacturer,
+                                enabled = enabled,
+                                onCheckedChange = { copyDialogOptions = copyDialogOptions.copy(manufacturer = it) },
+                            )
+                            WorkEquipmentCopyOptionRow(
+                                label = "Tip",
+                                checked = copyDialogOptions.model,
+                                enabled = enabled,
+                                onCheckedChange = { copyDialogOptions = copyDialogOptions.copy(model = it) },
+                            )
+                            WorkEquipmentCopyOptionRow(
+                                label = "Namjena",
+                                checked = copyDialogOptions.purposeDescription,
+                                enabled = enabled,
+                                onCheckedChange = { copyDialogOptions = copyDialogOptions.copy(purposeDescription = it) },
+                            )
+                            WorkEquipmentCopyOptionRow(
+                                label = "Radne tvari",
+                                checked = copyDialogOptions.workingSubstancesAndRawMaterials,
+                                enabled = enabled,
+                                onCheckedChange = { copyDialogOptions = copyDialogOptions.copy(workingSubstancesAndRawMaterials = it) },
+                            )
+                            WorkEquipmentCopyOptionRow(
+                                label = "Položaj",
+                                checked = copyDialogOptions.workspacePosition,
+                                enabled = enabled,
+                                onCheckedChange = { copyDialogOptions = copyDialogOptions.copy(workspacePosition = it) },
+                            )
+                            WorkEquipmentCopyOptionRow(
+                                label = "Tehnički podaci",
+                                checked = copyDialogOptions.technicalData,
+                                enabled = enabled,
+                                onCheckedChange = { copyDialogOptions = copyDialogOptions.copy(technicalData = it) },
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                onCopyFrom(source.index, copyDialogOptions)
+                                copyDialogSource = null
+                            },
+                            enabled = enabled,
+                        ) {
+                            Text("Kopiraj")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { copyDialogSource = null }) {
+                            Text("Odustani")
+                        }
+                    },
+                )
             }
 
             Surface(

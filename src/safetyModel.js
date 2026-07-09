@@ -7153,6 +7153,14 @@ function normalizeWorkEquipmentAiProfile(value = {}, index = 0) {
   const fieldDefaults = source.fieldDefaults && typeof source.fieldDefaults === "object"
     ? source.fieldDefaults
     : {};
+  const registerInstructionsSource = source.registerInstructions || source.registryInstructions || source.itemInstructions;
+  const registerInstructions = registerInstructionsSource && typeof registerInstructionsSource === "object"
+    ? Object.fromEntries(
+      Object.entries(registerInstructionsSource)
+        .map(([key, text]) => [normalizeText(key), normalizeText(text).slice(0, 2000)])
+        .filter(([key, text]) => key && text),
+    )
+    : {};
   return {
     id,
     name,
@@ -7175,6 +7183,7 @@ function normalizeWorkEquipmentAiProfile(value = {}, index = 0) {
       harmfulnesses: normalizeAiConfigList(registerDefaults.harmfulnesses || source.harmfulnessRegisterIris).slice(0, 80),
       strains: normalizeAiConfigList(registerDefaults.strains || source.strainRegisterIris).slice(0, 80),
     },
+    registerInstructions,
   };
 }
 
@@ -7189,6 +7198,7 @@ function hasWorkEquipmentAiProfile(value = {}) {
     || profile.avoid
     || Object.values(profile.fieldDefaults).some(Boolean)
     || Object.values(profile.registerDefaults).some((list) => list.length > 0)
+    || Object.values(profile.registerInstructions).some(Boolean)
   );
 }
 

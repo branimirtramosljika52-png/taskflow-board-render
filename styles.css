@@ -5941,6 +5941,11 @@ body.is-profile-modal-open {
   background: rgba(248, 250, 252, 0.88);
 }
 
+.settings-work-equipment-ai-register-choice-wrap {
+  display: grid;
+  gap: 6px;
+}
+
 .settings-work-equipment-ai-register-choice span {
   color: #1e293b;
   font-size: 0.76rem;
@@ -5950,6 +5955,26 @@ body.is-profile-modal-open {
   text-overflow: clip;
   white-space: normal;
   word-break: break-word;
+}
+
+.settings-work-equipment-ai-register-choice-instruction {
+  width: 100%;
+  min-height: 68px;
+  resize: vertical;
+  border: 1px solid rgba(216, 180, 254, 0.85);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #1e293b;
+  font: inherit;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  padding: 8px 10px;
+}
+
+.settings-work-equipment-ai-register-choice-instruction:focus {
+  border-color: rgba(168, 85, 247, 0.95);
+  box-shadow: 0 0 0 3px rgba(216, 180, 254, 0.28);
+  outline: none;
 }
 
 .settings-work-equipment-ai-section-copy {
