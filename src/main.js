@@ -9728,7 +9728,7 @@ function getUserAuthorizationSummary(user = {}) {
   const activeAreas = getUserQualificationAreaDefinitions(user)
     .map((definition) => ({
       label: definition.label || definition.title || definition.key,
-      qualification: getUserElectricalQualification(user, definition.key),
+      qualification: getUserQualificationForDefinition(user, definition),
     }))
     .filter(({ qualification }) => hasQualificationCapability(qualification));
 
@@ -9766,7 +9766,7 @@ function isUserAuthorizationCurrentlyActive(qualification = {}) {
 
 function getUserActiveAuthorizationCount(user = {}) {
   const areas = getUserQualificationAreaDefinitions(user)
-    .map((definition) => getUserElectricalQualification(user, definition.key));
+    .map((definition) => getUserQualificationForDefinition(user, definition));
 
   return areas.filter((qualification) => isUserAuthorizationCurrentlyActive(qualification)).length;
 }
@@ -77079,6 +77079,62 @@ function getQualificationServiceIdsForArea(signatureArea = "", qualification = {
   ]));
 }
 
+function getServiceCatalogQualificationDefinitionKey(service = {}) {
+  return createUserQualificationExamKey(
+    service?.serviceCode
+    || service?.code
+    || service?.shortCode
+    || service?.name
+    || service?.serviceName
+    || service?.title
+    || service?.id
+    || "",
+  );
+}
+
+function getServiceCatalogQualificationLegacyFallbackArea(key = "") {
+  const normalizedKey = normalizeQualificationAreaKey(key);
+  return {
+    spr: "elektro",
+    tzin: "tipkalo",
+    ro: "radna_oprema",
+    fc: "radni_okolis",
+  }[normalizedKey] || "";
+}
+
+function getServiceCatalogQualificationDefinitions({ organizationId = "" } = {}) {
+  const normalizedOrganizationId = String(organizationId || "").trim();
+  return sortServiceCatalogItems((state.serviceCatalog ?? []).filter((service) => {
+    const serviceId = String(service?.id || "").trim();
+    if (!serviceId) {
+      return false;
+    }
+    const serviceOrganizationId = String(service?.organizationId || "").trim();
+    const isSameOrganization = !normalizedOrganizationId || !serviceOrganizationId || serviceOrganizationId === normalizedOrganizationId;
+    const isInactive = String(service?.status || "active").trim().toLowerCase() === "inactive";
+    const serviceType = String(service?.serviceType || (service?.isTraining ? "znr" : "inspection")).trim().toLowerCase();
+    return isSameOrganization && !isInactive && serviceType !== "znr";
+  })).map((service) => {
+    const key = getServiceCatalogQualificationDefinitionKey(service);
+    const serviceId = String(service.id || "").trim();
+    const serviceCode = String(service.serviceCode || service.code || "").trim();
+    const title = String(service.name || service.serviceName || service.title || serviceCode || key).trim();
+    return {
+      key,
+      title,
+      label: title,
+      serviceLabel: title,
+      serviceCode,
+      serviceCatalogId: serviceId,
+      serviceIds: serviceId ? [serviceId] : [],
+      linkedServiceCatalogIds: serviceId ? [serviceId] : [],
+      legacyFallbackArea: getServiceCatalogQualificationLegacyFallbackArea(key),
+      specialRoleOptions: [],
+      isServiceCatalogQualification: true,
+    };
+  }).filter((definition) => definition.key);
+}
+
 function hasQualificationSpecialRole(qualification = {}, capability = "") {
   const specialRoles = normalizeQualificationSpecialRoles(qualification.specialRoles);
   if (!Object.values(specialRoles).some(Boolean)) {
@@ -77184,6 +77240,10 @@ function getQualificationExamDefinitions({ includeCustom = true } = {}) {
       ...entry,
     },
   ]));
+
+  getServiceCatalogQualificationDefinitions().forEach((definition) => {
+    addQualificationExamDefinition(definitions, definition);
+  });
 
   if (includeCustom) {
     LEGACY_QUALIFICATION_EXAM_DEFINITIONS.forEach((legacyDefinition) => {
@@ -85559,11 +85619,73 @@ function getUserElectricalQualification(user = {}, signatureArea = "elektro") {
   };
 }
 
+function getRawUserQualificationForArea(user = {}, signatureArea = "elektro") {
+  const normalizedArea = normalizeQualificationAreaKey(signatureArea);
+  const rootQualification = user?.electricalQualification ?? {};
+  return normalizedArea === "elektro"
+    ? rootQualification
+    : rootQualification?.additionalAreas?.[normalizedArea] ?? {};
+}
+
+function getUserQualificationForDefinition(user = {}, definition = {}) {
+  const area = normalizeQualificationAreaKey(definition.key || "elektro");
+  const primaryQualification = getUserElectricalQualification(user, area);
+  const fallbackArea = String(definition.legacyFallbackArea || "").trim()
+    ? normalizeQualificationAreaKey(definition.legacyFallbackArea)
+    : "";
+  const fallbackQualification = fallbackArea && fallbackArea !== area
+    ? getUserElectricalQualification(user, fallbackArea)
+    : {};
+  const sourceQualification = hasQualificationContent(primaryQualification)
+    ? primaryQualification
+    : fallbackQualification;
+  const serviceIds = Array.from(new Set([
+    ...getQualificationLinkedServiceIds(sourceQualification),
+    ...getQualificationLinkedServiceIds(definition),
+  ]));
+
+  return {
+    ...sourceQualification,
+    discipline: area,
+    examTitle: sourceQualification.examTitle || definition.title || definition.label || area,
+    serviceIds,
+    linkedServiceCatalogIds: serviceIds,
+    linkedServiceCatalogTitles: getServiceCatalogTitlesByIds(serviceIds, {
+      organizationId: user?.organizationId || state.activeOrganizationId || "",
+    }),
+  };
+}
+
 function getUserQualificationAreaDefinitions(user = null) {
-  const definitions = new Map(getQualificationExamDefinitions().map((definition) => [definition.key, definition]));
+  const organizationId = user?.organizationId || state.activeOrganizationId || "";
+  const serviceDefinitions = getServiceCatalogQualificationDefinitions({ organizationId });
+  const definitions = new Map(serviceDefinitions.map((definition) => [definition.key, definition]));
+  const coveredFallbackAreas = new Set(
+    serviceDefinitions
+      .map((definition) => String(definition.legacyFallbackArea || "").trim()
+        ? normalizeQualificationAreaKey(definition.legacyFallbackArea)
+        : "")
+      .filter(Boolean),
+  );
+
+  getQualificationExamDefinitions().forEach((definition) => {
+    const key = normalizeQualificationAreaKey(definition.key);
+    if (!key || definitions.has(key) || coveredFallbackAreas.has(key)) {
+      return;
+    }
+    const qualification = getRawUserQualificationForArea(user, key);
+    const hasDraftDefinition = userQualificationEditorDraftDefinitions.some((draft) => (
+      normalizeQualificationAreaKey(draft.key) === key
+    ));
+    const shouldShowFallbackDefault = serviceDefinitions.length === 0 && definition.builtIn;
+    if (hasQualificationContent(qualification) || hasDraftDefinition || shouldShowFallbackDefault) {
+      definitions.set(key, definition);
+    }
+  });
+
   Object.keys(user?.electricalQualification?.additionalAreas || {}).forEach((area) => {
     const key = normalizeQualificationAreaKey(area);
-    if (!key || definitions.has(key)) {
+    if (!key || definitions.has(key) || coveredFallbackAreas.has(key)) {
       return;
     }
     definitions.set(key, {
@@ -85615,6 +85737,16 @@ function readUserQualificationAreaPayload(definition = {}) {
     ? currentRootQualification
     : currentRootQualification?.additionalAreas?.[area] ?? {};
   const existingServiceIds = getQualificationLinkedServiceIds(currentQualification);
+  const definitionServiceIds = getQualificationLinkedServiceIds(definition);
+  const serviceInputs = getUserQualificationServiceInputs(area);
+  const selectedServiceIds = serviceInputs.length > 0
+    ? serviceInputs
+      .filter((input) => input instanceof HTMLInputElement && input.checked)
+      .map((input) => String(input.value || input.dataset.userQualificationServiceId || "").trim())
+      .filter(Boolean)
+    : existingServiceIds.length > 0
+      ? existingServiceIds
+      : definitionServiceIds;
   const specialRoles = Object.fromEntries(
     getUserQualificationSpecialRoleInputs(area).map((input) => [
       String(input.dataset.userQualificationSpecialRole || "").trim(),
@@ -85647,8 +85779,8 @@ function readUserQualificationAreaPayload(definition = {}) {
     validUntil: validForever ? "" : normalizePeopleTrainingDate(getUserQualificationInput(area, "validUntil")?.value || ""),
     validForever,
     specialRoles,
-    serviceIds: existingServiceIds,
-    linkedServiceCatalogIds: existingServiceIds,
+    serviceIds: selectedServiceIds,
+    linkedServiceCatalogIds: selectedServiceIds,
   };
 }
 
@@ -85715,7 +85847,7 @@ function renderUserQualificationAreas(user = getCurrentUserEditorRecord() || {})
 
   userQualificationAreasContainer.replaceChildren(...definitions.map((definition) => {
     const area = normalizeQualificationAreaKey(definition.key);
-    const qualification = getUserElectricalQualification(user, area);
+    const qualification = getUserQualificationForDefinition(user, definition);
     const block = document.createElement("section");
     block.className = "service-catalog-template-block user-editor-module user-electrical-qualification-block";
     block.dataset.userManagementScope = "people";
@@ -85726,7 +85858,7 @@ function renderUserQualificationAreas(user = getCurrentUserEditorRecord() || {})
     const headingCopy = document.createElement("div");
     const kicker = document.createElement("p");
     kicker.className = "section-kicker";
-    kicker.textContent = definition.defaultExam ? "Default ispit" : "Ispit";
+    kicker.textContent = "Ispit";
     const title = document.createElement("h3");
     title.textContent = definition.title || definition.label || area;
     headingCopy.append(kicker, title);
@@ -85861,10 +85993,11 @@ function buildUserElectricalQualificationPayload() {
 function getQualifiedUsersForSignatureArea(capability = "inspect", signatureArea = "elektro") {
   const normalizedCapability = capability === "authorize" ? "authorize" : "inspect";
   const normalizedArea = normalizeQualificationAreaKey(signatureArea);
+  const definition = getQualificationExamDefinition(normalizedArea);
   return (state.users ?? [])
     .filter((user) => Boolean(user?.isActive))
     .filter((user) => {
-      const qualification = getUserElectricalQualification(user, normalizedArea);
+      const qualification = getUserQualificationForDefinition(user, definition);
       if (qualification.discipline !== normalizedArea) {
         return false;
       }
@@ -85880,7 +86013,7 @@ function getQualifiedUsersForSignatureArea(capability = "inspect", signatureArea
 }
 
 function getQualifiedUserSelectLabel(user = {}, capability = "inspect", signatureArea = "elektro") {
-  const qualification = getUserElectricalQualification(user, signatureArea);
+  const qualification = getUserQualificationForDefinition(user, getQualificationExamDefinition(signatureArea));
   const summaryParts = [
     qualification.type ? `Vrsta ispita ${qualification.type}` : "",
     qualification.data1 ? `Podatak 1 ${qualification.data1}` : "",
@@ -85977,7 +86110,7 @@ function getQualifiedUserSummaryValue(user = null, capability = "inspect", signa
     return `${roleLabel} (${getSignatureAreaLabel(signatureArea)})`;
   }
 
-  const qualification = getUserElectricalQualification(user, signatureArea);
+  const qualification = getUserQualificationForDefinition(user, getQualificationExamDefinition(signatureArea));
   return [
     getUserDocumentDisplayName(user),
     qualification.type ? `Vrsta ispita ${qualification.type}` : "",
@@ -85998,7 +86131,7 @@ function getQualifiedUserDocumentMetaLines(
     return [];
   }
 
-  const qualification = getUserElectricalQualification(user, signatureArea);
+  const qualification = getUserQualificationForDefinition(user, getQualificationExamDefinition(signatureArea));
   const visibleFields = new Set(normalizeDocumentTemplateSignatureMetaFieldsLocal(metaFields));
   return [
     visibleFields.has("title") && user.title ? String(user.title).trim() : "",
