@@ -107,6 +107,7 @@ import androidx.compose.material.icons.rounded.Business
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
@@ -2548,6 +2549,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         workOrder: WorkOrder,
         equipment: IsznrManualWorkEquipment,
         files: List<IsznrRoAttachmentFile>,
+        recognitionMode: String = WORK_EQUIPMENT_AI_MODE_TEMPLATE,
         onSuccess: (WorkEquipmentImageRecognitionResult) -> Unit,
         onFailure: (String) -> Unit,
     ) {
@@ -2565,6 +2567,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                 workOrder = workOrder,
                 equipment = equipment,
                 files = readableFiles,
+                recognitionMode = recognitionMode,
                 modelTier = "strong",
             )
                 .onSuccess(onSuccess)
@@ -2582,6 +2585,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         selectedProfileId: String = "",
         selectedProfileName: String = "",
         userNote: String = "",
+        recognitionMode: String = WORK_EQUIPMENT_AI_MODE_TEMPLATE,
         onSuccess: (WorkEquipmentImageRecognitionResult) -> Unit,
         onFailure: (String) -> Unit,
     ) {
@@ -2602,6 +2606,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
                 selectedProfileId = selectedProfileId,
                 selectedProfileName = selectedProfileName,
                 userNote = userNote,
+                recognitionMode = recognitionMode,
                 modelTier = "strong",
             )
                 .onSuccess(onSuccess)
@@ -3834,16 +3839,17 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     onFailure = onFailure,
                 )
             },
-            onRecognizeWorkEquipmentImages = { equipment, files, onSuccess, onFailure ->
+            onRecognizeWorkEquipmentImages = { equipment, files, recognitionMode, onSuccess, onFailure ->
                 viewModel.recognizeWorkEquipmentFromImages(
                     workOrder = workOrder,
                     equipment = equipment,
                     files = files,
+                    recognitionMode = recognitionMode,
                     onSuccess = onSuccess,
                     onFailure = onFailure,
                 )
             },
-            onRecognizeWorkEquipmentBatchImages = { currentEquipments, files, profile, userNote, onSuccess, onFailure ->
+            onRecognizeWorkEquipmentBatchImages = { currentEquipments, files, profile, userNote, recognitionMode, onSuccess, onFailure ->
                 viewModel.recognizeWorkEquipmentBatchFromImages(
                     workOrder = workOrder,
                     currentEquipments = currentEquipments,
@@ -3851,6 +3857,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                     selectedProfileId = profile.id,
                     selectedProfileName = profile.id.takeIf { it.isNotBlank() }?.let { profile.label }.orEmpty(),
                     userNote = userNote,
+                    recognitionMode = recognitionMode,
                     onSuccess = onSuccess,
                     onFailure = onFailure,
                 )
@@ -11209,6 +11216,7 @@ private fun DocumentationWorkEquipmentOptionList(
     onRecognizeWorkEquipmentImages: (
         IsznrManualWorkEquipment,
         List<IsznrRoAttachmentFile>,
+        String,
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
@@ -11216,6 +11224,7 @@ private fun DocumentationWorkEquipmentOptionList(
         List<IsznrManualWorkEquipment>,
         List<IsznrRoAttachmentFile>,
         WorkEquipmentAiProfileChoice,
+        String,
         String,
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
@@ -11495,8 +11504,8 @@ private fun DocumentationWorkEquipmentOptionList(
                         onManualEquipmentsChange(manualEquipments.filterIndexed { index, _ -> index != safeIndex })
                         activeManualEquipmentIndex = (safeIndex - 1).coerceAtLeast(0)
                     },
-                    onRecognizeImages = { equipmentForRecognition, files, onSuccess, onFailure ->
-                        onRecognizeWorkEquipmentImages(equipmentForRecognition, files, onSuccess, onFailure)
+                    onRecognizeImages = { equipmentForRecognition, files, recognitionMode, onSuccess, onFailure ->
+                        onRecognizeWorkEquipmentImages(equipmentForRecognition, files, recognitionMode, onSuccess, onFailure)
                     },
                     onRecognizeText = { equipmentForRecognition, transcript, isStrojeviTemplate, onSuccess, onFailure ->
                         onRecognizeWorkEquipmentText(equipmentForRecognition, transcript, isStrojeviTemplate, onSuccess, onFailure)
@@ -11582,6 +11591,7 @@ private fun DocumentationEquipmentInspectionLocalList(
     onRecognizeWorkEquipmentImages: (
         IsznrManualWorkEquipment,
         List<IsznrRoAttachmentFile>,
+        String,
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
@@ -13006,6 +13016,7 @@ private fun WorkEquipmentBatchNexAiUploadCard(
         List<IsznrRoAttachmentFile>,
         WorkEquipmentAiProfileChoice,
         String,
+        String,
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
@@ -13019,6 +13030,7 @@ private fun WorkEquipmentBatchNexAiUploadCard(
     var message by remember { mutableStateOf("") }
     var preview by remember(files) { mutableStateOf<WorkEquipmentImageRecognitionResult?>(null) }
     var selectedProfileId by remember { mutableStateOf("") }
+    var recognitionMode by rememberSaveable { mutableStateOf(WORK_EQUIPMENT_AI_MODE_TEMPLATE) }
     var profileMenuExpanded by remember { mutableStateOf(false) }
     var fieldNote by remember { mutableStateOf("") }
     var pendingSpeechLaunch by remember { mutableStateOf(false) }
@@ -13252,6 +13264,7 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                                     )
                                 }
                                 listOf(
+                                    "Profil" to resultProfileLabel(item),
                                     "Proizvođač" to item.manufacturer,
                                     "Model / tip" to item.model,
                                     "Serijski broj" to item.serialNumber,
@@ -13369,6 +13382,11 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                 color = Color(0xFF1D4ED8),
                 fontWeight = FontWeight.Bold,
             )
+            WorkEquipmentAiModeSelector(
+                selectedMode = recognitionMode,
+                onModeChange = { recognitionMode = it },
+                enabled = enabled && !recognizing,
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -13482,6 +13500,7 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                             files,
                             selectedProfile,
                             fieldNote,
+                            recognitionMode,
                             { result ->
                                 recognizing = false
                                 preview = result
@@ -13936,6 +13955,7 @@ private fun ManualWorkEquipmentInlineEditor(
     onRecognizeImages: (
         IsznrManualWorkEquipment,
         List<IsznrRoAttachmentFile>,
+        String,
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
@@ -13956,6 +13976,7 @@ private fun ManualWorkEquipmentInlineEditor(
     var recognitionLoading by remember(equipment.attachments) { mutableStateOf(false) }
     var recognitionMessage by remember(equipment.attachments) { mutableStateOf("") }
     var recognitionPreview by remember(equipment.attachments) { mutableStateOf<WorkEquipmentImageRecognitionResult?>(null) }
+    var imageRecognitionMode by rememberSaveable(columnIndex, isStrojeviTemplate) { mutableStateOf(WORK_EQUIPMENT_AI_MODE_TEMPLATE) }
     var textAiInput by remember(columnIndex, equipment.name, equipment.manufacturer, equipment.model, isStrojeviTemplate) { mutableStateOf("") }
     var textAiLoading by remember(columnIndex, equipment.name, equipment.manufacturer, equipment.model, isStrojeviTemplate) { mutableStateOf(false) }
     var textAiVoiceError by remember { mutableStateOf("") }
@@ -14213,6 +14234,7 @@ private fun ManualWorkEquipmentInlineEditor(
                         )
                     }
                     listOf(
+                        "Profil" to resultProfileLabel(result),
                         "Naziv" to result.name,
                         "Proizvođač" to result.manufacturer,
                         "Model / tip" to result.model,
@@ -14754,6 +14776,11 @@ private fun ManualWorkEquipmentInlineEditor(
 
                 if (showRecognition) {
                     val recognitionImages = equipment.attachments.filter { it.includeInReport && it.isRoImageAttachment() }
+                    WorkEquipmentAiModeSelector(
+                        selectedMode = imageRecognitionMode,
+                        onModeChange = { imageRecognitionMode = it },
+                        enabled = enabled && !recognitionLoading,
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -14766,6 +14793,7 @@ private fun ManualWorkEquipmentInlineEditor(
                                 onRecognizeImages(
                                     equipment,
                                     recognitionImages,
+                                    imageRecognitionMode,
                                     { result ->
                                         recognitionLoading = false
                                         recognitionPreview = result
@@ -14945,6 +14973,11 @@ private fun ManualWorkEquipmentInlineEditor(
 
                 if (showRecognition) {
                     val recognitionImages = equipment.attachments.filter { it.includeInReport && it.isRoImageAttachment() }
+                    WorkEquipmentAiModeSelector(
+                        selectedMode = imageRecognitionMode,
+                        onModeChange = { imageRecognitionMode = it },
+                        enabled = enabled && !recognitionLoading,
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -14957,6 +14990,7 @@ private fun ManualWorkEquipmentInlineEditor(
                                 onRecognizeImages(
                                     equipment,
                                     recognitionImages,
+                                    imageRecognitionMode,
                                     { result ->
                                         recognitionLoading = false
                                         recognitionPreview = result
@@ -15072,6 +15106,7 @@ private fun WorkEquipmentPartsCompactEditor(
     onRecognizeImages: (
         IsznrManualWorkEquipment,
         List<IsznrRoAttachmentFile>,
+        String,
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
@@ -15256,6 +15291,7 @@ private fun WorkEquipmentPartCard(
     onRecognizeImages: (
         IsznrManualWorkEquipment,
         List<IsznrRoAttachmentFile>,
+        String,
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
@@ -15267,6 +15303,7 @@ private fun WorkEquipmentPartCard(
     var recognizing by remember(part.attachments) { mutableStateOf(false) }
     var message by remember(part.attachments) { mutableStateOf("") }
     var preview by remember(part.attachments) { mutableStateOf<WorkEquipmentImageRecognitionResult?>(null) }
+    var imageRecognitionMode by rememberSaveable(index) { mutableStateOf(WORK_EQUIPMENT_AI_MODE_TEMPLATE) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (uris.isEmpty()) return@rememberLauncherForActivityResult
         coroutineScope.launch {
@@ -15352,6 +15389,7 @@ private fun WorkEquipmentPartCard(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                     )
                     listOf(
+                        "Profil" to resultProfileLabel(result),
                         "Naziv dijela" to result.name,
                         "Proizvođač" to result.manufacturer,
                         "Model / tip" to result.model,
@@ -15445,6 +15483,11 @@ private fun WorkEquipmentPartCard(
                 onAttachmentsChange = { nextAttachments -> onPartChange(part.copy(attachments = nextAttachments)) },
             )
             val recognitionImages = part.attachments.filter { it.includeInReport && it.isRoImageAttachment() }
+            WorkEquipmentAiModeSelector(
+                selectedMode = imageRecognitionMode,
+                onModeChange = { imageRecognitionMode = it },
+                enabled = enabled && !recognizing,
+            )
             Button(
                 onClick = {
                     recognizing = true
@@ -15452,6 +15495,7 @@ private fun WorkEquipmentPartCard(
                     onRecognizeImages(
                         part,
                         recognitionImages,
+                        imageRecognitionMode,
                         { result ->
                             recognizing = false
                             preview = result
@@ -27764,6 +27808,66 @@ private data class WorkEquipmentAiProfileChoice(
     val hint: String,
 )
 
+private const val WORK_EQUIPMENT_AI_MODE_TEMPLATE = "template"
+private const val WORK_EQUIPMENT_AI_MODE_DETAILED = "detailed"
+
+private data class WorkEquipmentAiModeChoice(
+    val id: String,
+    val label: String,
+    val hint: String,
+)
+
+private val workEquipmentAiModeChoices = listOf(
+    WorkEquipmentAiModeChoice(
+        WORK_EQUIPMENT_AI_MODE_TEMPLATE,
+        "Preko templatea",
+        "Brže: prepozna profil, pročita pločicu i popuni samo template stavke.",
+    ),
+    WorkEquipmentAiModeChoice(
+        WORK_EQUIPMENT_AI_MODE_DETAILED,
+        "Detaljni AI",
+        "Sporije: radi puni pregled slike, strojarski/elektro dio i rizike.",
+    ),
+)
+
+@Composable
+private fun WorkEquipmentAiModeSelector(
+    selectedMode: String,
+    onModeChange: (String) -> Unit,
+    enabled: Boolean,
+) {
+    val selected = workEquipmentAiModeChoices.firstOrNull { it.id == selectedMode } ?: workEquipmentAiModeChoices.first()
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            workEquipmentAiModeChoices.forEach { mode ->
+                FilterChip(
+                    selected = selected.id == mode.id,
+                    onClick = { onModeChange(mode.id) },
+                    enabled = enabled,
+                    leadingIcon = if (selected.id == mode.id) {
+                        {
+                            Icon(
+                                imageVector = Icons.Rounded.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                    label = { Text(mode.label) },
+                )
+            }
+        }
+        Text(
+            selected.hint,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
 private val workEquipmentAiProfileChoices = listOf(
     WorkEquipmentAiProfileChoice("", "Auto", "NexAI sam bira profil iz slike, pločice i napomene."),
     WorkEquipmentAiProfileChoice("ro-ai-profile-forklift", "Viličar", "Vilice, jarbol, kočnice, hidraulika, signalizacija."),
@@ -27775,6 +27879,11 @@ private val workEquipmentAiProfileChoices = listOf(
     WorkEquipmentAiProfileChoice("ro-ai-profile-crane", "Dizalica", "Kuka, lanac/uže, nosivost, vitlo, komande i kočenje."),
     WorkEquipmentAiProfileChoice("ro-ai-profile-saw-grinder", "Pila / brusilica", "Disk, traka, štitnik, prašina, buka i vibracije."),
 )
+
+private fun resultProfileLabel(result: WorkEquipmentImageRecognitionResult): String =
+    result.profileName.ifBlank {
+        workEquipmentAiProfileChoices.firstOrNull { it.id == result.profileId }?.label.orEmpty()
+    }.ifBlank { result.profileId }
 
 @Composable
 private fun SelectedWorkOrderServiceCodeBlocks(
@@ -30117,6 +30226,7 @@ private fun WorkOrderDocumentationWizardDialog(
     onRecognizeWorkEquipmentImages: (
         IsznrManualWorkEquipment,
         List<IsznrRoAttachmentFile>,
+        String,
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,
     ) -> Unit,
@@ -30124,6 +30234,7 @@ private fun WorkOrderDocumentationWizardDialog(
         List<IsznrManualWorkEquipment>,
         List<IsznrRoAttachmentFile>,
         WorkEquipmentAiProfileChoice,
+        String,
         String,
         (WorkEquipmentImageRecognitionResult) -> Unit,
         (String) -> Unit,

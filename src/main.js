@@ -133786,6 +133786,7 @@ function getWorkOrderDocumentIsznrWorkEquipmentState(workOrderId = "") {
       aiImportPreview: null,
       aiModelTier: "standard",
       aiBatchMode: "batch",
+      aiRecognitionMode: "template",
       submitting: false,
       postResult: null,
     };
@@ -133808,8 +133809,27 @@ const WORK_ORDER_DOCUMENT_RO_AI_BATCH_MODES = [
   },
 ];
 
+const WORK_ORDER_DOCUMENT_RO_AI_RECOGNITION_MODES = [
+  {
+    key: "template",
+    label: "Preko templatea",
+    description: "Brže: profil, pločica i template stavke.",
+  },
+  {
+    key: "detailed",
+    label: "Detaljni AI",
+    description: "Sporije: puni strojarski/elektro pregled i rizici.",
+  },
+];
+
 function normalizeWorkOrderDocumentRoAiBatchMode(value = "") {
   return String(value || "").trim() === "single" ? "single" : "batch";
+}
+
+function normalizeWorkOrderDocumentRoAiRecognitionMode(value = "") {
+  return ["template", "profile", "profil", "fast", "quick", "brzo"].includes(String(value || "").trim().toLowerCase())
+    ? "template"
+    : "detailed";
 }
 
 function normalizeWorkOrderDocumentRoManualAssessmentItems(items = []) {
@@ -134284,6 +134304,17 @@ function buildWorkOrderDocumentRoAiExpectedJsonShape() {
 function buildWorkOrderDocumentRoAiContext(workOrder = {}, entry = {}) {
   const settings = getWorkEquipmentAiSettings();
   const aiBatchMode = normalizeWorkOrderDocumentRoAiBatchMode(entry.aiBatchMode || "batch");
+  const recognitionMode = normalizeWorkOrderDocumentRoAiRecognitionMode(
+    entry.aiRecognitionMode ||
+    entry.recognitionMode ||
+    entry.aiMode ||
+    settings.recognitionMode ||
+    settings.autoFillMode ||
+    "",
+  );
+  const assessmentInstruction = recognitionMode === "template"
+    ? `BRZI TEMPLATE NAČIN: prepoznaj najbliži profileId/profileName iz profiles, pročitaj natpisnu pločicu i popuni samo podatke s pločice te stavke koje postoje u prepoznatom profilu/templateu. Ako profil ima fieldDefaults, registerDefaults ili registerInstructions, koristi ih kao template i ne širi nalaz na opći puni RO pregled. mechanicalItems/electricalItems vrati samo za stavke iz profila/templatea ili za izravno vidljive podatke. Ne ciljaj 12 stavki. Ako nešto nije sigurno, dodaj pitanje u verificationQuestions. U customContent ne piši "treba provjeriti", "vidi se na fotografiji" ni slične formulacije.`
+    : `RO AI popunjava strojarski dio, elektro dio, opasnosti, štetnosti i napore iz slika/PDF-a. Ne smije mehanički popuniti sve stavke. Biraj stavke iz registers i poštuj aiInstruction uz svaku stavku. Ako je profil odabran ili prepoznat, koristi profiles[].registerInstructions kao više primjera/uputa po strojarskoj i elektro stavci. Vrati samo relevantne stavke za prepoznatu opremu, ali za strojarski dio ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Napomena/vrijednost nije ručni uvjet ni IS ZNR blocker, ali AI preview ne smije vraćati prazne stavke: svaka vraćena strojarska/elektro stavka treba imati konkretan customContent do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova kada postoji siguran izvor; measuredValue koristi samo ako postoji stvarno mjerenje. U customContent ne smiješ pisati "treba provjeriti", "treba potvrditi", "potrebno je utvrditi", "za ručnu provjeru", "vidi se na fotografiji", "na slici se vidi" ni slične nesigurne ili izvorne formulacije. Kada je nalaz siguran, napiši ga direktno kao činjenicu. Kada je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj tu stavku vratiti kao gotov nalaz. Primjeri gotovog nalaza: "Uključivanje je izvedeno ključem.", "Upravljanje je pomoću ručica i volana.", "Priključni kabel i utikač su neoštećeni." Elektro dio popuni samo kada postoje električna priključna oprema, napajanje, izolacija, kabeli, sklopke ili drugi relevantni elektro rizici. Prve dvije slike grupe tretiraj kao sliku stroja i sliku pločice te ih vrati kroz imageIndexes/sourceFileNames da uđu u zapisnik kao upload.`;
   const aiFiles = (Array.isArray(entry.aiFiles) ? entry.aiFiles : []).map((file, index) => ({
     index: index + 1,
     name: String(file?.name || ""),
@@ -134302,6 +134333,7 @@ function buildWorkOrderDocumentRoAiContext(workOrder = {}, entry = {}) {
       serviceLine: String(workOrder?.serviceLine || workOrder?.displayService || ""),
     },
     settings,
+    recognitionMode,
     profiles: settings.profiles,
     profileLearningInstruction: "Odaberi najbliži osnovni profil iz profiles. Ako oprema pripada tom profilu, ali nema odgovarajuću potkategoriju/varijantu, vrati profileVariantName i kratku profileVariantInstruction umjesto stvaranja novog osnovnog profila.",
     uploadMode: aiBatchMode,
@@ -134311,7 +134343,7 @@ function buildWorkOrderDocumentRoAiContext(workOrder = {}, entry = {}) {
       : "Ovo je WEB upload za jednu radnu opremu. Sve dodane slike/PDF tretiraj kao podatke istog stroja, osim ako dokument izričito navodi drugu opremu.",
     fields: WORK_EQUIPMENT_AI_FIELD_DEFINITIONS,
     registers: getWorkEquipmentAiRegisterPromptGroups(entry),
-    assessmentInstruction: `RO AI popunjava strojarski dio, elektro dio, opasnosti, štetnosti i napore iz slika/PDF-a. Ne smije mehanički popuniti sve stavke. Biraj stavke iz registers i poštuj aiInstruction uz svaku stavku. Ako je profil odabran ili prepoznat, koristi profiles[].registerInstructions kao više primjera/uputa po strojarskoj i elektro stavci. Vrati samo relevantne stavke za prepoznatu opremu, ali za strojarski dio ciljaj najmanje 12 relevantnih stavki kada fotografije daju dovoljno konteksta. Napomena/vrijednost nije ručni uvjet ni IS ZNR blocker, ali AI preview ne smije vraćati prazne stavke: svaka vraćena strojarska/elektro stavka treba imati konkretan customContent do ${WORK_EQUIPMENT_RO_NOTE_MAX_LENGTH} znakova kada postoji siguran izvor; measuredValue koristi samo ako postoji stvarno mjerenje. U customContent ne smiješ pisati "treba provjeriti", "treba potvrditi", "potrebno je utvrditi", "za ručnu provjeru", "vidi se na fotografiji", "na slici se vidi" ni slične nesigurne ili izvorne formulacije. Kada je nalaz siguran, napiši ga direktno kao činjenicu. Kada je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj tu stavku vratiti kao gotov nalaz. Primjeri gotovog nalaza: "Uključivanje je izvedeno ključem.", "Upravljanje je pomoću ručica i volana.", "Priključni kabel i utikač su neoštećeni." Elektro dio popuni samo kada postoje električna priključna oprema, napajanje, izolacija, kabeli, sklopke ili drugi relevantni elektro rizici. Prve dvije slike grupe tretiraj kao sliku stroja i sliku pločice te ih vrati kroz imageIndexes/sourceFileNames da uđu u zapisnik kao upload.`,
+    assessmentInstruction,
     existingEquipment: (Array.isArray(entry.items) ? entry.items : []).slice(0, 80).map((item) => ({
       id: String(item.id || ""),
       recordNumber: String(item.recordNumber || ""),
@@ -134775,6 +134807,7 @@ async function runWorkOrderDocumentRoAi(workOrder = {}) {
         dryRun: false,
         modelTier,
         purpose: "work-equipment-image-pdf-prefill",
+        recognitionMode: context.recognitionMode,
         organizationId: state.activeOrganizationId,
         workOrderId,
         workOrderNumber: workOrder?.workOrderNumber || workOrder?.number || "",
@@ -136802,6 +136835,32 @@ function appendWorkOrderDocumentRoAiPanel(bodyNode, workOrder = {}, stateEntry =
     batchModeRow.append(modeButton);
   });
   panel.append(batchModeRow);
+
+  const recognitionMode = normalizeWorkOrderDocumentRoAiRecognitionMode(stateEntry.aiRecognitionMode || "template");
+  const recognitionModeRow = document.createElement("div");
+  recognitionModeRow.className = "work-order-document-ro-ai-batch";
+  WORK_ORDER_DOCUMENT_RO_AI_RECOGNITION_MODES.forEach((mode) => {
+    const modeButton = document.createElement("button");
+    modeButton.type = "button";
+    modeButton.className = `work-order-document-ro-ai-batch-option${recognitionMode === mode.key ? " is-active" : ""}`;
+    modeButton.disabled = Boolean(stateEntry.aiLoading);
+    modeButton.setAttribute("aria-pressed", recognitionMode === mode.key ? "true" : "false");
+    const modeLabel = document.createElement("strong");
+    modeLabel.textContent = mode.label;
+    const modeCopy = document.createElement("span");
+    modeCopy.textContent = mode.description;
+    modeButton.append(modeLabel, modeCopy);
+    modeButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      stateEntry.aiRecognitionMode = mode.key;
+      stateEntry.aiMessage = mode.key === "template"
+        ? "AI preko templatea: prepoznaje profil, čita pločicu i puni samo template stavke."
+        : "Detaljni AI: radi puni pregled opreme, strojarski/elektro dio i rizike.";
+      renderWorkOrderDocumentWizard();
+    });
+    recognitionModeRow.append(modeButton);
+  });
+  panel.append(recognitionModeRow);
 
   if (batchMode === "batch") {
     const batchHint = document.createElement("p");

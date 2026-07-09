@@ -116,7 +116,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.389.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.390.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -8311,13 +8311,17 @@ function buildOpenAiPurposeInstructions(body = {}) {
     return [];
   }
   const mode = String(body?.context?.mode || body?.mode || "").trim();
+  const recognitionMode = String(body?.context?.recognitionMode || body?.recognitionMode || "").trim().toLowerCase();
   const batchMode = mode === "batch-work-equipment";
   const textMode = purpose === "mobile-work-equipment-text-recognition";
+  const templateMode = !textMode && ["template", "profile", "profil", "fast", "quick", "brzo"].includes(recognitionMode);
 
   return [
     textMode
       ? "Za mobile-work-equipment-text-recognition radi kao tehnicki asistent za radnu opremu koji strukturira diktirani ili upisani tekst, bez izmisljanja podataka koji nisu navedeni ili razumno zakljucivi iz teksta."
-      : "Za mobile-work-equipment-image-recognition radi kao OCR i tehnicki asistent za radnu opremu.",
+      : (templateMode
+        ? "Za mobile-work-equipment-image-recognition radi u BRZOM TEMPLATE NACINU: procitaj slike kao OCR, prepoznaj najblizi profil/template i popuni samo podatke s plocice te stavke koje proizlaze iz templatea."
+        : "Za mobile-work-equipment-image-recognition radi kao OCR i tehnicki asistent za radnu opremu."),
     textMode
       ? "Ulaz je context.transcript. Nemoj ga prepisati kao sirovu napomenu; iz teksta izdvoji naziv opreme, proizvodaca, tip/model, serijski/inventarski broj, tehnicke podatke, namjenu, radnu tvar, nedostatke, mjere, strojarske stavke, elektro stavke i registre opasnosti/stetnosti/napora."
       : "",
@@ -8328,12 +8332,20 @@ function buildOpenAiPurposeInstructions(body = {}) {
       ? "Prepoznaj govorne varijante i kratice: stroj/strojevi, nadzor opreme, mehanicki/strojarski, elektro, zadovoljava/ne zadovoljava, nema nedostataka, radna tvar, UNP/LPG, kompresor/stlaceni zrak, kabel/utikac, zastita, sklopka, tipkalo, blokada, pokretni dio, oslonac, kotac, sonda, agregat, plocica."
       : "",
     "Uvijek prvo procitaj natpisnu plocicu, naljepnice i logotipe. Ne vracaj samo opis slike ako su vidljivi proizvodac, tip ili serijski broj.",
-    "Ne stani na podacima s plocice. Nakon plocice obavezno analiziraj cijeli stroj, komande, prikljucke, kabel/utikac, zastite, pokretne dijelove, oslonce, sonde, kotače i radno okruzenje te popuni opisna RO polja, mechanicalItems, electricalItems i registre opasnosti/stetnosti/napora kada su relevantni.",
-    "Za elektricnu ili elektricki napajanu opremu electricalItems ne smije ostati prazan ako se vide kabel, utikac, napajanje, elektromotor, elektronika, sonde ili U/F/P podaci na plocici. Vrati konkretne elektro nalaze kao customContent, npr. prikljucni kabel i utikac su neosteceni ili nazivni napon je procitan s plocice.",
-    "Za strojarski dio ciljaj relevantne stavke iz vidljivih fizickih znacajki stroja: stabilnost, pristup, upravljanje, zastite, pokretni dijelovi, radni elementi, signalizacija, dokumentacija, buka/vibracije, tlak/hidraulika i radno opterecenje. Ne vracaj samo naziv/proizvodac/model.",
+    templateMode
+      ? "U template nacinu obavezno vrati profileId/profileName za svaki workEquipments zapis. Ako korisnik ili context imaju odabrani profil, koristi ga kao prednost; ako slike jasno pokazuju drugi profil, objasni to u verificationQuestions."
+      : "Ne stani na podacima s plocice. Nakon plocice obavezno analiziraj cijeli stroj, komande, prikljucke, kabel/utikac, zastite, pokretne dijelove, oslonce, sonde, kotače i radno okruzenje te popuni opisna RO polja, mechanicalItems, electricalItems i registre opasnosti/stetnosti/napora kada su relevantni.",
+    templateMode
+      ? "U template nacinu mechanicalItems/electricalItems smiju sadrzavati samo stavke koje dolaze iz profila/templatea, profile.registerDefaults/profile.registerInstructions, ili su direktno procitane/vidljive na slici. Ne ciljaj 12 stavki i ne radi puni pregled."
+      : "Za elektricnu ili elektricki napajanu opremu electricalItems ne smije ostati prazan ako se vide kabel, utikac, napajanje, elektromotor, elektronika, sonde ili U/F/P podaci na plocici. Vrati konkretne elektro nalaze kao customContent, npr. prikljucni kabel i utikac su neosteceni ili nazivni napon je procitan s plocice.",
+    templateMode
+      ? "Ako profil/template nema definirane strojarske ili elektro stavke, vrati samo plocicu, osnovna opisna polja i pitanje sto korisnik treba potvrditi. Ne izmisljaj siroke RO nalaze."
+      : "Za strojarski dio ciljaj relevantne stavke iz vidljivih fizickih znacajki stroja: stabilnost, pristup, upravljanje, zastite, pokretni dijelovi, radni elementi, signalizacija, dokumentacija, buka/vibracije, tlak/hidraulika i radno opterecenje. Ne vracaj samo naziv/proizvodac/model.",
     "Opisna polja pisi kao gotove vrijednosti za zapisnik, ne kao opis fotografije. Ne pisi 'na fotografiji se vidi spremnik'; za UNP/LPG/plin pisi 'Radna tvar: UNP.', za kompresor 'Radni medij: stlaceni zrak.', za hidrauliku 'Radna tvar: hidraulicno ulje.'.",
     "Nedostatke i mjere formuliraj blago i tehnicki. Ako nema jasnih nedostataka, pisi 'Bez vidljivih nedostataka na dostavljenim slikama.' i 'Nisu potrebne posebne mjere prema dostavljenim slikama.'. Izbjegni ostre formulacije poput zabrane rada osim ako je kritican nedostatak jasno vidljiv.",
-    "Obavezno vrati rizike kada proizlaze iz vrste opreme: UNP/LPG/gorivo/plin ukljucuje hazard_registers/4 i harmfulness_registers/1, elektricna oprema ukljucuje hazard_registers/3, pokretni dijelovi hazard_registers/1, rucno pomicanje ili neugodan polozaj strain_registers/1.",
+    templateMode
+      ? "Registre opasnosti/stetnosti/napora u template nacinu vrati samo ako su dio prepoznatog templatea ili direktno proizlaze iz jasne radne tvari/napajanja s plocice."
+      : "Obavezno vrati rizike kada proizlaze iz vrste opreme: UNP/LPG/gorivo/plin ukljucuje hazard_registers/4 i harmfulness_registers/1, elektricna oprema ukljucuje hazard_registers/3, pokretni dijelovi hazard_registers/1, rucno pomicanje ili neugodan polozaj strain_registers/1.",
     batchMode
       ? "Vrati JSON u expectedJsonShape obliku s workEquipments[]. Za svaki prepoznati stroj vrati zaseban zapis i obavezno dodaj imageIndexes kao 1-based redne brojeve slika koje pripadaju tom stroju."
       : "Vrati JSON u expectedJsonShape obliku s workEquipments[0]. Popuni samo jednu trenutno otvorenu RO kolonu; ako je u slikama vise strojeva, odaberi najpouzdaniji za tu kolonu.",

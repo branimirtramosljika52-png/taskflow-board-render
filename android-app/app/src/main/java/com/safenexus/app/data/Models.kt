@@ -596,6 +596,8 @@ data class IsznrRoAttachmentFile(
 )
 
 data class WorkEquipmentImageRecognitionResult(
+    val profileId: String = "",
+    val profileName: String = "",
     val name: String = "",
     val manufacturer: String = "",
     val model: String = "",

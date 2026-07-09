@@ -158,6 +158,8 @@ class SafeNexusApi(
         const val OPENAI_PREPARE_READ_TIMEOUT_MS = 180_000
         const val DOCUMENT_GENERATION_POLL_INTERVAL_MS = 2_000L
         const val DOCUMENT_GENERATION_POLL_ATTEMPTS = 180
+        const val WORK_EQUIPMENT_RECOGNITION_TEMPLATE = "template"
+        const val WORK_EQUIPMENT_RECOGNITION_DETAILED = "detailed"
     }
 
     private fun workEquipmentRoRegisterGroupsJson(): JSONArray =
@@ -251,6 +253,31 @@ class SafeNexusApi(
             .put("noteRule", "Napomena/vrijednost nije uvjet za rucni unos ni IS ZNR slanje, ali NexAI ne treba vracati prazne strojarske ili elektro stavke. Kada ima siguran izvor, upisi konkretan customContent do $RO_ASSESSMENT_NOTE_MAX_LENGTH znakova. U customContent ne pisati 'treba provjeriti/potvrditi' niti 'vidi se na fotografiji/slici'; to ide u verificationQuestions ili se pise kao direktan nalaz.")
             .put("noteExamples", JSONArray(noteExamples))
             .put("verificationQuestions", JSONArray(verificationQuestions))
+
+    private fun normalizeWorkEquipmentRecognitionMode(value: String): String =
+        when (value.trim().lowercase(Locale.getDefault())) {
+            "template", "profile", "profil", "fast", "quick", "brzo" -> WORK_EQUIPMENT_RECOGNITION_TEMPLATE
+            else -> WORK_EQUIPMENT_RECOGNITION_DETAILED
+        }
+
+    private fun workEquipmentRoTemplateAssessmentRule(batchMode: Boolean): String =
+        listOf(
+            "BRZI TEMPLATE NACIN: korisnik zeli AI preko templatea/profila. Ne radi puni tehnicki pregled kao u detaljnom nacinu.",
+            "Primarni zadatak je: 1) prepoznati najblizi profileId/profileName iz context.profiles, 2) procitati natpisnu plocicu i osnovne oznake, 3) popuniti samo stavke koje dolaze iz prepoznatog/odabranog templatea ili su direktno procitane sa slika.",
+            "Ako context.selectedProfileId ili selectedProfileName postoji, taj profil ima prednost osim ako slike jasno prikazuju drugu opremu; tada vrati pitanje u verificationQuestions.",
+            "Obavezno vrati profileId i profileName za svaki workEquipments zapis. Ako nisi siguran, vrati najblizi profil i confidence=low, ali ne izmisljaj siroke nalaze.",
+            "Natpisna plocica ima prioritet za manufacturer, model, serialNumber, inventoryNumber i technicalData. Fotografija cijelog stroja sluzi za naziv, profil i osnovnu namjenu.",
+            "Opisna polja popuni kratko iz templatea i jasnih dokaza: namjena, polozaj, radna tvar, uporaba/odrzavanje, metode. Za UNP pisi 'Radna tvar: UNP.', za kompresor 'Radni medij: stlaceni zrak.'.",
+            "mechanicalItems/electricalItems vrati samo za stavke iz profila/templatea ili za izravno vidljive podatke. Ne ciljaj 12 stavki i ne popunjavaj opce stavke samo zato sto postoje u registru.",
+            "Ako profil ima fieldDefaults, registerDefaults ili registerInstructions, koristi ih kao template. Ako ih nema, koristi samo generalInstruction/noteExamples profila i ono sto je jasno s plocice/slika.",
+            "Nedostatke i mjere formuliraj blago. Ako nije jasno, pisi 'Bez vidljivih nedostataka na dostavljenim slikama.' i 'Nisu potrebne posebne mjere prema dostavljenim slikama.'.",
+            "U customContent ne pisi 'treba provjeriti', 'treba potvrditi', 'na slici se vidi' ni slicno. Nesigurne stvari stavi u verificationQuestions.",
+            if (batchMode) {
+                "Za batch zadrzi kronolosko grupiranje slika i za svaku opremu vrati zaseban workEquipments zapis s imageIndexes/sourceImageNames."
+            } else {
+                "Za single upload vrati samo workEquipments[0] za trenutno otvorenu kolonu."
+            },
+        ).joinToString(" ")
 
     private fun workEquipmentRoRegisterGroupJson(
         path: String,
@@ -1445,9 +1472,11 @@ class SafeNexusApi(
         workOrder: WorkOrder,
         equipment: IsznrManualWorkEquipment,
         files: List<IsznrRoAttachmentFile>,
+        recognitionMode: String = WORK_EQUIPMENT_RECOGNITION_TEMPLATE,
         modelTier: String = "strong",
     ): Result<WorkEquipmentImageRecognitionResult> = withContext(Dispatchers.IO) {
         runCatching {
+            val normalizedRecognitionMode = normalizeWorkEquipmentRecognitionMode(recognitionMode)
             val payloadFiles = JSONArray()
             files.filter { it.contentDataUrl.isNotBlank() }.take(16).forEachIndexed { index, file ->
                 payloadFiles.put(
@@ -1503,6 +1532,7 @@ class SafeNexusApi(
             val body = JSONObject()
                 .put("purpose", "mobile-work-equipment-image-recognition")
                 .put("dryRun", false)
+                .put("recognitionMode", normalizedRecognitionMode)
                 .put("modelTier", modelTier.ifBlank { "strong" })
                 .put("modelPreference", JSONObject().put("tier", modelTier.ifBlank { "strong" }))
                 .put("workOrderId", workOrder.id)
@@ -1513,6 +1543,7 @@ class SafeNexusApi(
                     "context",
                     JSONObject()
                         .put("mode", "single-work-equipment")
+                        .put("recognitionMode", normalizedRecognitionMode)
                         .put("companyName", workOrder.companyName)
                         .put("locationName", workOrder.locationName)
                         .put("currentEquipment", equipment.toJsonObject())
@@ -1532,7 +1563,11 @@ class SafeNexusApi(
                         )
                         .put(
                             "assessmentRule",
-                            "Za RO zapisnik ne staj na plocici. Nakon citanja plocice obavezno procijeni cijeli stroj: namjenu, polozaj, radne tvari, uporabu/odrzavanje, strojarski dio, elektro dio, opasnosti, stetnosti i napore. Biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku i koristi profile.registerInstructions kao vise profilnih primjera po strojarskoj/elektro stavci. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Za opremu s napajanjem, kabelom, utikacem, elektromotorom, elektronikom, uzemljenjem ili U/F/P podacima vrati elektro stavke kada postoji siguran izvor. Ne popunjavaj svaku mogucu stavku. Napomena/vrijednost nije rucni uvjet ni IS ZNR blocker, ali AI preview ne smije vracati prazne stavke: svaka vracena mehanicka/elektro stavka treba imati konkretan customContent do 255 znakova kada postoji siguran izvor. Radne tvari pisi kao polje, ne kao opis slike: 'Radna tvar: UNP.', 'Radni medij: stlaceni zrak.', 'Radna tvar: hidraulicno ulje.' Nedostatke i mjere formuliraj blago: bez vidljivih nedostataka, preporucuje se dodatna provjera, preporucuje se dokumentirati. Ne pisi ostro 'zabraniti rad' ili 'opasno stanje' osim za jasno vidljiv kritican nedostatak. measuredValue koristi samo ako postoji stvarno mjerenje. U customContent i opisnim poljima ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi', 'vidi se na fotografiji', 'na slici se vidi' ni slicno. Ako je nalaz siguran, napisi ga direktno kao cinjenicu. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, radne tvari, nacina rada ili okruzenja.",
+                            if (normalizedRecognitionMode == WORK_EQUIPMENT_RECOGNITION_TEMPLATE) {
+                                workEquipmentRoTemplateAssessmentRule(batchMode = false)
+                            } else {
+                                "Za RO zapisnik ne staj na plocici. Nakon citanja plocice obavezno procijeni cijeli stroj: namjenu, polozaj, radne tvari, uporabu/odrzavanje, strojarski dio, elektro dio, opasnosti, stetnosti i napore. Biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku i koristi profile.registerInstructions kao vise profilnih primjera po strojarskoj/elektro stavci. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Za opremu s napajanjem, kabelom, utikacem, elektromotorom, elektronikom, uzemljenjem ili U/F/P podacima vrati elektro stavke kada postoji siguran izvor. Ne popunjavaj svaku mogucu stavku. Napomena/vrijednost nije rucni uvjet ni IS ZNR blocker, ali AI preview ne smije vracati prazne stavke: svaka vracena mehanicka/elektro stavka treba imati konkretan customContent do 255 znakova kada postoji siguran izvor. Radne tvari pisi kao polje, ne kao opis slike: 'Radna tvar: UNP.', 'Radni medij: stlaceni zrak.', 'Radna tvar: hidraulicno ulje.' Nedostatke i mjere formuliraj blago: bez vidljivih nedostataka, preporucuje se dodatna provjera, preporucuje se dokumentirati. Ne pisi ostro 'zabraniti rad' ili 'opasno stanje' osim za jasno vidljiv kritican nedostatak. measuredValue koristi samo ako postoji stvarno mjerenje. U customContent i opisnim poljima ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi', 'vidi se na fotografiji', 'na slici se vidi' ni slicno. Ako je nalaz siguran, napisi ga direktno kao cinjenicu. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, radne tvari, nacina rada ili okruzenja."
+                            },
                         ),
                 )
                 .put(
@@ -1542,6 +1577,8 @@ class SafeNexusApi(
                             "workEquipments",
                             JSONArray().put(
                                 JSONObject()
+                                    .put("profileId", "id prepoznatog profila/templatea")
+                                    .put("profileName", "naziv prepoznatog profila/templatea")
                                     .put("name", "naziv opreme")
                                     .put("manufacturer", "proizvodac")
                                     .put("model", "tip/model")
@@ -1608,9 +1645,11 @@ class SafeNexusApi(
         selectedProfileId: String = "",
         selectedProfileName: String = "",
         userNote: String = "",
+        recognitionMode: String = WORK_EQUIPMENT_RECOGNITION_TEMPLATE,
         modelTier: String = "strong",
     ): Result<WorkEquipmentImageRecognitionResult> = withContext(Dispatchers.IO) {
         runCatching {
+            val normalizedRecognitionMode = normalizeWorkEquipmentRecognitionMode(recognitionMode)
             val payloadFiles = JSONArray()
             files.filter { it.contentDataUrl.isNotBlank() }.take(RO_BATCH_AI_MAX_FILES).forEachIndexed { index, file ->
                 payloadFiles.put(
@@ -1666,6 +1705,7 @@ class SafeNexusApi(
             val body = JSONObject()
                 .put("purpose", "mobile-work-equipment-image-recognition")
                 .put("dryRun", false)
+                .put("recognitionMode", normalizedRecognitionMode)
                 .put("modelTier", modelTier.ifBlank { "strong" })
                 .put("modelPreference", JSONObject().put("tier", modelTier.ifBlank { "strong" }))
                 .put("workOrderId", workOrder.id)
@@ -1676,6 +1716,7 @@ class SafeNexusApi(
                     "context",
                     JSONObject()
                         .put("mode", "batch-work-equipment")
+                        .put("recognitionMode", normalizedRecognitionMode)
                         .put("maxBatchImages", RO_BATCH_AI_MAX_FILES)
                         .put("companyName", workOrder.companyName)
                         .put("locationName", workOrder.locationName)
@@ -1707,7 +1748,11 @@ class SafeNexusApi(
                         )
                         .put(
                             "assessmentRule",
-                            "Za svaku RO opremu ne staj na plocici. Nakon citanja plocice obavezno procijeni cijeli stroj: namjenu, polozaj, radne tvari, uporabu/odrzavanje, strojarski dio, elektro dio, opasnosti, stetnosti i napore. Biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku i koristi profile.registerInstructions kao vise profilnih primjera po strojarskoj/elektro stavci. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Za opremu s napajanjem, kabelom, utikacem, elektromotorom, elektronikom, uzemljenjem ili U/F/P podacima vrati elektro stavke kada postoji siguran izvor. Ne popunjavaj svaku mogucu stavku. Napomena/vrijednost nije rucni uvjet ni IS ZNR blocker, ali AI preview ne smije vracati prazne stavke: svaka vracena mehanicka/elektro stavka treba imati konkretan customContent do 255 znakova kada postoji siguran izvor. Radne tvari pisi kao polje, ne kao opis slike: 'Radna tvar: UNP.', 'Radni medij: stlaceni zrak.', 'Radna tvar: hidraulicno ulje.' Nedostatke i mjere formuliraj blago: bez vidljivih nedostataka, preporucuje se dodatna provjera, preporucuje se dokumentirati. Ne pisi ostro 'zabraniti rad' ili 'opasno stanje' osim za jasno vidljiv kritican nedostatak. measuredValue koristi samo ako postoji stvarno mjerenje. U customContent i opisnim poljima ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi', 'vidi se na fotografiji', 'na slici se vidi' ni slicno. Ako je nalaz siguran, napisi ga direktno kao cinjenicu. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, radne tvari, nacina rada ili okruzenja. Prve dvije slike grupe smatraj slikom stroja i slikom plocice te ih vrati kroz imageIndexes/sourceImageNames.",
+                            if (normalizedRecognitionMode == WORK_EQUIPMENT_RECOGNITION_TEMPLATE) {
+                                workEquipmentRoTemplateAssessmentRule(batchMode = true)
+                            } else {
+                                "Za svaku RO opremu ne staj na plocici. Nakon citanja plocice obavezno procijeni cijeli stroj: namjenu, polozaj, radne tvari, uporabu/odrzavanje, strojarski dio, elektro dio, opasnosti, stetnosti i napore. Biraj profil iz context.profiles i stavke iz context.registers. Postuj aiInstruction uz svaku stavku i koristi profile.registerInstructions kao vise profilnih primjera po strojarskoj/elektro stavci. Popuni strojarski dio samo za relevantne stavke, ali kada je moguce vrati barem 12 strojarskih stavki. Za opremu s napajanjem, kabelom, utikacem, elektromotorom, elektronikom, uzemljenjem ili U/F/P podacima vrati elektro stavke kada postoji siguran izvor. Ne popunjavaj svaku mogucu stavku. Napomena/vrijednost nije rucni uvjet ni IS ZNR blocker, ali AI preview ne smije vracati prazne stavke: svaka vracena mehanicka/elektro stavka treba imati konkretan customContent do 255 znakova kada postoji siguran izvor. Radne tvari pisi kao polje, ne kao opis slike: 'Radna tvar: UNP.', 'Radni medij: stlaceni zrak.', 'Radna tvar: hidraulicno ulje.' Nedostatke i mjere formuliraj blago: bez vidljivih nedostataka, preporucuje se dodatna provjera, preporucuje se dokumentirati. Ne pisi ostro 'zabraniti rad' ili 'opasno stanje' osim za jasno vidljiv kritican nedostatak. measuredValue koristi samo ako postoji stvarno mjerenje. U customContent i opisnim poljima ne smije ici 'treba provjeriti', 'treba potvrditi', 'potrebno je utvrditi', 'vidi se na fotografiji', 'na slici se vidi' ni slicno. Ako je nalaz siguran, napisi ga direktno kao cinjenicu. Ako je potrebna funkcionalna provjera ili odgovor korisnika, dodaj pitanje u verificationQuestions i nemoj vratiti tu stavku kao gotov nalaz. Primjeri gotovog nalaza: Ukljucivanje je izvedeno kljucem. Upravljanje je pomocu rucica i volana. Prikljucni kabel i utikac su neosteceni. Dodaj opasnosti, stetnosti i napore koji proizlaze iz stroja, plocice, radne tvari, nacina rada ili okruzenja. Prve dvije slike grupe smatraj slikom stroja i slikom plocice te ih vrati kroz imageIndexes/sourceImageNames."
+                            },
                         ),
                 )
                 .put(
@@ -1717,6 +1762,8 @@ class SafeNexusApi(
                             "workEquipments",
                             JSONArray().put(
                                 JSONObject()
+                                    .put("profileId", "id prepoznatog profila/templatea")
+                                    .put("profileName", "naziv prepoznatog profila/templatea")
                                     .put("name", "naziv opreme")
                                     .put("manufacturer", "proizvodac")
                                     .put("model", "tip/model")
@@ -4248,6 +4295,8 @@ private fun JSONObject.toWorkEquipmentImageRecognitionResult(): WorkEquipmentIma
         return ""
     }
     return WorkEquipmentImageRecognitionResult(
+        profileId = readField("profileId", "profile_id", "templateId", "template_id"),
+        profileName = readField("profileName", "profile_name", "templateName", "template_name"),
         name = readField("name", "equipmentName", "naziv").toDirectRoTextField(),
         manufacturer = readField("manufacturer", "producer", "maker", "brand", "proizvodac", "proizvođač").toDirectRoTextField(),
         model = readField("model", "type", "tip", "typeModel", "modelType").toDirectRoTextField(),
@@ -4323,6 +4372,8 @@ private fun JSONObject.toWorkEquipmentImageRecognitionBatchResult(): WorkEquipme
 
     fun parseItem(item: JSONObject): WorkEquipmentImageRecognitionResult =
         WorkEquipmentImageRecognitionResult(
+            profileId = item.field("profileId", "profile_id", "templateId", "template_id"),
+            profileName = item.field("profileName", "profile_name", "templateName", "template_name"),
             name = item.field("name", "equipmentName", "title", "naziv").toDirectRoTextField(),
             manufacturer = item.field("manufacturer", "producer", "maker", "brand", "proizvodac").toDirectRoTextField(),
             model = item.field("model", "type", "tip", "typeModel", "modelType").toDirectRoTextField(),
