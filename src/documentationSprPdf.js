@@ -3,6 +3,7 @@ import { PDFDocument, PDFName, PDFNumber, PDFString, rgb } from "pdf-lib";
 import {
   createDocumentationFormulaSheetsForService,
   createDocumentationMeasurementTablesForService,
+  buildDocumentationNativeCertificateNumber,
   getDocumentationNativeReportPreset,
 } from "./documentationNativePresets.js";
 import {
@@ -291,6 +292,46 @@ function stampFooters(pdfDoc, model, fonts, {
 
 function isFailingResult(model = {}) {
   return clean(model.resultStatus).toUpperCase() === "NE ZADOVOLJAVA";
+}
+
+function normalizePdfBoolean(value, defaultValue = false) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  const text = clean(value).toLowerCase();
+  if (!text) {
+    return Boolean(defaultValue);
+  }
+  if (["true", "1", "da", "yes", "on"].includes(text)) {
+    return true;
+  }
+  if (["false", "0", "ne", "no", "off"].includes(text)) {
+    return false;
+  }
+  return Boolean(defaultValue);
+}
+
+function isCertificateCapableReport(model = {}) {
+  return model.hasCertificate === true
+    || getReportPreset(model).hasCertificate === true
+    || Boolean(clean(model.certificateNumber || model.BROJ_UVJERENJA));
+}
+
+function shouldIssueCertificate(model = {}) {
+  if (!isCertificateCapableReport(model)) {
+    return false;
+  }
+  return normalizePdfBoolean(model.issueCertificate ?? model.IZDAJE_UVJERENJE, true)
+    && !isFailingResult(model);
+}
+
+function getCertificateNumber(model = {}) {
+  return clean(model.certificateNumber || model.BROJ_UVJERENJA)
+    || buildDocumentationNativeCertificateNumber(clean(model.recordNumber || model.BROJ_ZAPISNIKA));
+}
+
+function getCertificateFactualNote(model = {}) {
+  return cleanMultiline(model.certificateFactualNote || model.NAPOMENA_BEZ_UVJERENJA || model.defects || "");
 }
 
 function getReportServiceTitle(model = {}) {
@@ -1976,6 +2017,100 @@ function renderNativeHtmlSignature(model = {}) {
   `;
 }
 
+function renderNativeHtmlCertificatePage(model = {}, serviceCode = "", issuedText = "") {
+  const certificateNumber = getCertificateNumber(model);
+  const title = clean(model.certificateTitle || getReportPreset(model).certificateTitle || "UVJERENJE O ISPRAVNOSTI I FUNKCIONALNOSTI");
+  const lead = cleanMultiline(model.certificateLead || getReportPreset(model).certificateLead || "");
+  const resultText = cleanMultiline(model.certificateResultText || getReportPreset(model).certificateResultText || "");
+  const rows = [
+    ["Broj uvjerenja", certificateNumber],
+    ["Izdaje se temeljem zapisnika", clean(model.recordNumber || "-")],
+    ["Narucitelj", `${clean(model.companyName)}; ${clean(model.companyAddress)}; OIB: ${clean(model.companyOib)}`],
+    ["Korisnik prostora", model.spaceUser],
+    ["Mjesto ispitivanja", model.inspectionPlace],
+    ["Objekt ispitivanja", model.inspectionObject],
+    ["Vrsta ispitivanja", model.inspectionType],
+    ["Datum ispitivanja", formatDocumentDate(model.inspectionDate)],
+    ["Datum izdavanja", formatDocumentDate(model.issueDate)],
+  ];
+  return `
+    <section class="sn-ex-cover certificate-cover">
+      ${renderNativeHtmlDocumentHeader(model, serviceCode, { subtitle: "Uvjerenje" })}
+      <div class="cover-title">
+        <div class="eyebrow">Uvjerenje</div>
+        <h1>${escapeNativeHtml(title)}</h1>
+        <div class="subtitle">${escapeNativeHtml(getReportCoverSubtitle(model))}</div>
+      </div>
+      <section class="sn-ex-section">
+        <div class="section-label">Podaci uvjerenja</div>
+        <table class="meta-table"><tbody>${renderNativeHtmlKeyValueRows(rows)}</tbody></table>
+      </section>
+      ${lead ? `<section class="sn-ex-section"><div class="text-box">${formatNativeRichTextHtml(lead)}</div></section>` : ""}
+      ${resultText ? `<section class="sn-ex-section"><div class="text-box">${formatNativeRichTextHtml(resultText)}</div></section>` : ""}
+      <section class="sn-ex-section certificate-number-box">
+        <p>Broj uvjerenja:</p>
+        <h2>${escapeNativeHtml(certificateNumber || "-")}</h2>
+        <p class="issued">U ${escapeNativeHtml(issuedText || "Zagrebu")}</p>
+        ${renderNativeHtmlSignature(model)}
+      </section>
+    </section>
+  `;
+}
+
+function renderNativeHtmlConclusionPage(model = {}, serviceCode = "", {
+  issuedText = "",
+  conclusionStatus = "",
+} = {}) {
+  const certificateCapable = isCertificateCapableReport(model);
+  const certificateIssued = shouldIssueCertificate(model);
+  if (certificateCapable && !certificateIssued) {
+    const factualNote = getCertificateFactualNote(model) || "Upisati utvrdjeno cinjenicno stanje.";
+    return `
+      <section class="conclusion-page">
+        ${renderNativeHtmlDocumentHeader(model, serviceCode, { subtitle: serviceCode })}
+        <section class="sn-ex-section">
+          <div class="section-label">Napomena</div>
+          <div class="text-box">${formatNativeRichTextHtml(factualNote)}</div>
+        </section>
+        <p class="issued">U ${escapeNativeHtml(issuedText || "Zagrebu")}</p>
+        ${renderNativeHtmlSignature(model)}
+      </section>
+    `;
+  }
+  const issuedDocumentLabel = certificateIssued ? "UVJERENJE" : "ZAPISNIK";
+  const issuedNumber = certificateIssued ? getCertificateNumber(model) : clean(model.recordNumber || "-");
+  return `
+    <section class="conclusion-page">
+      ${renderNativeHtmlDocumentHeader(model, serviceCode, { subtitle: serviceCode })}
+      ${isFailingResult(model) ? `
+        <section class="sn-ex-section">
+          <div class="section-label">Nedostatci</div>
+          <div class="text-box">${formatNativeRichTextHtml(model.defects || "Nema utvrdjenih nedostataka.")}</div>
+        </section>
+      ` : ""}
+      <section class="sn-ex-section">
+        <div class="section-label">Preporuke</div>
+        <div class="text-box">${formatNativeRichTextHtml(model.recommendations || "Redovito odrzavati i provjeravati predmetni sustav.")}</div>
+      </section>
+      <section class="sn-ex-section">
+        <div class="section-label">Ocjena rezultata ispitivanja</div>
+        <p>Na temelju usporedbe rezultata mjerenja i ispitivanja s propisanim odnosno dopustenim parametrima utvrdjeno je slijedece:</p>
+        ${renderNativeHtmlAssessments(model)}
+      </section>
+      <section class="sn-ex-section">
+        <div class="section-label">Zakljucak</div>
+        <p>${escapeNativeHtml(getConclusionLead(model))}</p>
+        <div class="conclusion-status">${escapeNativeHtml(conclusionStatus)}</div>
+        <p>zahtjeve spomenutih propisa u pogledu navedenih ispitivanja, te se za navedeno izdaje ${issuedDocumentLabel} broj:</p>
+        <h2 style="text-align:center">${escapeNativeHtml(issuedNumber)}</h2>
+        <p style="text-align:center">${escapeNativeHtml(getValiditySentence(model))} ${escapeNativeHtml(formatDocumentDate(model.validUntil))}</p>
+        <p class="issued">U ${escapeNativeHtml(issuedText || "Zagrebu")}</p>
+        ${renderNativeHtmlSignature(model)}
+      </section>
+    </section>
+  `;
+}
+
 const EX_EXCEL_SERVICE_TITLES = Object.freeze({
   EXEI: "O ISPITIVANJU INSTALACIJA U PODRUČJIMA S EKSPLOZIVNOM ATMOSFEROM",
   EXSE: "O MJERENJU OTPORA UZEMLJENJA I STATIČKOG ELEKTRICITETA",
@@ -2687,6 +2822,11 @@ export function buildDocumentationNativeHtml({
   const technicalRows = getPdfTechnicalDataEntries(model.technicalData);
   const issuedText = [clean(model.issuePlace || "Zagreb"), formatDocumentDate(model.issueDate)].filter(Boolean).join(", ");
   const conclusionStatus = clean(model.resultStatus || "ZADOVOLJAVA");
+  const certificateCapable = isCertificateCapableReport(model);
+  const certificateIssued = shouldIssueCertificate(model);
+  if (certificateCapable) {
+    metaRows.push(["Broj uvjerenja", certificateIssued ? getCertificateNumber(model) : "Ne izdaje se"]);
+  }
 
   return `<!doctype html>
 <html lang="hr">
@@ -2702,6 +2842,9 @@ export function buildDocumentationNativeHtml({
     .sn-ex-section { break-inside: avoid; page-break-inside: avoid; margin: 0 0 12px; }
     .sn-ex-cover { min-height: 250mm; position: relative; page-break-after: always; }
     .sn-ex-cover::before { content: ""; position: absolute; left: -5mm; top: 18mm; bottom: 14mm; width: 3px; background: #0f72ba; }
+    .certificate-cover { page-break-after: always; }
+    .certificate-number-box { margin-top: 18mm; text-align: center; }
+    .certificate-number-box h2 { margin: 4px 0 14px; font-size: 18px; }
     .doc-header { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; border-bottom: 2px solid #0f72ba; padding-bottom: 10px; margin-bottom: 24px; }
     .doc-header.is-uploaded { display: block; position: relative; min-height: 58px; }
     .doc-header.is-uploaded img { display: block; width: 100%; max-height: 78px; object-fit: contain; object-position: center top; }
@@ -2758,6 +2901,7 @@ export function buildDocumentationNativeHtml({
 <body>
   <article class="sn-ex-document">
     <div class="footer-note"><span>${escapeNativeHtml(serviceCode)}</span><span>${escapeNativeHtml(clean(model.recordNumber || ""))}</span></div>
+    ${certificateIssued ? renderNativeHtmlCertificatePage(model, serviceCode, issuedText) : ""}
     <section class="sn-ex-cover">
       ${renderNativeHtmlDocumentHeader(model, serviceCode, {
         subtitle: clean(model.templateCode || `${serviceCode} zapisnik`),
@@ -2809,34 +2953,7 @@ export function buildDocumentationNativeHtml({
     ${renderNativeHtmlChecklists(model)}
     ${renderNativeHtmlMeasurementTables(model, rows)}
 
-    <section class="conclusion-page">
-      ${renderNativeHtmlDocumentHeader(model, serviceCode, { subtitle: serviceCode })}
-      ${isFailingResult(model) ? `
-        <section class="sn-ex-section">
-          <div class="section-label">Nedostatci</div>
-          <div class="text-box">${formatNativeRichTextHtml(model.defects || "Nema utvrdjenih nedostataka.")}</div>
-        </section>
-      ` : ""}
-      <section class="sn-ex-section">
-        <div class="section-label">Preporuke</div>
-        <div class="text-box">${formatNativeRichTextHtml(model.recommendations || "Redovito odrzavati i provjeravati predmetni sustav.")}</div>
-      </section>
-      <section class="sn-ex-section">
-        <div class="section-label">Ocjena rezultata ispitivanja</div>
-        <p>Na temelju usporedbe rezultata mjerenja i ispitivanja s propisanim odnosno dopustenim parametrima utvrdjeno je slijedece:</p>
-        ${renderNativeHtmlAssessments(model)}
-      </section>
-      <section class="sn-ex-section">
-        <div class="section-label">Zakljucak</div>
-        <p>${escapeNativeHtml(getConclusionLead(model))}</p>
-        <div class="conclusion-status">${escapeNativeHtml(conclusionStatus)}</div>
-        <p>zahtjeve spomenutih propisa u pogledu navedenih ispitivanja, te se za navedeno izdaje ZAPISNIK broj:</p>
-        <h2 style="text-align:center">${escapeNativeHtml(clean(model.recordNumber || "-"))}</h2>
-        <p style="text-align:center">${escapeNativeHtml(getValiditySentence(model))} ${escapeNativeHtml(formatDocumentDate(model.validUntil))}</p>
-        <p class="issued">U ${escapeNativeHtml(issuedText || "Zagrebu")}</p>
-        ${renderNativeHtmlSignature(model)}
-      </section>
-    </section>
+    ${renderNativeHtmlConclusionPage(model, serviceCode, { issuedText, conclusionStatus })}
   </article>
 </body>
 </html>`;
@@ -3344,10 +3461,140 @@ function drawSignatureText(page, model, fonts, x, y, width, {
   }
 }
 
+function drawCertificatePage(pdfDoc, model, fonts, signatureImage = null) {
+  const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  let y = drawSimpleHeader(page, model, fonts);
+  y -= 26;
+  drawTextLine(page, "UVJERENJE", {
+    x: MARGIN_X,
+    y,
+    width: PAGE_WIDTH - (MARGIN_X * 2),
+    align: "center",
+    font: fonts.bold,
+    size: 12,
+    color: BLUE,
+  });
+  y -= 28;
+  drawTextBlock(page, clean(model.certificateTitle || getReportPreset(model).certificateTitle || "UVJERENJE O ISPRAVNOSTI I FUNKCIONALNOSTI"), {
+    x: MARGIN_X,
+    y,
+    width: PAGE_WIDTH - (MARGIN_X * 2),
+    align: "center",
+    font: fonts.bold,
+    size: 15,
+    lineHeight: 18,
+    maxLines: 3,
+  });
+  y -= 72;
+  y = drawKeyValueTable(page, [
+    ["Broj uvjerenja", getCertificateNumber(model)],
+    ["Izdaje se temeljem zapisnika", clean(model.recordNumber || "-")],
+    ["Narucitelj", `${clean(model.companyName)}; ${clean(model.companyAddress)}; OIB: ${clean(model.companyOib)}`],
+    ["Mjesto ispitivanja", clean(model.inspectionPlace)],
+    ["Objekt ispitivanja", clean(model.inspectionObject)],
+    ["Datum ispitivanja", formatDocumentDate(model.inspectionDate)],
+    ["Datum izdavanja", formatDocumentDate(model.issueDate)],
+  ], y, fonts, { keyWidth: 160, fontSize: 8.4, lineHeight: 11.4 });
+  y -= 18;
+  const lead = cleanMultiline(model.certificateLead || getReportPreset(model).certificateLead || "");
+  const resultText = cleanMultiline(model.certificateResultText || getReportPreset(model).certificateResultText || "");
+  if (lead) {
+    y = drawTextBlock(page, lead, {
+      x: MARGIN_X + 2,
+      y,
+      width: PAGE_WIDTH - (MARGIN_X * 2) - 4,
+      font: fonts.regular,
+      size: 8.8,
+      lineHeight: 11.5,
+      maxLines: 6,
+    });
+    y -= 10;
+  }
+  if (resultText) {
+    y = drawTextBlock(page, resultText, {
+      x: MARGIN_X + 2,
+      y,
+      width: PAGE_WIDTH - (MARGIN_X * 2) - 4,
+      font: fonts.bold,
+      size: 9,
+      lineHeight: 12,
+      maxLines: 5,
+    });
+  }
+  drawTextLine(page, `U Zagrebu, ${formatDocumentDate(model.issueDate)}`, {
+    x: MARGIN_X,
+    y: 202,
+    width: PAGE_WIDTH - (MARGIN_X * 2),
+    align: "right",
+    font: fonts.bold,
+    size: 8.6,
+  });
+  drawTextLine(page, "M.P.", {
+    x: MARGIN_X,
+    y: 134,
+    width: PAGE_WIDTH - (MARGIN_X * 2),
+    align: "center",
+    font: fonts.bold,
+    size: 9.2,
+  });
+  if (clean(model.responsiblePerson)) {
+    drawTextLine(page, "Uvjerenje izdao:", {
+      x: PAGE_WIDTH - MARGIN_X - 230,
+      y: 154,
+      width: 230,
+      align: "center",
+      font: fonts.regular,
+      size: 8,
+    });
+    drawSignatureText(page, model, fonts, PAGE_WIDTH - MARGIN_X - 230, 140, 230, {
+      includeFieldLabel: false,
+      signatureImage,
+    });
+  }
+  return page;
+}
+
 function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   let y = drawSimpleHeader(page, model, fonts);
   y -= 8;
+  if (isCertificateCapableReport(model) && !shouldIssueCertificate(model)) {
+    y = drawSectionTitle(page, 6, "NAPOMENA", y, fonts);
+    y = drawPlainList(page, getCertificateFactualNote(model) || "Upisati utvrdjeno cinjenicno stanje.", y, fonts, { maxLines: 8, fontSize: 8.5, lineHeight: 11.2 });
+    drawTextLine(page, `U Zagrebu, ${formatDocumentDate(model.issueDate)}`, {
+      x: MARGIN_X,
+      y: y - 34,
+      width: PAGE_WIDTH - (MARGIN_X * 2),
+      align: "right",
+      font: fonts.bold,
+      size: 8.6,
+    });
+    drawTextLine(page, "M.P.", {
+      x: MARGIN_X,
+      y: 134,
+      width: PAGE_WIDTH - (MARGIN_X * 2),
+      align: "center",
+      font: fonts.bold,
+      size: 9.2,
+    });
+    if (clean(model.responsiblePerson)) {
+      drawTextLine(page, "Dokaze iz Zapisnika ocijenio:", {
+        x: PAGE_WIDTH - MARGIN_X - 230,
+        y: 154,
+        width: 230,
+        align: "center",
+        font: fonts.regular,
+        size: 8,
+      });
+      drawSignatureText(page, model, fonts, PAGE_WIDTH - MARGIN_X - 230, 140, 230, {
+        includeFieldLabel: true,
+        fieldName: model.signatureMode === "digital" ? signatureFieldName(model) : "",
+        signatureImage,
+      });
+    }
+    drawFooter(page, "SPR-4/4", fonts);
+    return page;
+  }
   if (isFailingResult(model)) {
   y = drawSectionTitle(page, 6, "NEDOSTATCI", y, fonts);
   y = drawPlainList(page, model.defects || "Nema utvrđenih nedostataka.", y, fonts, { maxLines: 4, fontSize: 8.5, lineHeight: 11.2 });
@@ -3393,7 +3640,9 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
     size: 14,
   });
   y -= 30;
-  y = drawTextBlock(page, "zahtjeve spomenutih propisa u pogledu navedenih ispitivanja, te se za navedeno izdaje ZAPISNIK broj:", {
+  const issuedDocumentLabel = shouldIssueCertificate(model) ? "UVJERENJE" : "ZAPISNIK";
+  const issuedDocumentNumber = shouldIssueCertificate(model) ? getCertificateNumber(model) : clean(model.recordNumber);
+  y = drawTextBlock(page, `zahtjeve spomenutih propisa u pogledu navedenih ispitivanja, te se za navedeno izdaje ${issuedDocumentLabel} broj:`, {
     x: MARGIN_X + 2,
     y,
     width: PAGE_WIDTH - (MARGIN_X * 2) - 4,
@@ -3402,7 +3651,7 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
     lineHeight: 11.5,
     maxLines: 3,
   });
-  drawTextLine(page, clean(model.recordNumber), {
+  drawTextLine(page, issuedDocumentNumber, {
     x: MARGIN_X,
     y: y - 6,
     width: PAGE_WIDTH - (MARGIN_X * 2),
@@ -3668,6 +3917,9 @@ async function appendDocumentationSprRecord(pdfDoc, model = {}, rows = [], fonts
     ? []
     : normalizeSprRows(rows, model);
 
+  if (shouldIssueCertificate(model)) {
+    drawCertificatePage(pdfDoc, model, fonts, signatureImage);
+  }
   await drawOpeningPages(pdfDoc, model, safeRows, fonts, headerImage);
   drawChecklistPages(pdfDoc, model, fonts);
   drawMeasurementTablePages(pdfDoc, model, safeRows, fonts);

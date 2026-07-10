@@ -107,6 +107,7 @@ import {
   createDocumentationFormulaSheetsForService,
   createDocumentationMeasurementTablesForService,
   createDocumentationReportModelDefaults,
+  buildDocumentationNativeCertificateNumber,
   getDocumentationNativeTemplateSeedPresets,
 } from "./src/documentationNativePresets.js";
 
@@ -116,7 +117,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.400.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.401.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -28168,6 +28169,8 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     ) || preset.serviceName,
   };
   const documentNumber = buildMobileDocumentTemplateDocumentNumber(serviceWithCode, workOrder, preset, serviceIndex);
+  const hasCertificate = reportDefaults.hasCertificate === true || preset.hasCertificate === true;
+  const certificateNumber = hasCertificate ? buildDocumentationNativeCertificateNumber(documentNumber) : "";
   const inspectionTypeOptions = [
     { value: "Periodično ispitivanje", label: "Periodično ispitivanje" },
     { value: "Početno ispitivanje", label: "Početno ispitivanje" },
@@ -28334,6 +28337,20 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       defaultValue: normalizeInputValue(workOrder.companyName || service?.companyName),
       helpText: "Početno se puni iz tvrtke RN-a, a po potrebi se može promijeniti za zapisnik.",
     }),
+    ...(hasCertificate ? [
+      buildMobileNativeDocumentationField("issueCertificate", "Izdaje se uvjerenje", "toggle", {
+        defaultValue: "true",
+        helpText: "Uvjerenje se izdaje samo ako je pregled i ispitivanje uredno.",
+      }),
+      buildMobileNativeDocumentationField("certificateNumber", "Broj uvjerenja", "text", {
+        defaultValue: certificateNumber,
+        helpText: "Broj uvjerenja je odvojen od broja zapisnika.",
+      }),
+      buildMobileNativeDocumentationField("certificateFactualNote", "Napomena bez uvjerenja", "textarea", {
+        defaultValue: "",
+        helpText: "Ako se uvjerenje ne izdaje, upisi samo cinjenicno stanje bez negativne zakljucne ocjene.",
+      }),
+    ] : []),
     ...technicalDataFields.map((field) => buildMobileNativeDocumentationField(
       `technical-${field.id || field.key}`,
       field.label || "Tehnički podatak",
@@ -28568,6 +28585,19 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       summary: documentNumber,
       helpText: "Broj zapisnika se automatski gradi iz RN-a i šifre usluge.",
     }),
+    ...(hasCertificate ? [
+      buildMobileNativeDocumentationBlock("issueCertificate", "Izdaje se uvjerenje", "toggle", {
+        group: "Osnovni podaci",
+        editable: true,
+        summary: "Ukljuceno kada je sve uredno.",
+      }),
+      buildMobileNativeDocumentationBlock("certificateNumber", "Broj uvjerenja", "text", {
+        group: "Osnovni podaci",
+        editable: true,
+        summary: certificateNumber,
+        helpText: "Ako se uvjerenje izdaje, ovaj broj ide na prvu stranicu uvjerenja.",
+      }),
+    ] : []),
     buildMobileNativeDocumentationBlock("inspectionDate", "Datum ispitivanja", "date", {
       group: "Osnovni podaci",
       editable: true,
@@ -28690,6 +28720,14 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       editable: true,
     }),
   ];
+  if (hasCertificate) {
+    fieldBlocks.push(buildMobileNativeDocumentationBlock("certificateFactualNote", "Napomena kada se uvjerenje ne izdaje", "textarea", {
+      group: "Preporuke i zakljucna ocjena",
+      editable: true,
+      summary: "Upisi cinjenicno stanje kada se uvjerenje ne izdaje.",
+      helpText: "Ne pise se negativna ocjena, nego samo cinjenicna napomena.",
+    }));
+  }
   return {
     id: `native-${preset.serviceCode.toLowerCase()}-${serviceIndex}`,
     title: preset.title,
@@ -28699,6 +28737,13 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     serviceIndex,
     signatureAreas: preset.signatureAreas || ["elektro"],
     documentNumber,
+    hasCertificate,
+    issueCertificate: hasCertificate,
+    certificateNumber,
+    certificateTitle: reportDefaults.certificateTitle || "",
+    certificateLead: reportDefaults.certificateLead || "",
+    certificateResultText: reportDefaults.certificateResultText || "",
+    certificateFactualNote: "",
     documentName: `${buildMobileDocumentTemplateFileBaseName(preset, workOrder, documentNumber)}.pdf`,
     dataSourceType: "template",
     dataSourceTitle: preset.title,
@@ -33377,6 +33422,38 @@ function buildMobileDocumentationSprModel({
       ]) ||
       "ZADOVOLJAVA",
   );
+  const hasCertificate = normalizeMobileNullableBoolean(
+    common.hasCertificate
+    ?? common.fieldValues?.HAS_CERTIFICATE
+    ?? common.fieldValues?.IMA_UVJERENJE
+    ?? placeholders.HAS_CERTIFICATE
+    ?? placeholders.IMA_UVJERENJE,
+  ) ?? Boolean(reportDefaults.hasCertificate || template.hasCertificate);
+  const issueCertificate = hasCertificate
+    ? (normalizeMobileNullableBoolean(
+      common.issueCertificate
+      ?? common.fieldValues?.ISSUE_CERTIFICATE
+      ?? common.fieldValues?.IZDAJE_UVJERENJE
+      ?? placeholders.ISSUE_CERTIFICATE
+      ?? placeholders.IZDAJE_UVJERENJE,
+    ) ?? true)
+    : false;
+  const certificateNumber = normalizeInputValue(
+    common.certificateNumber
+    || common.fieldValues?.CERTIFICATE_NUMBER
+    || common.fieldValues?.BROJ_UVJERENJA
+    || placeholders.CERTIFICATE_NUMBER
+    || placeholders.BROJ_UVJERENJA,
+  ) || (hasCertificate ? buildDocumentationNativeCertificateNumber(
+    normalizeInputValue(entry.documentNumber || placeholders.BROJ_ZAPISNIKA || placeholders.DOCUMENT_NUMBER),
+  ) : "");
+  const certificateFactualNote = normalizeInputValue(
+    common.certificateFactualNote
+    || common.fieldValues?.CERTIFICATE_FACTUAL_NOTE
+    || common.fieldValues?.NAPOMENA_BEZ_UVJERENJA
+    || placeholders.CERTIFICATE_FACTUAL_NOTE
+    || placeholders.NAPOMENA_BEZ_UVJERENJA,
+  );
 
   return {
     templateCode: normalizeInputValue(
@@ -33400,6 +33477,13 @@ function buildMobileDocumentationSprModel({
     coverSubtitle: normalizeInputValue(template.coverSubtitle || entry.coverSubtitle || reportDefaults.coverSubtitle),
     measurementTableTitle: normalizeInputValue(template.measurementTableTitle || entry.measurementTableTitle || reportDefaults.measurementTableTitle),
     recordNumber: normalizeInputValue(entry.documentNumber || placeholders.BROJ_ZAPISNIKA || placeholders.DOCUMENT_NUMBER),
+    hasCertificate,
+    issueCertificate,
+    certificateNumber,
+    certificateTitle: normalizeInputValue(template.certificateTitle || reportDefaults.certificateTitle),
+    certificateLead: normalizeInputValue(template.certificateLead || reportDefaults.certificateLead),
+    certificateResultText: normalizeInputValue(template.certificateResultText || reportDefaults.certificateResultText),
+    certificateFactualNote,
     documentStatus: "Generirano",
     companyName: normalizeInputValue(entry.companyName || workOrder.companyName || placeholders.TVRTKA || placeholders.COMPANY_NAME),
     companyAddress,

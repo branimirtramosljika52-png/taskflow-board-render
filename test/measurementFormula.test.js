@@ -158,6 +158,7 @@ test("measurement formulas support Excel-style business helpers", () => {
   assert.equal(evaluateMeasurementFormula("=ROUND(B1;2)", context), 12.35);
   assert.equal(evaluateMeasurementFormula("=ROUNDUP(B1;1)", context), 12.4);
   assert.equal(evaluateMeasurementFormula("=ROUNDDOWN(B1;1)", context), 12.3);
+  assert.equal(evaluateMeasurementFormula("=ROUND(0.0666*12*12*SQRT(4);0)", context), 19);
   assert.equal(evaluateMeasurementFormula("=ISBLANK(A2)", context), true);
   assert.equal(evaluateMeasurementFormula("=LEN(A1)", context), 4);
   assert.equal(evaluateMeasurementFormula('=CONCAT(A1;" ";A3)', context), "Safe Nexus");

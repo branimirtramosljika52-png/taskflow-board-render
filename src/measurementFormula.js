@@ -940,6 +940,17 @@ function evaluateFormulaAst(node, context) {
         return evaluateRoundFunction(node, context, "down");
       }
 
+      if (node.name === "SQRT") {
+        if (node.args.length !== 1) {
+          throw new MeasurementFormulaError("SQRT trazi 1 argument.");
+        }
+        const value = coerceToNumber(evaluateFormulaAst(node.args[0], context));
+        if (value < 0) {
+          throw new MeasurementFormulaError("SQRT ne moze izracunati korijen negativnog broja.");
+        }
+        return Math.sqrt(value);
+      }
+
       if (node.name === "TODAY") {
         if (node.args.length !== 0) {
           throw new MeasurementFormulaError("TODAY ne prima argumente.");

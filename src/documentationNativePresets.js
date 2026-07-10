@@ -1,7 +1,44 @@
 const DEFAULT_ROW_COUNT = 6;
 
+export const DOCUMENTATION_NATIVE_CERTIFICATE_SERVICE_CODES = Object.freeze([
+  "SVZ",
+  "SP",
+  "HM",
+  "HMU",
+  "HMV",
+  "HMUV",
+  "SGP",
+  "SS",
+  "PJENA",
+  "SO",
+  "PZ",
+  "PPV",
+  "PPZ",
+  "DS",
+]);
+
 function normalizeCode(value = "") {
   return String(value || "").trim().toUpperCase();
+}
+
+const DOCUMENTATION_NATIVE_CERTIFICATE_SERVICE_CODE_SET = new Set(DOCUMENTATION_NATIVE_CERTIFICATE_SERVICE_CODES);
+
+export function isDocumentationNativeCertificateService(serviceCode = "") {
+  return DOCUMENTATION_NATIVE_CERTIFICATE_SERVICE_CODE_SET.has(normalizeCode(serviceCode));
+}
+
+export function buildDocumentationNativeCertificateNumber(recordNumber = "") {
+  const text = String(recordNumber || "").trim();
+  if (!text) {
+    return "";
+  }
+  if (/-U$/i.test(text)) {
+    return text;
+  }
+  if (/-Z$/i.test(text)) {
+    return text.replace(/-Z$/i, "-U");
+  }
+  return `${text}-U`;
 }
 
 function slugify(value = "") {
@@ -118,6 +155,47 @@ function makeProjectDocumentationAi(options = {}) {
     aiAvoid: "Ne izmisljaj dokumentaciju. Ne prepisuj opcenite zakone i pravilnike u ovo polje. Ako iz izvora vidis samo naziv datoteke, predlozi naziv datoteke kao stavku za korisnicku provjeru.",
     fallbackValue: "",
     validationRules: "Svaku stavku vrati u posebnom retku, idealno s prefiksom '- '. Ako nema jasne dokumentacije, ostavi prazno.",
+    confidenceRequired: "medium",
+    sourceTracking: true,
+    ...options,
+  });
+}
+
+function makeSystemDescriptionAi(options = {}) {
+  return makeAiConfig({
+    type: "richtext",
+    group: "Opis sustava",
+    description: "Jedno rich-text polje za opis sustava, izvedeno stanje, glavne komponente i bitne napomene.",
+    aiDescription: [
+      "Iz starog zapisnika, projekta, sheme, fotografija ili teksta slozi jedan pregledan opis sustava.",
+      "Vrati samo sadrzaj za polje Opis sustava, ne odvojena tehnicka polja.",
+      "Koristi kratke naslove, bullet liste i po potrebi jednostavnu HTML tablicu.",
+      "Za sustav dojave pozara navedi centralu, javljace, sirene, napajanje i sustave u sprezi ako su navedeni.",
+      "Za hidrantsku mrezu navedi vrstu mreze, hidrante, opremu, zone i napomene o mjerenju ako su navedeni.",
+      "Za protupozarne zaklopke, vrata, sprinkler, drencher, plin, pjenu, odvod dima/topline i zavjese navedi glavne elemente, lokacije, pogone/upravljanje i veze sa sustavima u sprezi ako su navedeni.",
+    ].join(" "),
+    aiLookFor: [
+      "opis sustava",
+      "tehnicki opis",
+      "izvedeno stanje",
+      "centrala",
+      "javljaci",
+      "sirene",
+      "hidranti",
+      "protupozarne zaklopke",
+      "protupozarna vrata",
+      "sprinkler",
+      "drencher",
+      "odvod dima",
+      "odvodjenje dima",
+      "sustav za gasenje",
+      "plin",
+      "pjena",
+      "sustavi u sprezi",
+    ],
+    aiAvoid: "Ne izmisljaj dijelove sustava, proizvodjace, tipove ili serijske brojeve. Ako podatak nije naveden, preskoci ga ili napisi da nije razvidno iz dostavljenog izvora. Ne pisi zakljucnu ocjenu u opis sustava.",
+    fallbackValue: "",
+    validationRules: "Vrati HTML koji smije sadrzavati <p>, <strong>, <h3>, <ul>, <ol>, <li>, <table>, <thead>, <tbody>, <tr>, <th> i <td>. Ne vracaj Markdown tablice.",
     confidenceRequired: "medium",
     sourceTracking: true,
     ...options,
@@ -426,6 +504,23 @@ const HYDRANT_MEASUREMENT_COLUMNS = [
   makeColumn("requiredFlow", "Potreban protok [l/min]", 145),
   makeColumn("pass", "Zadovoljava", 110, "DA/NE"),
 ];
+
+function makeHydrantMeasurementRows(count = DEFAULT_ROW_COUNT, seed = {}) {
+  return formulaRows(HYDRANT_MEASUREMENT_COLUMNS, count, (rowNumber) => ({
+    ...seed,
+    nozzleFlow: `=IF(OR(D${rowNumber}="",E${rowNumber}=""),"",ROUND(0.0666*E${rowNumber}*E${rowNumber}*SQRT(D${rowNumber}),0))`,
+    totalFlow: `=IF(OR(B${rowNumber}="",F${rowNumber}=""),"",ROUND(B${rowNumber}*F${rowNumber},0))`,
+    pass: `=IF(OR(G${rowNumber}="",H${rowNumber}=""),"",IF(G${rowNumber}>=H${rowNumber},"DA","NE"))`,
+  }));
+}
+
+function makeCistaHydrantMeasurementRow(rowNumber) {
+  return {
+    c6: `=IF(OR(D${rowNumber}="",E${rowNumber}=""),"",ROUND(0.0666*E${rowNumber}*E${rowNumber}*SQRT(D${rowNumber}),0))`,
+    c7: `=IF(OR(B${rowNumber}="",F${rowNumber}=""),"",ROUND(B${rowNumber}*F${rowNumber},0))`,
+    c9: `=IF(OR(G${rowNumber}="",H${rowNumber}=""),"",IF(G${rowNumber}>=H${rowNumber},"DA","NE"))`,
+  };
+}
 
 const PPV_COLUMNS = [
   makeColumn("number", "Broj", 70),
@@ -3603,6 +3698,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       sourceSheet: "HMU1.1 / HMV1.1",
       columns: ["Hidrantska mreza", "Otvoreno mlaznica", "Staticki tlak pstat [bar]", "Dinamicki tlak pdin [bar]", "Promjer mlaznice [mm]", "Protok po mlaznici Qm [l/min]", "Ukupni protok Quk [l/min]", "Potreban protok [l/min]", "ZADOVOLJAVA"],
       rowCount: 4,
+      rowBuilder: makeCistaHydrantMeasurementRow,
       pageOrientation: "landscape",
     },
   ],
@@ -3644,6 +3740,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       sourceSheet: "HMU1.1",
       columns: ["Hidrantska mreza", "Otvoreno mlaznica", "Staticki tlak pstat [bar]", "Dinamicki tlak pdin [bar]", "Promjer mlaznice [mm]", "Protok po mlaznici Qm [l/min]", "Ukupni protok Quk [l/min]"],
       rowCount: 3,
+      rowBuilder: makeCistaHydrantMeasurementRow,
       pageOrientation: "landscape",
     },
   ],
@@ -3663,6 +3760,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       sourceSheet: "HMV1.1",
       columns: ["Hidrantska mreza", "Otvoreno mlaznica", "Staticki tlak pstat [bar]", "Dinamicki tlak pdin [bar]", "Promjer mlaznice [mm]", "Protok po mlaznici Qm [l/min]", "Ukupni protok Quk [l/min]"],
       rowCount: 3,
+      rowBuilder: makeCistaHydrantMeasurementRow,
       pageOrientation: "landscape",
     },
   ],
@@ -3682,6 +3780,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       sourceSheet: "HMUV1.1",
       columns: ["Hidrantska mreza", "Otvoreno mlaznica", "Staticki tlak pstat [bar]", "Dinamicki tlak pdin [bar]", "Promjer mlaznice [mm]", "Protok po mlaznici Qm [l/min]", "Ukupni protok Quk [l/min]"],
       rowCount: 3,
+      rowBuilder: makeCistaHydrantMeasurementRow,
       pageOrientation: "landscape",
     },
     {
@@ -3699,6 +3798,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       sourceSheet: "HMUV1.1",
       columns: ["Hidrantska mreza", "Otvoreno mlaznica", "Staticki tlak pstat [bar]", "Dinamicki tlak pdin [bar]", "Promjer mlaznice [mm]", "Protok po mlaznici Qm [l/min]", "Ukupni protok Quk [l/min]"],
       rowCount: 3,
+      rowBuilder: makeCistaHydrantMeasurementRow,
       pageOrientation: "landscape",
     },
   ],
@@ -4103,8 +4203,13 @@ function createNativeReportPreset({
   tables = [],
   formulaSheets = [],
   projectDocumentation = "",
+  hasCertificate = false,
+  certificateTitle = "",
+  certificateLead = "",
+  certificateResultText = "",
 } = {}) {
   const cleanCode = normalizeCode(serviceCode);
+  const certificateEnabled = hasCertificate === true || isDocumentationNativeCertificateService(cleanCode);
   return Object.freeze({
     serviceCode: cleanCode,
     serviceName,
@@ -4122,6 +4227,10 @@ function createNativeReportPreset({
     signatureAreas,
     technicalDataFields,
     projectDocumentation,
+    hasCertificate: certificateEnabled,
+    certificateTitle: certificateTitle || "UVJERENJE O ISPRAVNOSTI I FUNKCIONALNOSTI",
+    certificateLead: certificateLead || `Temeljem provedenog pregleda i ispitivanja te zapisnika za ${serviceName || cleanCode} izdaje se ovo uvjerenje.`,
+    certificateResultText: certificateResultText || "Predmetni sustav zadovoljava zahtjeve propisa i pravila struke u obuhvatu provedenog ispitivanja.",
     checklists,
     measurementAssessments,
     tables,
@@ -4661,7 +4770,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     measurementAssessments: makeAssessmentEntries("HM", ["Pregled hidranata", "Mjerenje protoka i tlaka"]),
     tables: [
       tableSpec({ id: "hm-review", label: "Pregled hidranata", summary: "Tablica 1. - pregled hidranata", columns: HYDRANT_REVIEW_COLUMNS, blankRowCount: 8, blankSeed: { marked: "DA", equipment: "DA", available: "DA", functional: "DA" } }),
-      tableSpec({ id: "hm-measurements", label: "Mjerenje hidrantske mreze", summary: "Tablica 2. - mjerenje protoka i tlaka", columns: HYDRANT_MEASUREMENT_COLUMNS, blankRowCount: 4, blankSeed: { pass: "DA" }, pageOrientation: "landscape" }),
+      tableSpec({ id: "hm-measurements", label: "Mjerenje hidrantske mreze", summary: "Tablica 2. - mjerenje protoka i tlaka", columns: HYDRANT_MEASUREMENT_COLUMNS, rows: makeHydrantMeasurementRows(4), pageOrientation: "landscape" }),
     ],
   }),
   HMU: createNativeReportPreset({
@@ -4677,7 +4786,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     measurementAssessments: makeAssessmentEntries("HMU", ["Pregled unutarnjih hidranata", "Mjerenje protoka i tlaka"]),
     tables: [
       tableSpec({ id: "hmu-review", label: "Pregled unutarnjih hidranata", summary: "Tablica 1. - pregled unutarnjih hidranata", columns: HYDRANT_REVIEW_COLUMNS, blankRowCount: 8, blankSeed: { marked: "DA", equipment: "DA", available: "DA", functional: "DA" } }),
-      tableSpec({ id: "hmu-measurements", label: "Mjerenje unutarnje hidrantske mreze", summary: "Tablica 2. - mjerenje protoka i tlaka", columns: HYDRANT_MEASUREMENT_COLUMNS, blankRowCount: 4, blankSeed: { pass: "DA" }, pageOrientation: "landscape" }),
+      tableSpec({ id: "hmu-measurements", label: "Mjerenje unutarnje hidrantske mreze", summary: "Tablica 2. - mjerenje protoka i tlaka", columns: HYDRANT_MEASUREMENT_COLUMNS, rows: makeHydrantMeasurementRows(4), pageOrientation: "landscape" }),
     ],
   }),
   HMV: createNativeReportPreset({
@@ -4693,7 +4802,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     measurementAssessments: makeAssessmentEntries("HMV", ["Pregled vanjskih hidranata", "Mjerenje protoka i tlaka"]),
     tables: [
       tableSpec({ id: "hmv-review", label: "Pregled vanjskih hidranata", summary: "Tablica 1. - pregled vanjskih hidranata", columns: HYDRANT_REVIEW_COLUMNS, blankRowCount: 8, blankSeed: { marked: "DA", equipment: "DA", available: "DA", functional: "DA" } }),
-      tableSpec({ id: "hmv-measurements", label: "Mjerenje vanjske hidrantske mreze", summary: "Tablica 2. - mjerenje protoka i tlaka", columns: HYDRANT_MEASUREMENT_COLUMNS, blankRowCount: 4, blankSeed: { pass: "DA" }, pageOrientation: "landscape" }),
+      tableSpec({ id: "hmv-measurements", label: "Mjerenje vanjske hidrantske mreze", summary: "Tablica 2. - mjerenje protoka i tlaka", columns: HYDRANT_MEASUREMENT_COLUMNS, rows: makeHydrantMeasurementRows(4), pageOrientation: "landscape" }),
     ],
   }),
   HMUV: createNativeReportPreset({
@@ -4709,7 +4818,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     measurementAssessments: makeAssessmentEntries("HMUV", ["Pregled hidranata", "Mjerenje protoka i tlaka"]),
     tables: [
       tableSpec({ id: "hmuv-review", label: "Pregled hidranata", summary: "Tablica 1. - pregled hidranata", columns: HYDRANT_REVIEW_COLUMNS, blankRowCount: 10, blankSeed: { marked: "DA", equipment: "DA", available: "DA", functional: "DA" } }),
-      tableSpec({ id: "hmuv-measurements", label: "Mjerenje hidrantske mreze", summary: "Tablica 2. - mjerenje protoka i tlaka", columns: HYDRANT_MEASUREMENT_COLUMNS, blankRowCount: 6, blankSeed: { pass: "DA" }, pageOrientation: "landscape" }),
+      tableSpec({ id: "hmuv-measurements", label: "Mjerenje hidrantske mreze", summary: "Tablica 2. - mjerenje protoka i tlaka", columns: HYDRANT_MEASUREMENT_COLUMNS, rows: makeHydrantMeasurementRows(6), pageOrientation: "landscape" }),
     ],
   }),
   SGP: createNativeReportPreset({
@@ -4824,7 +4933,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     conclusionLead: "Temeljem rezultata pregleda i ispitivanja moze se zakljuciti da drencher sustav na dan predmetnog ispitivanja",
     signatureAreas: ["pozar"],
     measurementAssessments: makeAssessmentEntries("DS", ["Pregled izvedenog stanja prema dokumentaciji", "Funkcionalnost drencher sustava"]),
-    tables: [tableSpec({ id: "ds-measurements", label: "Drencher sustav", summary: "Tablica 1. - tlakovi i protoci drencher sustava", columns: HYDRANT_MEASUREMENT_COLUMNS, blankRowCount: 4, blankSeed: { pass: "DA" }, pageOrientation: "landscape" })],
+    tables: [tableSpec({ id: "ds-measurements", label: "Drencher sustav", summary: "Tablica 1. - tlakovi i protoci drencher sustava", columns: HYDRANT_MEASUREMENT_COLUMNS, rows: makeHydrantMeasurementRows(4), pageOrientation: "landscape" })],
   }),
   PLINSKAKOTLOVNICA: createNativeReportPreset({
     serviceCode: "PLINSKAKOTLOVNICA",
@@ -5270,6 +5379,42 @@ export function createDocumentationNativeAiFieldsForService(serviceCode = "") {
           defaultValue: preset.projectDocumentation || "",
         }),
       }];
+  const systemDescriptionFields = [
+    {
+      id: "systemDescription",
+      key: "systemDescription",
+      label: "Opis sustava",
+      type: "richtext",
+      fieldType: "richtext",
+      required: false,
+      ai: makeSystemDescriptionAi({
+        key: "systemDescription",
+        label: "Opis sustava",
+        defaultValue: preset.systemDescription || "",
+      }),
+    },
+  ];
+  const certificateFields = preset.hasCertificate ? [
+    {
+      id: "certificateFactualNote",
+      key: "certificateFactualNote",
+      label: "Napomena kada se uvjerenje ne izdaje",
+      type: "text",
+      fieldType: "textarea",
+      required: false,
+      ai: makeAiConfig({
+        key: "certificateFactualNote",
+        label: "Napomena kada se uvjerenje ne izdaje",
+        type: "text",
+        group: "Uvjerenje",
+        aiDescription: `Ako rezultati za ${resultContext.subject} nisu uredni, napisi kratko cinjenicno stanje bez rijeci ne zadovoljava, negativno, neispravno ili slicnih zakljucnih ocjena. Primjer: Tlak u hidrantskoj mrezi je slab.`,
+        aiLookFor: [...resultContext.defectsLookFor, "tlak je slab", "nema protoka", "ne radi", "nije aktivirano", "nedovoljno"],
+        aiAvoid: "Ne pisi zakljucnu ocjenu i ne koristi formulacije ne zadovoljava, negativno, neispravno, nije ispravno. Napisi samo sto je utvrdjeno.",
+        fallbackValue: "",
+        confidenceRequired: "medium",
+      }),
+    },
+  ] : [];
   return [
     ...technicalFields.map((field) => ({
       id: `technical-${field.id || field.key}`,
@@ -5281,6 +5426,8 @@ export function createDocumentationNativeAiFieldsForService(serviceCode = "") {
       ai: { ...field.ai },
     })),
     ...projectDocumentationFields,
+    ...systemDescriptionFields,
+    ...certificateFields,
     ...resultFields,
   ];
 }
@@ -5350,6 +5497,12 @@ export function createDocumentationReportModelDefaults(serviceCode = "") {
     conclusionLead: preset.conclusionLead,
     validitySentence: preset.validitySentence,
     projectDocumentation: preset.projectDocumentation || "",
+    hasCertificate: preset.hasCertificate === true,
+    issueCertificate: preset.hasCertificate === true,
+    certificateTitle: preset.certificateTitle || "",
+    certificateLead: preset.certificateLead || "",
+    certificateResultText: preset.certificateResultText || "",
+    certificateFactualNote: "",
     signatureAreas: [...preset.signatureAreas],
     technicalDataFields: (preset.technicalDataFields || []).map((field) => withDocumentationTechnicalFieldAi(preset.serviceCode, field)),
     checklists: createDocumentationChecklistsForService(preset.serviceCode),
@@ -5378,6 +5531,12 @@ export function getDocumentationNativeTemplateSeedPresets() {
     conclusionLead: preset.conclusionLead,
     validitySentence: preset.validitySentence,
     projectDocumentation: preset.projectDocumentation || "",
+    hasCertificate: preset.hasCertificate === true,
+    issueCertificate: preset.hasCertificate === true,
+    certificateTitle: preset.certificateTitle || "",
+    certificateLead: preset.certificateLead || "",
+    certificateResultText: preset.certificateResultText || "",
+    certificateFactualNote: "",
     signatureAreas: [...preset.signatureAreas],
     technicalDataFields: (preset.technicalDataFields || []).map((field) => withDocumentationTechnicalFieldAi(preset.serviceCode, field)),
     checklists: createDocumentationChecklistsForService(preset.serviceCode),

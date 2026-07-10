@@ -40017,6 +40017,15 @@ body.is-vehicle-usage-open {
   grid-column: 1 / -1;
 }
 
+.gridline-quick-fill-panel .gridline-popover-field:has([data-gridline-quick-items]) {
+  grid-column: 1 / -1;
+}
+
+.gridline-quick-fill-panel textarea[data-gridline-quick-items] {
+  min-height: 92px;
+  line-height: 1.35;
+}
+
 .gridline-fill-choice-panel {
   width: min(260px, calc(100vw - 32px));
   gap: 10px;

@@ -142,6 +142,7 @@ import {
   createDocumentationFormulaSheetsForService,
   createDocumentationMeasurementTablesForService,
   createDocumentationReportModelDefaults,
+  buildDocumentationNativeCertificateNumber,
   getDocumentationNativeReportPreset,
   getDocumentationNativeTemplateSeedPresets,
 } from "./documentationNativePresets.js";
@@ -58546,6 +58547,10 @@ const DOCUMENTATION_SPR_FIELD_LABELS = Object.freeze({
   issueDate: "Datum izdavanja",
   validUntil: "Vrijedi do",
   recordNumber: "Broj zapisnika",
+  hasCertificate: "Ima uvjerenje",
+  issueCertificate: "Izdaje se uvjerenje",
+  certificateNumber: "Broj uvjerenja",
+  certificateFactualNote: "Napomena bez uvjerenja",
   inspectionType: "Vrsta ispitivanja",
   projectDocumentation: "Korištena dokumentacija",
   systemDescription: "Opis sustava",
@@ -58656,6 +58661,13 @@ function createDefaultDocumentationSprModel() {
     coverSubtitle: reportDefaults.coverSubtitle,
     measurementTableTitle: reportDefaults.measurementTableTitle,
     recordNumber: "25-1287-SPR",
+    hasCertificate: reportDefaults.hasCertificate === true,
+    issueCertificate: reportDefaults.hasCertificate === true,
+    certificateNumber: reportDefaults.hasCertificate === true ? buildDocumentationNativeCertificateNumber("25-1287-SPR") : "",
+    certificateTitle: reportDefaults.certificateTitle || "",
+    certificateLead: reportDefaults.certificateLead || "",
+    certificateResultText: reportDefaults.certificateResultText || "",
+    certificateFactualNote: "",
     documentStatus: "U izradi",
     companyName: "PETROL d.o.o.",
     companyAddress: "Savska Opatovina 36, 10000 Zagreb",
@@ -58745,6 +58757,13 @@ function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
     coverSubtitle: "",
     measurementTableTitle: "Tablica 1. - rezultati ispitivanja",
     recordNumber: "",
+    hasCertificate: false,
+    issueCertificate: false,
+    certificateNumber: "",
+    certificateTitle: "",
+    certificateLead: "",
+    certificateResultText: "",
+    certificateFactualNote: "",
     documentStatus: "U izradi",
     companyName: "",
     companyAddress: "",
@@ -59168,6 +59187,23 @@ function formatDocumentationTechnicalDataFields(fields = []) {
     .join("\n");
 }
 
+function normalizeDocumentationSprBoolean(value, defaultValue = false) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  const text = String(value ?? "").trim().toLowerCase();
+  if (!text) {
+    return Boolean(defaultValue);
+  }
+  if (["true", "1", "da", "yes", "y", "on"].includes(text)) {
+    return true;
+  }
+  if (["false", "0", "ne", "no", "n", "off"].includes(text)) {
+    return false;
+  }
+  return Boolean(defaultValue);
+}
+
 function normalizeDocumentationSprModel(value) {
   const fallback = createDefaultDocumentationSprModel();
   const source = value && typeof value === "object" ? value : {};
@@ -59175,6 +59211,10 @@ function normalizeDocumentationSprModel(value) {
   const defaultTechnicalData = formatDocumentationTechnicalDataFields(serviceDefaults.technicalDataFields || []);
   const inspectorUserIds = normalizeDocumentationSprIdList(source.inspectorUserIds);
   const responsiblePersonUserId = String(source.responsiblePersonUserId || "").trim();
+  const hasCertificate = normalizeDocumentationSprBoolean(source.hasCertificate, serviceDefaults.hasCertificate === true || fallback.hasCertificate === true);
+  const sourceRecordNumber = String(source.recordNumber || fallback.recordNumber || "").trim();
+  const certificateNumber = String(source.certificateNumber || source.BROJ_UVJERENJA || "").trim()
+    || (hasCertificate ? buildDocumentationNativeCertificateNumber(sourceRecordNumber) : "");
   return {
     ...fallback,
     ...Object.fromEntries(Object.entries(source).filter(([key]) => key !== "gridlineModel")),
@@ -59185,6 +59225,15 @@ function normalizeDocumentationSprModel(value) {
     reportTitle: source.reportTitle || serviceDefaults.reportTitle || fallback.reportTitle,
     coverSubtitle: source.coverSubtitle || serviceDefaults.coverSubtitle || fallback.coverSubtitle,
     measurementTableTitle: source.measurementTableTitle || serviceDefaults.measurementTableTitle || fallback.measurementTableTitle,
+    hasCertificate,
+    issueCertificate: hasCertificate
+      ? normalizeDocumentationSprBoolean(source.issueCertificate ?? source.IZDAJE_UVJERENJE, source.issueCertificate ?? fallback.issueCertificate ?? true)
+      : false,
+    certificateNumber,
+    certificateTitle: source.certificateTitle || serviceDefaults.certificateTitle || fallback.certificateTitle || "",
+    certificateLead: source.certificateLead || serviceDefaults.certificateLead || fallback.certificateLead || "",
+    certificateResultText: source.certificateResultText || serviceDefaults.certificateResultText || fallback.certificateResultText || "",
+    certificateFactualNote: String(source.certificateFactualNote || source.NAPOMENA_BEZ_UVJERENJA || "").trim(),
     systemDescription: source.systemDescription || source.SYSTEM_DESCRIPTION || source.OPIS_SUSTAVA || serviceDefaults.systemDescription || fallback.systemDescription || "",
     resultsText: source.resultsText || source.OPIS_ISPITIVANJA || source.REZULTATI_ISPITIVANJA || serviceDefaults.resultsText || fallback.resultsText,
     assessmentLabel: source.assessmentLabel || serviceDefaults.assessmentLabel || fallback.assessmentLabel,
@@ -67154,6 +67203,12 @@ function buildDocumentationSprRecordFieldValues(model = {}) {
     WORK_ORDER_DOCUMENT_NUMBER: normalized.recordNumber || "",
     DOCUMENT_NUMBER: normalized.recordNumber || "",
     BROJ_ZAPISNIKA: normalized.recordNumber || "",
+    HAS_CERTIFICATE: normalized.hasCertificate === true,
+    IMA_UVJERENJE: normalized.hasCertificate === true ? "DA" : "NE",
+    ISSUE_CERTIFICATE: normalized.issueCertificate === true,
+    IZDAJE_UVJERENJE: normalized.issueCertificate === true ? "DA" : "NE",
+    CERTIFICATE_NUMBER: normalized.certificateNumber || "",
+    BROJ_UVJERENJA: normalized.certificateNumber || "",
     DOCUMENTATION_SPR_RECORD_NUMBER: normalized.recordNumber || "",
     DOCUMENTATION_SPR_LAYOUT_PRESET: normalizeDocumentationSprLayoutPreset(normalized.layoutPreset),
     SERVICE_CODE: normalized.serviceCode || normalized.serviceBinding?.serviceCode || "SPR",
@@ -67205,6 +67260,8 @@ function buildDocumentationSprRecordFieldValues(model = {}) {
     DOCUMENTATION_SPR_RECOMMENDATIONS: normalized.recommendations || "",
     SPR_RECOMMENDATIONS: normalized.recommendations || "",
     PREPORUKE: normalized.recommendations || "",
+    CERTIFICATE_FACTUAL_NOTE: normalized.certificateFactualNote || "",
+    NAPOMENA_BEZ_UVJERENJA: normalized.certificateFactualNote || "",
     KORISTENA_DOKUMENTACIJA: normalized.projectDocumentation || "",
     SIGNATURE_MODE: normalized.signatureMode || "digital",
     NACIN_POTPISA: normalized.signatureMode || "digital",

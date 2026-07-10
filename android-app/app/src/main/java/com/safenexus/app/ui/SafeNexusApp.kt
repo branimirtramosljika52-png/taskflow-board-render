@@ -37583,11 +37583,14 @@ private data class MeasurementQuickFillDraft(
     val defaultCount: Int,
     val columnModes: Map<String, String>,
     val customValues: Map<String, String>,
+    val includeSectionRows: Boolean = false,
 )
 
 private data class MeasurementQuickItemDraft(
     val name: String,
     val count: Int,
+    val floor: String = "",
+    val room: String = "",
 )
 
 private data class MeasurementCellSelection(
@@ -37954,9 +37957,25 @@ private fun parseMeasurementQuickItems(text: String, defaultCount: Int): List<Me
         .filter { it.isNotBlank() }
         .map { line ->
             val parts = line.split('\t', ';').map { it.trim() }
-            val name = parts.firstOrNull().orEmpty().ifBlank { line }
-            val count = parts.drop(1).firstNotNullOfOrNull { it.toIntOrNull() } ?: fallbackCount
-            MeasurementQuickItemDraft(name = name, count = count.coerceIn(1, 500))
+            val parsedAsStructuredRow = parts.size >= 3
+            val floor = if (parsedAsStructuredRow) parts.getOrNull(0).orEmpty() else ""
+            val room = if (parsedAsStructuredRow) parts.getOrNull(1).orEmpty() else ""
+            val name = if (parsedAsStructuredRow) {
+                parts.getOrNull(2).orEmpty().ifBlank { line }
+            } else {
+                parts.firstOrNull().orEmpty().ifBlank { line }
+            }
+            val count = if (parsedAsStructuredRow) {
+                parts.drop(3).firstNotNullOfOrNull { it.toIntOrNull() } ?: fallbackCount
+            } else {
+                parts.drop(1).firstNotNullOfOrNull { it.toIntOrNull() } ?: fallbackCount
+            }
+            MeasurementQuickItemDraft(
+                name = name,
+                count = count.coerceIn(1, 500),
+                floor = floor,
+                room = room,
+            )
         }
 }
 
@@ -38028,23 +38047,25 @@ private fun applyMeasurementQuickFill(
         }
     }
 
-    if (floor.isNotBlank()) addHeader("Etaža: $floor", "#eef7ff")
-    if (room.isNotBlank()) addHeader("Prostorija: $room", "#f0fbf4")
+    if (draft.includeSectionRows) {
+        if (floor.isNotBlank()) addHeader("Etaža: $floor", "#eef7ff")
+        if (room.isNotBlank()) addHeader("Prostorija: $room", "#f0fbf4")
+    }
 
     val rowsFromItems = if (items.isNotEmpty()) items else listOf(MeasurementQuickItemDraft(name = "", count = draft.defaultCount))
-    rowsFromItems.forEach { item ->
-        repeat(item.count.coerceIn(1, 500)) { index ->
-            val cells = sheet.columns.associate { column ->
-                val mode = draft.columnModes[column.id] ?: defaultMeasurementQuickFillColumnModeMobile(column)
-                val customValue = draft.customValues[column.id].orEmpty()
-                column.id to if (column.isEditableMeasurementColumn()) {
-                    measurementQuickCellValue(mode, customValue, floor, room, item, index)
-                } else {
-                    ""
-                }
+    rowsFromItems.forEachIndexed { itemIndex, item ->
+        val rowFloor = item.floor.ifBlank { floor }
+        val rowRoom = item.room.ifBlank { room }
+        val cells = sheet.columns.associate { column ->
+            val mode = draft.columnModes[column.id] ?: defaultMeasurementQuickFillColumnModeMobile(column)
+            val customValue = draft.customValues[column.id].orEmpty()
+            column.id to if (column.isEditableMeasurementColumn()) {
+                measurementQuickCellValue(mode, customValue, rowFloor, rowRoom, item, itemIndex)
+            } else {
+                ""
             }
-            rowsToInsert.add(createBlankMeasurementRow(sheet, nextId(), cells))
         }
+        rowsToInsert.add(createBlankMeasurementRow(sheet, nextId(), cells))
     }
 
     if (rowsToInsert.isEmpty()) return sheet
@@ -40817,6 +40838,8 @@ private fun MeasurementQuickFillDialog(
     var room by remember(initialDraft) { mutableStateOf(initialDraft?.room.orEmpty()) }
     var itemsText by remember(initialDraft) { mutableStateOf(initialDraft?.itemsText.orEmpty()) }
     var defaultCount by remember(initialDraft) { mutableStateOf((initialDraft?.defaultCount ?: 1).coerceIn(1, 500).toString()) }
+    var includeSectionRows by remember(initialDraft) { mutableStateOf(initialDraft?.includeSectionRows == true) }
+    var showColumnMap by remember(initialDraft) { mutableStateOf(initialDraft != null) }
     var columnModes by remember(columnSignature) {
         mutableStateOf(
             editableColumns.associate { it.id to defaultMeasurementQuickFillColumnModeMobile(it) } +
@@ -40837,6 +40860,16 @@ private fun MeasurementQuickFillDialog(
         "custom" to "Vrijednost",
         "empty" to "Prazno",
     )
+    val safeDefaultCount = defaultCount.toIntOrNull()?.coerceIn(1, 500) ?: 1
+    val previewItems = remember(itemsText, defaultCount, floor, room) {
+        parseMeasurementQuickItems(itemsText, safeDefaultCount).ifEmpty {
+            if (floor.isNotBlank() || room.isNotBlank()) {
+                listOf(MeasurementQuickItemDraft(name = "", count = safeDefaultCount, floor = floor, room = room))
+            } else {
+                emptyList()
+            }
+        }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier.fillMaxWidth(0.98f),
@@ -40851,6 +40884,7 @@ private fun MeasurementQuickFillDialog(
                             defaultCount = defaultCount.toIntOrNull()?.coerceIn(1, 500) ?: 1,
                             columnModes = columnModes,
                             customValues = customValues,
+                            includeSectionRows = includeSectionRows,
                         ),
                     )
                 },
@@ -40878,113 +40912,207 @@ private fun MeasurementQuickFillDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
                 )
-                Row(
+                Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
                 ) {
-                    OutlinedTextField(
-                        value = floor,
-                        onValueChange = { floor = it },
-                        modifier = Modifier.weight(1f),
-                        label = { Text("Etaža") },
-                        singleLine = true,
-                        enabled = enabled,
-                        shape = RoundedCornerShape(12.dp),
-                    )
-                    OutlinedTextField(
-                        value = room,
-                        onValueChange = { room = it },
-                        modifier = Modifier.weight(1f),
-                        label = { Text("Prostorija") },
-                        singleLine = true,
-                        enabled = enabled,
-                        shape = RoundedCornerShape(12.dp),
-                    )
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text("Redak za unos", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+                        Text(
+                            "Format: Etaža; Prostorija; Stavka; Količina. Ako etažu ili prostoriju upišeš gore, koriste se kao default za redove gdje su prazne.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.66f),
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedTextField(
+                                value = floor,
+                                onValueChange = { floor = it },
+                                modifier = Modifier.weight(1f),
+                                label = { Text("Default etaža") },
+                                singleLine = true,
+                                enabled = enabled,
+                                shape = RoundedCornerShape(12.dp),
+                            )
+                            OutlinedTextField(
+                                value = room,
+                                onValueChange = { room = it },
+                                modifier = Modifier.weight(1f),
+                                label = { Text("Default prostorija") },
+                                singleLine = true,
+                                enabled = enabled,
+                                shape = RoundedCornerShape(12.dp),
+                            )
+                        }
+                    }
                 }
                 OutlinedTextField(
                     value = itemsText,
                     onValueChange = { itemsText = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Redovi za unos") },
+                    label = { Text("Etaža; prostorija; stavka; količina") },
+                    placeholder = { Text("Prizemlje; Prodajni prostor; Panik svjetiljka; 2") },
                     minLines = 3,
-                    maxLines = 4,
+                    maxLines = 6,
                     enabled = enabled,
                     shape = RoundedCornerShape(12.dp),
                 )
-                OutlinedTextField(
-                    value = defaultCount,
-                    onValueChange = { value -> defaultCount = value.filter { it.isDigit() }.take(3) },
-                    modifier = Modifier.widthIn(min = 120.dp, max = 160.dp),
-                    label = { Text("Količina po stavci") },
-                    singleLine = true,
-                    enabled = enabled,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    shape = RoundedCornerShape(12.dp),
-                )
-                Text("Vrijednosti po kolonama", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
-                Surface(
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    OutlinedTextField(
+                        value = defaultCount,
+                        onValueChange = { value -> defaultCount = value.filter { it.isDigit() }.take(3) },
+                        modifier = Modifier.widthIn(min = 120.dp, max = 150.dp),
+                        label = { Text("Default kom.") },
+                        singleLine = true,
+                        enabled = enabled,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        shape = RoundedCornerShape(12.dp),
+                    )
                     Row(
                         modifier = Modifier
-                            .horizontalScroll(rememberScrollState())
-                            .padding(10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable(enabled = enabled) { includeSectionRows = !includeSectionRows }
+                            .padding(horizontal = 4.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        visibleEditableColumns.forEach { column ->
-                            val mode = columnModes[column.id] ?: defaultMeasurementQuickFillColumnModeMobile(column)
-                            Column(
-                                modifier = Modifier.width(184.dp),
-                                verticalArrangement = Arrangement.spacedBy(7.dp),
-                            ) {
+                        Checkbox(
+                            checked = includeSectionRows,
+                            onCheckedChange = { includeSectionRows = it },
+                            enabled = enabled,
+                        )
+                        Text(
+                            "Dodaj naslovne redove",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+                if (previewItems.isNotEmpty()) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.16f)),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(
+                                "Pregled: ${previewItems.size} stavki",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Black,
+                            )
+                            previewItems.take(4).forEach { item ->
                                 Text(
-                                    column.label.ifBlank { column.id },
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Black,
-                                    maxLines = 2,
+                                    listOf(
+                                        item.floor.ifBlank { floor },
+                                        item.room.ifBlank { room },
+                                        item.name.ifBlank { "Stavka" },
+                                        "${item.count} kom.",
+                                    ).filter { it.isNotBlank() }.joinToString("  ·  "),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
-                                WorkOrderSelectField(
-                                    label = "Izvor",
-                                    value = mode,
-                                    valueLabel = modeOptions.firstOrNull { it.first == mode }?.second ?: mode,
-                                    options = modeOptions,
-                                    enabled = enabled,
-                                    onSelect = { value -> columnModes = columnModes + (column.id to value) },
-                                    compact = true,
+                            }
+                            if (previewItems.size > 4) {
+                                Text(
+                                    "+ ${previewItems.size - 4} stavki",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold,
                                 )
-                                if (mode == "custom" || mode == "formula") {
-                                    OutlinedTextField(
-                                        value = customValues[column.id].orEmpty(),
-                                        onValueChange = { value -> customValues = customValues + (column.id to value) },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        label = { Text(if (mode == "formula") "Formula" else "Vrijednost") },
-                                        singleLine = true,
-                                        enabled = enabled,
-                                        shape = RoundedCornerShape(12.dp),
-                                    )
-                                } else {
-                                    Text(
-                                        modeOptions.firstOrNull { it.first == mode }?.second ?: mode,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
                             }
                         }
                     }
                 }
-                if (editableColumns.size > 10) {
-                    Text(
-                        "Prikazano je prvih 10 kolona za brzi unos. Ostale možeš urediti direktno u tablici.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
-                    )
+                OutlinedButton(
+                    onClick = { showColumnMap = !showColumnMap },
+                    enabled = enabled,
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text(if (showColumnMap) "Sakrij mapiranje kolona" else "Mapiranje kolona (${editableColumns.size})")
+                }
+                if (showColumnMap) {
+                    Text("Mapiranje kolona", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black)
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .horizontalScroll(rememberScrollState())
+                                .padding(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            visibleEditableColumns.forEach { column ->
+                                val mode = columnModes[column.id] ?: defaultMeasurementQuickFillColumnModeMobile(column)
+                                Column(
+                                    modifier = Modifier.width(184.dp),
+                                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                                ) {
+                                    Text(
+                                        column.label.ifBlank { column.id },
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Black,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    WorkOrderSelectField(
+                                        label = "Izvor",
+                                        value = mode,
+                                        valueLabel = modeOptions.firstOrNull { it.first == mode }?.second ?: mode,
+                                        options = modeOptions,
+                                        enabled = enabled,
+                                        onSelect = { value -> columnModes = columnModes + (column.id to value) },
+                                        compact = true,
+                                    )
+                                    if (mode == "custom" || mode == "formula") {
+                                        OutlinedTextField(
+                                            value = customValues[column.id].orEmpty(),
+                                            onValueChange = { value -> customValues = customValues + (column.id to value) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            label = { Text(if (mode == "formula") "Formula" else "Vrijednost") },
+                                            singleLine = true,
+                                            enabled = enabled,
+                                            shape = RoundedCornerShape(12.dp),
+                                        )
+                                    } else {
+                                        Text(
+                                            modeOptions.firstOrNull { it.first == mode }?.second ?: mode,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (editableColumns.size > 10) {
+                        Text(
+                            "Prikazano je prvih 10 kolona za brzi unos. Ostale možeš urediti direktno u tablici.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                        )
+                    }
                 }
             }
         },

@@ -4047,46 +4047,57 @@
       return "";
     }
 
-    function buildQuickFillRows(floor, room, itemsText, startRowIndex, columnSettings, rowCountOverride) {
+    function parseQuickFillItemRows(itemsText, fallbackFloor, fallbackRoom, fallbackCount) {
       var lines = String(itemsText || "")
         .split(/\r?\n/)
         .map(function (line) { return line.trim(); })
         .filter(Boolean);
+      var defaultCount = clampInteger(fallbackCount, 1, 1, 200);
+      if (!lines.length) {
+        return [{
+          floor: String(fallbackFloor || "").trim(),
+          room: String(fallbackRoom || "").trim(),
+          itemName: fallbackRoom || fallbackFloor || "Mjerno mjesto",
+          quantity: String(defaultCount),
+        }];
+      }
+      return lines.map(function (line) {
+        var parts = splitQuickFillLine(line);
+        var structured = parts.length >= 3;
+        var quantity = structured
+          ? parts.slice(3).find(function (part) { return /^\d+$/.test(part); })
+          : parts.slice(1).find(function (part) { return /^\d+$/.test(part); });
+        return {
+          floor: structured ? parts[0] : String(fallbackFloor || "").trim(),
+          room: structured ? parts[1] : String(fallbackRoom || "").trim(),
+          itemName: structured ? (parts[2] || line) : (parts[0] || fallbackRoom || fallbackFloor || "Mjerno mjesto"),
+          quantity: String(clampInteger(quantity, defaultCount, 1, 200)),
+        };
+      });
+    }
+
+    function buildQuickFillRows(floor, room, itemsText, startRowIndex, columnSettings, rowCountOverride) {
       var settings = normalizeQuickFillColumnSettings(columnSettings);
+      var items = parseQuickFillItemRows(itemsText, floor, room, rowCountOverride);
       var rows = [];
       var firstDataRowIndex;
       var sequence;
-      if (!lines.length) {
-        lines = Array.from(
-          { length: clampInteger(rowCountOverride, 1, 1, 200) },
-          function (_, index) {
-            var base = room || floor || "Mjerno mjesto";
-            return rowCountOverride > 1 ? base + " " + (index + 1) : base;
-          }
-        );
-      }
-      if (String(floor || "").trim()) {
-        rows.push(getQuickFillHeaderRow("Etaza: " + String(floor).trim()));
-      }
-      if (String(room || "").trim()) {
-        rows.push(getQuickFillHeaderRow("Prostorija: " + String(room).trim()));
-      }
       firstDataRowIndex = startRowIndex + rows.length;
       sequence = getNextSequenceNumber(firstDataRowIndex);
-      lines.forEach(function (line, index) {
-        var parts = splitQuickFillLine(line);
-        var itemName = parts[0] || room || floor || "Mjerno mjesto";
-        var place = [floor, room, itemName].map(function (part) { return String(part || "").trim(); }).filter(Boolean).join(" - ");
+      items.forEach(function (item, index) {
+        var itemFloor = String(item && item.floor || "").trim();
+        var itemRoom = String(item && item.room || "").trim();
+        var itemName = String(item && item.itemName || itemRoom || itemFloor || "Mjerno mjesto").trim();
+        var place = [itemFloor, itemRoom, itemName].map(function (part) { return String(part || "").trim(); }).filter(Boolean).join(" - ");
         var row = Array.from({ length: model.columnCount }, function () { return ""; });
         var context = {
           index: index,
           sequence: sequence + index,
-          floor: String(floor || "").trim(),
-          room: String(room || "").trim(),
+          floor: itemFloor,
+          room: itemRoom,
           itemName: itemName,
           place: place || itemName,
-          quantity: parts[1] || "1",
-          parts: parts,
+          quantity: String(item && item.quantity || "1"),
         };
         settings.forEach(function (setting) {
           if (setting.columnIndex < model.columnCount) {
@@ -4264,6 +4275,7 @@
       var startInput;
       var floorInput;
       var roomInput;
+      var itemsInput;
       var countInput;
       var columnMap;
       var closeButton;
@@ -4296,6 +4308,13 @@
       roomInput.placeholder = "npr. Hodnik, ured 12";
       roomInput.dataset.gridlineQuickRoom = "true";
 
+      itemsInput = document.createElement("textarea");
+      itemsInput.rows = 5;
+      itemsInput.autocomplete = "off";
+      itemsInput.spellcheck = false;
+      itemsInput.placeholder = "Prizemlje; Prodajni prostor; Panik svjetiljka; 2";
+      itemsInput.dataset.gridlineQuickItems = "true";
+
       countInput = document.createElement("input");
       countInput.type = "number";
       countInput.min = "1";
@@ -4322,11 +4341,12 @@
       insertButton.dataset.gridlineQuickInsert = "true";
 
       quickFillPanel.append(
-        createPopoverHeader("Brzi generator redova", "Etaza i prostorija se umeću kao spojeni redovi, a kolone definiraš ispod."),
+        createPopoverHeader("Brzi generator redova", "Jedan red je jedna stavka. Format: Etaza; Prostorija; Stavka; Kolicina."),
         createLabeledControl("Pocetni red", startInput),
         createLabeledControl("Etaza", floorInput),
         createLabeledControl("Prostorija", roomInput),
-        createLabeledControl("Broj redova", countInput),
+        createLabeledControl("Redovi za unos", itemsInput),
+        createLabeledControl("Default kolicina", countInput),
         createLabeledControl("Punjenje kolona", columnMap),
         createPopoverActions([closeButton, insertButton])
       );
@@ -4362,6 +4382,7 @@
       var startInput = panel && panel.querySelector("[data-gridline-quick-start]");
       var floorInput = panel && panel.querySelector("[data-gridline-quick-floor]");
       var roomInput = panel && panel.querySelector("[data-gridline-quick-room]");
+      var itemsInput = panel && panel.querySelector("[data-gridline-quick-items]");
       var countInput = panel && panel.querySelector("[data-gridline-quick-count]");
       var columnSettings = collectQuickFillColumnSettings(panel);
       var startRow = clampInteger(startInput && startInput.value, getQuickFillDefaultStartRow(), 1, MAX_ROWS) - 1;
@@ -4369,7 +4390,7 @@
       var rows = buildQuickFillRows(
         floorInput ? floorInput.value : "",
         roomInput ? roomInput.value : "",
-        "",
+        itemsInput ? itemsInput.value : "",
         startRow,
         columnSettings,
         rowCount
