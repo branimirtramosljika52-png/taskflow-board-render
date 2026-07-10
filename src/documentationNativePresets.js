@@ -136,9 +136,10 @@ function makeTechnicalAi(options = {}) {
 function makeProjectDocumentationAi(options = {}) {
   return makeAiConfig({
     type: "text",
+    format: "rich-html",
     group: "Koristena dokumentacija",
     description: "Popis koristene dokumentacije koji se u zapisniku prikazuje kao bullet lista.",
-    aiDescription: "Pronadji i prepisi koristenu dokumentaciju iz naziva uploadanih projekata, starih zapisnika, jednopolnih shema, slika elektroormara ili popisa priloga. Vrati kratku bullet listu, jednu stavku po retku.",
+    aiDescription: "Pronadji i prepisi koristenu dokumentaciju iz naziva uploadanih projekata, starih zapisnika, jednopolnih shema, slika elektroormara ili popisa priloga. Vrati uredan HTML fragment, najcesce bullet listu; ako izvor ima tablicu dokumentacije, vrati pravu HTML tablicu.",
     aiLookFor: [
       "tehnicka dokumentacija",
       "projekt",
@@ -154,7 +155,7 @@ function makeProjectDocumentationAi(options = {}) {
     ],
     aiAvoid: "Ne izmisljaj dokumentaciju. Ne prepisuj opcenite zakone i pravilnike u ovo polje. Ako iz izvora vidis samo naziv datoteke, predlozi naziv datoteke kao stavku za korisnicku provjeru.",
     fallbackValue: "",
-    validationRules: "Svaku stavku vrati u posebnom retku, idealno s prefiksom '- '. Ako nema jasne dokumentacije, ostavi prazno.",
+    validationRules: "Vrati siguran HTML fragment s <p>, <ul>, <ol>, <li>, <strong>, <table>, <tr>, <th> i <td>. Ne vracaj Markdown tablice ni tekst s pipe znakovima umjesto tablice. Ako nema jasne dokumentacije, ostavi prazno.",
     confidenceRequired: "medium",
     sourceTracking: true,
     ...options,
@@ -164,6 +165,7 @@ function makeProjectDocumentationAi(options = {}) {
 function makeSystemDescriptionAi(options = {}) {
   return makeAiConfig({
     type: "richtext",
+    format: "rich-html",
     group: "Opis sustava",
     description: "Jedno rich-text polje za opis sustava, izvedeno stanje, glavne komponente i bitne napomene.",
     aiDescription: [
@@ -196,6 +198,37 @@ function makeSystemDescriptionAi(options = {}) {
     aiAvoid: "Ne izmisljaj dijelove sustava, proizvodjace, tipove ili serijske brojeve. Ako podatak nije naveden, preskoci ga ili napisi da nije razvidno iz dostavljenog izvora. Ne pisi zakljucnu ocjenu u opis sustava.",
     fallbackValue: "",
     validationRules: "Vrati HTML koji smije sadrzavati <p>, <strong>, <h3>, <ul>, <ol>, <li>, <table>, <thead>, <tbody>, <tr>, <th> i <td>. Ne vracaj Markdown tablice.",
+    confidenceRequired: "medium",
+    sourceTracking: true,
+    ...options,
+  });
+}
+
+function makeResultsTextAi(options = {}) {
+  return makeAiConfig({
+    type: "text",
+    format: "rich-html",
+    group: "Rezultati ispitivanja",
+    description: "Tekstualni opis postupka, metoda i rezultata prije ispitnih listova.",
+    aiDescription: [
+      "Iz starog zapisnika, projekta, skice, fotografije ili dodanog teksta slozi sadrzaj za polje Rezultati ispitivanja.",
+      "Zadrzi cinjenicni ton i poredaj sadrzaj u odlomke, kratke naslove, bullet liste ili pravu HTML tablicu ako izvor ima tablicu.",
+      "Ako izvor vec ima tekst postupka ispitivanja, preoblikuj ga u citljiv zapisnicki tekst bez dodavanja novih tvrdnji.",
+    ].join(" "),
+    aiLookFor: [
+      "rezultati ispitivanja",
+      "postupak ispitivanja",
+      "metoda ispitivanja",
+      "ispitni list",
+      "pregledom i ispitivanjem",
+      "simulacija",
+      "mjerenje",
+      "aktiviranje",
+      "tablica",
+    ],
+    aiAvoid: "Ne izmisljaj rezultate mjerenja, ocjene ili nedostatke. Ne upisuj zakljucnu ocjenu u ovo polje.",
+    fallbackValue: "",
+    validationRules: "Vrati siguran HTML fragment s <p>, <strong>, <h3>, <ul>, <ol>, <li>, <table>, <tr>, <th> i <td>. Ne vracaj Markdown tablice.",
     confidenceRequired: "medium",
     sourceTracking: true,
     ...options,
@@ -5394,6 +5427,21 @@ export function createDocumentationNativeAiFieldsForService(serviceCode = "") {
       }),
     },
   ];
+  const resultsTextFields = preset.resultsText ? [
+    {
+      id: "resultsText",
+      key: "resultsText",
+      label: "Rezultati ispitivanja",
+      type: "text",
+      fieldType: "longtext",
+      required: false,
+      ai: makeResultsTextAi({
+        key: "resultsText",
+        label: "Rezultati ispitivanja",
+        defaultValue: preset.resultsText || "",
+      }),
+    },
+  ] : [];
   const certificateFields = preset.hasCertificate ? [
     {
       id: "certificateFactualNote",
@@ -5427,6 +5475,7 @@ export function createDocumentationNativeAiFieldsForService(serviceCode = "") {
     })),
     ...projectDocumentationFields,
     ...systemDescriptionFields,
+    ...resultsTextFields,
     ...certificateFields,
     ...resultFields,
   ];

@@ -5986,27 +5986,31 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: transparent;
       color: #101827;
+      --keyboard-bottom: 0px;
     }
     html, body {
       margin: 0;
       min-height: 100%;
       background: transparent;
       overflow-x: hidden;
+      scroll-padding-bottom: calc(112px + var(--keyboard-bottom));
     }
     body {
       position: relative;
       padding: 0;
       font-size: 16px;
       line-height: 1.42;
+      padding-bottom: calc(14px + var(--keyboard-bottom));
     }
     #editor {
       min-height: max(112px, calc(100vh - 8px));
       box-sizing: border-box;
       outline: none;
-      padding: 2px 0;
+      padding: 2px 0 calc(96px + var(--keyboard-bottom));
       word-break: break-word;
       -webkit-user-select: text;
       user-select: text;
+      scroll-margin-bottom: calc(112px + var(--keyboard-bottom));
     }
     #editor[contenteditable="false"] {
       opacity: 0.72;
@@ -6208,6 +6212,7 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       let slashTouchMoved = false;
       let slashTouchButton = null;
       let slashSuppressClick = false;
+      let caretScrollTimer = null;
 
       function escapeHtml(value) {
         return String(value || "")
@@ -6303,6 +6308,41 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
         if (window.SafeNexusRichText && window.SafeNexusRichText.onChange) {
           window.SafeNexusRichText.onChange(html);
         }
+      }
+
+      function updateKeyboardPadding() {
+        const visualViewport = window.visualViewport;
+        const keyboardBottom = visualViewport
+          ? Math.max(0, window.innerHeight - visualViewport.height - visualViewport.offsetTop)
+          : 0;
+        document.documentElement.style.setProperty("--keyboard-bottom", keyboardBottom + "px");
+      }
+
+      function scrollCaretIntoView() {
+        if (document.activeElement !== editor) return;
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        if (!rect || (!rect.top && !rect.bottom)) return;
+        const visualViewport = window.visualViewport;
+        const viewportTop = visualViewport ? visualViewport.offsetTop : 0;
+        const viewportHeight = visualViewport ? visualViewport.height : window.innerHeight;
+        const topLimit = viewportTop + 16;
+        const bottomLimit = viewportTop + viewportHeight - 118;
+        if (rect.bottom > bottomLimit) {
+          window.scrollBy({ top: rect.bottom - bottomLimit, behavior: "smooth" });
+        } else if (rect.top < topLimit) {
+          window.scrollBy({ top: rect.top - topLimit, behavior: "smooth" });
+        }
+      }
+
+      function scheduleCaretScroll() {
+        window.clearTimeout(caretScrollTimer);
+        caretScrollTimer = window.setTimeout(function () {
+          updateKeyboardPadding();
+          scrollCaretIntoView();
+        }, 80);
       }
 
       function focusEditor() {
@@ -6513,6 +6553,7 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
         }
         notifyChange();
         updateTableTools();
+        scheduleCaretScroll();
       });
 
       editor.addEventListener("keydown", function (event) {
@@ -6524,12 +6565,16 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
           closeMenu();
           return;
         }
+        if (event.key === "Enter") {
+          window.setTimeout(scheduleCaretScroll, 40);
+        }
         if (event.key === " " && currentBlockPlainText().trim() === "1.") {
           event.preventDefault();
           clearCurrentBlockText();
           document.execCommand("insertOrderedList", false, null);
           notifyChange();
           updateTableTools();
+          scheduleCaretScroll();
           return;
         }
         if (event.key === " " && /^[-*]$/.test(currentBlockPlainText().trim())) {
@@ -6538,15 +6583,29 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
           document.execCommand("insertUnorderedList", false, null);
           notifyChange();
           updateTableTools();
+          scheduleCaretScroll();
         }
       });
 
-      editor.addEventListener("keyup", updateTableTools);
+      editor.addEventListener("keyup", function () {
+        updateTableTools();
+        scheduleCaretScroll();
+      });
       editor.addEventListener("mouseup", updateTableTools);
       editor.addEventListener("touchend", function () {
         window.setTimeout(updateTableTools, 80);
+        window.setTimeout(scheduleCaretScroll, 90);
       });
-      document.addEventListener("selectionchange", updateTableTools);
+      editor.addEventListener("focus", scheduleCaretScroll);
+      document.addEventListener("selectionchange", function () {
+        updateTableTools();
+        scheduleCaretScroll();
+      });
+      window.addEventListener("resize", scheduleCaretScroll);
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", scheduleCaretScroll);
+        window.visualViewport.addEventListener("scroll", scheduleCaretScroll);
+      }
 
       editor.addEventListener("blur", function () {
         window.setTimeout(function () {
@@ -6635,6 +6694,7 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
 
       window.SafeNexusEditor.setContent($initialJson);
       window.SafeNexusEditor.setEnabled($enabledJson);
+      updateKeyboardPadding();
     })();
   </script>
 </body>
@@ -6713,7 +6773,6 @@ private fun DocumentationMobileRichTextFullscreenDialog(
     value: String,
     onChange: (String) -> Unit,
     enabled: Boolean,
-    helperText: String,
     onDismiss: () -> Unit,
 ) {
     var webViewRef by remember(label) { mutableStateOf<WebView?>(null) }
@@ -6821,38 +6880,6 @@ private fun DocumentationMobileRichTextFullscreenDialog(
                         onWebViewReady = { webViewRef = it },
                     )
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        helperText,
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                    )
-                    OutlinedButton(
-                        onClick = {
-                            webViewRef?.evaluateJavascript(
-                                "window.SafeNexusEditor&&window.SafeNexusEditor.showCommands();",
-                                null,
-                            )
-                        },
-                        enabled = enabled,
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                    ) {
-                        Text("/ Naredbe")
-                    }
-                    Button(
-                        onClick = onDismiss,
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                    ) {
-                        Text("Gotovo")
-                    }
-                }
             }
         }
     }
@@ -6867,7 +6894,8 @@ private fun DocumentationMobileRichTextField(
     enabled: Boolean,
     minLines: Int = 6,
     maxLines: Int = 14,
-    helperText: String = "Upiši / za naslov, listu ili tablicu.",
+    helperText: String = "Upiši / za naslov, listu ili tablicu. NexAI može vratiti bullete i prave tablice iz izvora.",
+    onOpenAiSource: (() -> Unit)? = null,
 ) {
     var webViewRef by remember(label) { mutableStateOf<WebView?>(null) }
     var fullscreenOpen by rememberSaveable(label) { mutableStateOf(false) }
@@ -6919,6 +6947,23 @@ private fun DocumentationMobileRichTextField(
                     Spacer(Modifier.width(4.dp))
                     Text("Cijeli ekran")
                 }
+                if (onOpenAiSource != null) {
+                    OutlinedButton(
+                        onClick = onOpenAiSource,
+                        enabled = enabled,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    ) {
+                        Icon(
+                            Icons.Rounded.Fingerprint,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text("NexAI")
+                    }
+                }
                 OutlinedButton(
                     onClick = {
                         webViewRef?.evaluateJavascript(
@@ -6942,7 +6987,6 @@ private fun DocumentationMobileRichTextField(
             value = value,
             onChange = onChange,
             enabled = enabled,
-            helperText = helperText,
             onDismiss = { fullscreenOpen = false },
         )
     }
@@ -34462,6 +34506,11 @@ private fun WorkOrderDocumentationWizardDialog(
                         },
                         onOpenAttachment = openDocumentationAttachment,
                         onRemoveAttachment = removeDocumentationAttachment,
+                        onOpenAiSourceForField = { template, field ->
+                            selectedAiTemplateId = template.id
+                            aiMessage = "Dodaj projekt, stari zapisnik, sliku ili tekst za polje \"${field.label}\" pa pokreni NexAI."
+                            aiUploadSourceDialogOpen = true
+                        },
                         onFieldChange = { template, field, value, replaceExisting ->
                             if (field.type.equals("spr_voice", ignoreCase = true)) {
                                 val action = decodeSprVoiceAction(value, replaceExisting)
@@ -42629,6 +42678,7 @@ private fun DocumentationSprMobileWorkspace(
     onRemoveAttachment: (String) -> Unit,
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String, Boolean) -> Unit,
     onSprVoicePreview: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
+    onOpenAiSourceForField: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField) -> Unit,
 ) {
     val menuEntries = remember(templates) {
         templates.flatMap { template ->
@@ -42820,6 +42870,7 @@ private fun DocumentationSprMobileWorkspace(
                                 onRemoveAttachment = onRemoveAttachment,
                                 onFieldChange = onFieldChange,
                                 onSprVoicePreview = onSprVoicePreview,
+                                onOpenAiSourceForField = onOpenAiSourceForField,
                             )
                             chapterIndex += 1
                         }
@@ -43394,6 +43445,7 @@ private fun DocumentationSprTemplateSectionPanel(
     onRemoveAttachment: (String) -> Unit,
     onFieldChange: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String, Boolean) -> Unit,
     onSprVoicePreview: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField, String) -> Unit,
+    onOpenAiSourceForField: (WorkOrderDocumentationTemplate, WorkOrderDocumentationField) -> Unit,
 ) {
     var expanded by rememberSaveable(entry.key) { mutableStateOf(false) }
     val isBasicSection = remember(entry.section) { isBasicTemplateSection(entry.section) }
@@ -43593,6 +43645,7 @@ private fun DocumentationSprTemplateSectionPanel(
                                     onSprVoicePreview = { field, transcript ->
                                         onSprVoicePreview(entry.template, field, transcript)
                                     },
+                                    onOpenAiSourceForField = onOpenAiSourceForField,
                                     sprVoicePreviewRows = sprVoicePreviewRows,
                                     sprVoicePreviewLoading = sprVoicePreviewLoading,
                                     sprVoicePreviewMessage = sprVoicePreviewMessage,
@@ -44079,7 +44132,7 @@ private fun DocumentationAiAssistantSection(
             AnimatedVisibility(visible = expanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "Dodaj stari zapisnik, sliku ili tekst. NexAI popunjava samo polja i Excel kolone označene u predlošku.",
+                        "Dodaj stari zapisnik, projekt, sliku ili tekst. NexAI popunjava označena polja i Excel kolone; rich-text polja mogu dobiti naslove, bullete i tablice.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
                     )
@@ -46701,6 +46754,9 @@ private fun isDocumentationRecommendationsTemplateField(
         lookup.contains("preporuk") || lookup.contains("napomen")
     }
 
+private fun isDocumentationRichAiField(field: WorkOrderDocumentationField): Boolean =
+    field.type.lowercase(Locale.getDefault()) in setOf("richtext", "longtext", "textarea")
+
 private fun documentationSatisfactoryValueIsPositive(value: String): Boolean {
     val lookup = normalizeTemplateSectionLookup(value)
     if (lookup.isBlank()) return true
@@ -46916,6 +46972,7 @@ private fun TemplateBlockDetailRow(
     onChange: (WorkOrderDocumentationField, String) -> Unit,
     onSprVoiceApply: ((WorkOrderDocumentationField, String, Boolean) -> Unit)? = null,
     onSprVoicePreview: ((WorkOrderDocumentationField, String) -> Unit)? = null,
+    onOpenAiSourceForField: ((WorkOrderDocumentationTemplate, WorkOrderDocumentationField) -> Unit)? = null,
     sprVoicePreviewRows: List<SprVoiceAiRow> = emptyList(),
     sprVoicePreviewLoading: Boolean = false,
     sprVoicePreviewMessage: String = "",
@@ -46953,6 +47010,11 @@ private fun TemplateBlockDetailRow(
             sprVoicePreviewMessage = sprVoicePreviewMessage,
             voiceContext = listOf(template.serviceCode, template.title, block.label, block.summary, editableField.helpText).joinToString(" "),
             showHelpText = false,
+            onOpenAiSource = if (isDocumentationRichAiField(editableField)) {
+                { onOpenAiSourceForField?.invoke(template, editableField) }
+            } else {
+                null
+            },
         )
         return
     }
@@ -47031,6 +47093,11 @@ private fun TemplateBlockDetailRow(
                         sprVoicePreviewMessage = sprVoicePreviewMessage,
                         voiceContext = listOf(template.serviceCode, template.title, block.label, block.summary, editableField.helpText).joinToString(" "),
                         showHelpText = false,
+                        onOpenAiSource = if (isDocumentationRichAiField(editableField)) {
+                            { onOpenAiSourceForField?.invoke(template, editableField) }
+                        } else {
+                            null
+                        },
                     )
                 }
             } else {
@@ -47280,6 +47347,7 @@ private fun TemplateFieldInput(
     sprVoicePreviewMessage: String = "",
     voiceContext: String = "",
     showHelpText: Boolean = true,
+    onOpenAiSource: (() -> Unit)? = null,
 ) {
     val label = if (field.required) "${field.label} *" else field.label
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -47329,6 +47397,7 @@ private fun TemplateFieldInput(
                 value = value,
                 onChange = onChange,
                 enabled = enabled,
+                onOpenAiSource = onOpenAiSource,
             )
             "longtext", "textarea" -> DocumentationMobileRichTextField(
                 label = label,
@@ -47337,7 +47406,8 @@ private fun TemplateFieldInput(
                 enabled = enabled,
                 minLines = 3,
                 maxLines = 7,
-                helperText = "Upiši / za naslov, listu, tablicu ili napomenu.",
+                helperText = "Upiši / za naslov, listu, tablicu ili napomenu. NexAI može prepisati projekt ili stari zapisnik.",
+                onOpenAiSource = onOpenAiSource,
             )
             "spr_voice" -> DocumentationSprVoiceField(
                 label = label,

@@ -117,7 +117,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.412.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.413.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -25673,6 +25673,11 @@ function shouldMobileDocumentTemplateFieldUseDefaultAi(field = {}) {
   ].includes(fieldType);
 }
 
+function shouldMobileDocumentTemplateFieldUseRichHtmlAi(field = {}) {
+  const fieldType = normalizeInputValue(field?.type || "text").toLowerCase();
+  return ["richtext", "longtext", "textarea"].includes(fieldType);
+}
+
 function mergeMobileAiConfigList(sourceValue, defaultValue, maxItems = 160) {
   const sourceList = normalizeMobileAiConfigList(sourceValue, maxItems);
   return sourceList.length > 0 ? sourceList : normalizeMobileAiConfigList(defaultValue, maxItems);
@@ -25682,6 +25687,7 @@ function buildMobileDocumentTemplateDefaultAiFieldInput(field = {}, index = 0, a
   const settings = normalizeDocumentTemplateAiSettings(aiSettings);
   const label = normalizeInputValue(field?.label || field?.wordLabel || `Polje ${index + 1}`) || `Polje ${index + 1}`;
   const key = getMobileDocumentTemplateFieldTokenKey(field, index);
+  const useRichHtml = shouldMobileDocumentTemplateFieldUseRichHtmlAi(field);
   const lookFor = Array.from(new Set([
     label,
     field?.wordLabel,
@@ -25695,13 +25701,21 @@ function buildMobileDocumentTemplateDefaultAiFieldInput(field = {}, index = 0, a
     type: getMobileDocumentTemplateDefaultAiTypeForField(field),
     required: Boolean(field?.required || field?.isRequired),
     enabled: shouldMobileDocumentTemplateFieldUseDefaultAi(field),
-    aiDescription: `Popuni polje "${label}" iz prethodnog zapisnika, starijeg prethodnog zapisnika, uploadanog izvora ili templatea.`,
+    aiDescription: useRichHtml
+      ? `Popuni polje "${label}" iz prethodnog zapisnika, projekta, uploadanog izvora ili templatea. Vrati uredan HTML fragment s naslovima, bulletima i pravom tablicom kada je tablica vidljiva u izvoru.`
+      : `Popuni polje "${label}" iz prethodnog zapisnika, starijeg prethodnog zapisnika, uploadanog izvora ili templatea.`,
     aiLookFor: lookFor,
     aiAvoid: settings.defaultAvoid || MOBILE_DOCUMENT_TEMPLATE_AI_DEFAULT_AVOID,
     confidenceRequired: settings.confidenceRequired || "medium",
+    format: useRichHtml ? "rich-html" : "",
     sourceTracking: true,
     inheritSettings: true,
-    instructions: formatMobileDocumentTemplateAiInstruction(settings.fieldInstruction, { label }),
+    instructions: [
+      formatMobileDocumentTemplateAiInstruction(settings.fieldInstruction, { label }),
+      useRichHtml
+        ? "Ako izvor sadrzi tablicu, vrati pravu HTML tablicu s <table>, <tr>, <th> i <td>. Ne vracaj Markdown tablice ni tekst razdvojen znakom |. Za nabrajanje koristi <ul>/<ol>/<li>."
+        : "",
+    ].filter(Boolean).join(" "),
     sourcePriority: normalizeMobileDocumentTemplateAiSourcePriority(settings.sourcePriority),
     noSourceBehavior: normalizeMobileDocumentTemplateAiNoSourceBehavior(settings.noSourceBehavior),
   };
