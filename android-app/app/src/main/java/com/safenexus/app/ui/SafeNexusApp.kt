@@ -14934,6 +14934,45 @@ private fun ManualWorkEquipmentInlineEditor(
 
             Surface(
                 modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                color = Color(0xFFF8FBFF),
+                border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                tonalElevation = 0.dp,
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Surface(shape = CircleShape, color = Color(0xFFE0F2FE), modifier = Modifier.size(42.dp)) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(22.dp))
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                if (isStrojeviTemplate) "Predložak i NexAI" else "Predložak, slike i NexAI",
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF0F172A),
+                            )
+                            Text(
+                                if (isStrojeviTemplate) {
+                                    "Odaberi predložak ili diktiraj podatke koje NexAI pretvara u stavke."
+                                } else {
+                                    "Jedno mjesto za predložak, slike, PDF priloge, dijelove i AI prepoznavanje ove RO kolone."
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF475569),
+                            )
+                        }
+                    }
+
+                    Surface(
+                modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
                 color = Color(0xFFF8FAFC),
                 border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
@@ -15236,6 +15275,8 @@ private fun ManualWorkEquipmentInlineEditor(
                         style = MaterialTheme.typography.labelSmall,
                         color = if (message.contains("ne", ignoreCase = true) || message.contains("greška", ignoreCase = true)) Color(0xFFB45309) else Color(0xFF0F766E),
                     )
+                }
+            }
                 }
             }
 
