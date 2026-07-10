@@ -6000,7 +6000,7 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       line-height: 1.42;
     }
     #editor {
-      min-height: 112px;
+      min-height: max(112px, calc(100vh - 8px));
       box-sizing: border-box;
       outline: none;
       padding: 2px 0;
@@ -6073,7 +6073,7 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       max-height: min(268px, calc(100dvh - 12px));
       overflow-y: scroll;
       overflow-x: hidden;
-      touch-action: none;
+      touch-action: pan-y;
       overscroll-behavior: contain;
       scrollbar-gutter: stable;
       border: 1px solid rgba(37, 99, 235, 0.22);
@@ -6567,35 +6567,26 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
         slashTouchY = event.touches[0].clientY;
         slashTouchMoved = false;
         slashTouchButton = event.target.closest("button[data-command]");
-        event.preventDefault();
-        event.stopPropagation();
-      }, { passive: false });
+      }, { passive: true });
       menu.addEventListener("touchmove", function (event) {
         if (slashTouchY === null || !event.touches || !event.touches.length) return;
         const nextX = event.touches[0].clientX;
         const nextY = event.touches[0].clientY;
-        const delta = slashTouchY - nextY;
-        if (Math.abs(delta) > 1) {
-          menu.scrollTop += delta;
-        }
-        if (Math.abs(delta) > 4 || (slashTouchX !== null && Math.abs(nextX - slashTouchX) > 8)) {
+        if (Math.abs(nextY - slashTouchY) > 4 || (slashTouchX !== null && Math.abs(nextX - slashTouchX) > 8)) {
           slashTouchMoved = true;
         }
-        slashTouchY = nextY;
-        event.preventDefault();
-        event.stopPropagation();
-      }, { passive: false });
+      }, { passive: true });
       menu.addEventListener("touchend", function (event) {
-        if (!slashTouchMoved && slashTouchButton) {
-          slashSuppressClick = true;
-          applyCommand(slashTouchButton.getAttribute("data-command"));
-        }
         slashTouchX = null;
         slashTouchY = null;
         slashTouchButton = null;
-        event.preventDefault();
-        event.stopPropagation();
-      }, { passive: false });
+      }, { passive: true });
+      menu.addEventListener("touchcancel", function () {
+        slashTouchX = null;
+        slashTouchY = null;
+        slashTouchMoved = false;
+        slashTouchButton = null;
+      }, { passive: true });
       menu.addEventListener("wheel", function (event) {
         event.stopPropagation();
       }, { passive: true });
@@ -6653,6 +6644,222 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
+private fun DocumentationMobileRichTextWebView(
+    label: String,
+    value: String,
+    onChange: (String) -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onWebViewReady: (WebView?) -> Unit = {},
+) {
+    val latestOnChange = rememberUpdatedState(onChange)
+    var lastEditorHtml by remember(label) { mutableStateOf(value) }
+    val bridge = remember(label) {
+        DocumentationMobileRichTextBridge { html ->
+            lastEditorHtml = html
+            latestOnChange.value(html)
+        }
+    }
+    val initialHtml = remember(label) { buildDocumentationMobileRichTextEditorHtml(value, enabled) }
+    DisposableEffect(Unit) {
+        onDispose { onWebViewReady(null) }
+    }
+    AndroidView(
+        modifier = modifier,
+        factory = { context ->
+            WebView(context).apply {
+                onWebViewReady(this)
+                webViewClient = WebViewClient()
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = false
+                settings.textZoom = 100
+                settings.allowFileAccess = false
+                settings.allowContentAccess = false
+                isFocusable = true
+                isFocusableInTouchMode = true
+                isVerticalScrollBarEnabled = true
+                isHorizontalScrollBarEnabled = false
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                addJavascriptInterface(bridge, "SafeNexusRichText")
+                loadDataWithBaseURL(
+                    "https://safe-nexus.local/editor/",
+                    initialHtml,
+                    "text/html",
+                    "UTF-8",
+                    null,
+                )
+            }
+        },
+        update = { webView ->
+            onWebViewReady(webView)
+            if (value != lastEditorHtml) {
+                lastEditorHtml = value
+                webView.evaluateJavascript(
+                    "window.SafeNexusEditor&&window.SafeNexusEditor.setContent(${JSONObject.quote(value)});",
+                    null,
+                )
+            }
+            webView.evaluateJavascript(
+                "window.SafeNexusEditor&&window.SafeNexusEditor.setEnabled(${if (enabled) "true" else "false"});",
+                null,
+            )
+        },
+    )
+}
+
+@Composable
+private fun DocumentationMobileRichTextFullscreenDialog(
+    label: String,
+    value: String,
+    onChange: (String) -> Unit,
+    enabled: Boolean,
+    helperText: String,
+    onDismiss: () -> Unit,
+) {
+    var webViewRef by remember(label) { mutableStateOf<WebView?>(null) }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    BackHandler(onBack = onDismiss)
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        val dialogView = LocalView.current
+        SideEffect {
+            val window = (dialogView.parent as? DialogWindowProvider)?.window
+            window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            window?.setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                    WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED,
+            )
+        }
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding(),
+            shape = RoundedCornerShape(0.dp),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(WindowInsets.safeDrawing.asPaddingValues())
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Rounded.Close, contentDescription = "Zatvori")
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            label,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 1,
+                        )
+                        Text(
+                            "Cijeli ekran za uredjivanje",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            webViewRef?.evaluateJavascript(
+                                "window.SafeNexusEditor&&window.SafeNexusEditor.showCommands();",
+                                null,
+                            )
+                        },
+                        enabled = enabled,
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    ) {
+                        Text("/")
+                    }
+                    IconButton(
+                        onClick = {
+                            focusManager.clearFocus(force = true)
+                            webViewRef?.clearFocus()
+                            keyboardController?.hide()
+                        },
+                    ) {
+                        Icon(Icons.Rounded.KeyboardHide, contentDescription = "Spusti tastaturu")
+                    }
+                    FloatingActionButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(48.dp),
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ) {
+                        Icon(Icons.Rounded.Check, contentDescription = "Gotovo")
+                    }
+                }
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                ) {
+                    DocumentationMobileRichTextWebView(
+                        label = "$label-fullscreen",
+                        value = value,
+                        onChange = onChange,
+                        enabled = enabled,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
+                        onWebViewReady = { webViewRef = it },
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        helperText,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            webViewRef?.evaluateJavascript(
+                                "window.SafeNexusEditor&&window.SafeNexusEditor.showCommands();",
+                                null,
+                            )
+                        },
+                        enabled = enabled,
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    ) {
+                        Text("/ Naredbe")
+                    }
+                    Button(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                    ) {
+                        Text("Gotovo")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
 private fun DocumentationMobileRichTextField(
     label: String,
     value: String,
@@ -6662,16 +6869,8 @@ private fun DocumentationMobileRichTextField(
     maxLines: Int = 14,
     helperText: String = "Upiši / za naslov, listu ili tablicu.",
 ) {
-    val latestOnChange = rememberUpdatedState(onChange)
     var webViewRef by remember(label) { mutableStateOf<WebView?>(null) }
-    var lastEditorHtml by remember(label) { mutableStateOf(value) }
-    val bridge = remember(label) {
-        DocumentationMobileRichTextBridge { html ->
-            lastEditorHtml = html
-            latestOnChange.value(html)
-        }
-    }
-    val initialHtml = remember(label) { buildDocumentationMobileRichTextEditorHtml(value, enabled) }
+    var fullscreenOpen by rememberSaveable(label) { mutableStateOf(false) }
     val resolvedLineBudget = maxLines.coerceAtLeast(minLines).coerceAtLeast(3)
     val editorHeight = (resolvedLineBudget * 28 + 72).coerceIn(176, 420).dp
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -6680,60 +6879,46 @@ private fun DocumentationMobileRichTextField(
             enabled = enabled,
             minHeight = editorHeight + 46.dp,
         ) {
-            AndroidView(
+            DocumentationMobileRichTextWebView(
+                label = label,
+                value = value,
+                onChange = onChange,
+                enabled = enabled,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(editorHeight),
-                factory = { context ->
-                    WebView(context).apply {
-                        webViewRef = this
-                        webViewClient = WebViewClient()
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = false
-                        settings.textZoom = 100
-                        settings.allowFileAccess = false
-                        settings.allowContentAccess = false
-                        isVerticalScrollBarEnabled = true
-                        isHorizontalScrollBarEnabled = false
-                        setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                        addJavascriptInterface(bridge, "SafeNexusRichText")
-                        loadDataWithBaseURL(
-                            "https://safe-nexus.local/editor/",
-                            initialHtml,
-                            "text/html",
-                            "UTF-8",
-                            null,
-                        )
-                    }
-                },
-                update = { webView ->
-                    webViewRef = webView
-                    if (value != lastEditorHtml) {
-                        lastEditorHtml = value
-                        webView.evaluateJavascript(
-                            "window.SafeNexusEditor&&window.SafeNexusEditor.setContent(${JSONObject.quote(value)});",
-                            null,
-                        )
-                    }
-                    webView.evaluateJavascript(
-                        "window.SafeNexusEditor&&window.SafeNexusEditor.setEnabled(${if (enabled) "true" else "false"});",
-                        null,
-                    )
-                }
+                onWebViewReady = { webViewRef = it },
             )
         }
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
                 helperText,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                modifier = Modifier.weight(1f),
             )
-            Box {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedButton(
+                    onClick = { fullscreenOpen = true },
+                    enabled = enabled,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                ) {
+                    Icon(
+                        Icons.Rounded.Edit,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("Cijeli ekran")
+                }
                 OutlinedButton(
                     onClick = {
                         webViewRef?.evaluateJavascript(
@@ -6742,6 +6927,7 @@ private fun DocumentationMobileRichTextField(
                         )
                     },
                     enabled = enabled,
+                    modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                 ) {
@@ -6749,6 +6935,16 @@ private fun DocumentationMobileRichTextField(
                 }
             }
         }
+    }
+    if (fullscreenOpen) {
+        DocumentationMobileRichTextFullscreenDialog(
+            label = label,
+            value = value,
+            onChange = onChange,
+            enabled = enabled,
+            helperText = helperText,
+            onDismiss = { fullscreenOpen = false },
+        )
     }
 }
 
