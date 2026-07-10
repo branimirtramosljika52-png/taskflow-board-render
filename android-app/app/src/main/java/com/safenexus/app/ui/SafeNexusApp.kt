@@ -6070,14 +6070,27 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       display: none;
       gap: 5px;
       padding: 6px;
-      max-height: 188px;
-      overflow-y: auto;
+      max-height: min(268px, calc(100dvh - 12px));
+      overflow-y: scroll;
+      overflow-x: hidden;
+      touch-action: pan-y;
       overscroll-behavior: contain;
+      scrollbar-gutter: stable;
       border: 1px solid rgba(37, 99, 235, 0.22);
       border-radius: 16px;
       background: rgba(255, 255, 255, 0.98);
       box-shadow: 0 18px 34px rgba(15, 23, 42, 0.18);
       -webkit-overflow-scrolling: touch;
+    }
+    .slash-menu::after {
+      content: "";
+      position: sticky;
+      bottom: -6px;
+      display: block;
+      height: 14px;
+      margin: -9px -6px -6px;
+      pointer-events: none;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.98));
     }
     .slash-menu.is-open {
       display: grid;
@@ -6293,13 +6306,16 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       }
 
       function openMenu() {
-      if (!enabled) return;
-      focusEditor();
-      closeTableTools();
-      menu.scrollTop = 0;
-      menu.classList.add("is-open");
-      menu.scrollIntoView({ block: "nearest", inline: "nearest" });
-    }
+        if (!enabled) return;
+        focusEditor();
+        closeTableTools();
+        const viewportHeight = (window.visualViewport && window.visualViewport.height) || window.innerHeight || 260;
+        const menuHeight = Math.max(152, Math.min(268, viewportHeight - 12));
+        menu.style.maxHeight = menuHeight + "px";
+        menu.scrollTop = 0;
+        menu.classList.add("is-open");
+        menu.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
 
       function closeTableTools() {
         tableTools.classList.remove("is-open");
@@ -6536,6 +6552,15 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       menu.addEventListener("mousedown", function (event) {
         event.preventDefault();
       });
+      menu.addEventListener("touchstart", function (event) {
+        event.stopPropagation();
+      }, { passive: true });
+      menu.addEventListener("touchmove", function (event) {
+        event.stopPropagation();
+      }, { passive: true });
+      menu.addEventListener("wheel", function (event) {
+        event.stopPropagation();
+      }, { passive: true });
       menu.addEventListener("click", function (event) {
         const button = event.target.closest("button[data-command]");
         if (!button) return;
