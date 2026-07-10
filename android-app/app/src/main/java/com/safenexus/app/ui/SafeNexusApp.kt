@@ -14379,6 +14379,7 @@ private fun ManualWorkEquipmentInlineEditor(
     var recognitionLoading by remember(equipment.attachments) { mutableStateOf(false) }
     var recognitionMessage by remember(equipment.attachments) { mutableStateOf("") }
     var recognitionPreview by remember(equipment.attachments) { mutableStateOf<WorkEquipmentImageRecognitionResult?>(null) }
+    var aiRegenerationDialogOpen by remember(equipment.attachments) { mutableStateOf(false) }
     var imageRecognitionMode by rememberSaveable(columnIndex, isStrojeviTemplate) { mutableStateOf(WORK_EQUIPMENT_AI_MODE_TEMPLATE) }
     var textAiInput by remember(columnIndex, equipment.name, equipment.manufacturer, equipment.model, isStrojeviTemplate) { mutableStateOf("") }
     var textAiLoading by remember(columnIndex, equipment.name, equipment.manufacturer, equipment.model, isStrojeviTemplate) { mutableStateOf(false) }
@@ -14564,6 +14565,218 @@ private fun ManualWorkEquipmentInlineEditor(
             },
             dismissButton = {
                 TextButton(onClick = { saveTemplateDialogOpen = false }) {
+                    Text("Odustani")
+                }
+            },
+        )
+    }
+
+    fun equipmentForAiPrompt(prompt: String): IsznrManualWorkEquipment {
+        val cleanPrompt = prompt.trim()
+        if (cleanPrompt.isBlank()) return equipment
+        val noteLines = listOf(
+            equipment.note.trim(),
+            "NexAI uputa korisnika: $cleanPrompt",
+        ).filter { it.isNotBlank() }
+        return equipment.copy(note = noteLines.joinToString("\n"))
+    }
+
+    fun launchAiRegeneration() {
+        val prompt = textAiInput.trim()
+        val equipmentForRecognition = equipmentForAiPrompt(prompt)
+        val recognitionImages = equipmentForRecognition.attachments.filter { it.includeInReport && it.isRoImageAttachment() && it.contentDataUrl.isNotBlank() }
+        when {
+            recognitionImages.isNotEmpty() -> {
+                recognitionLoading = true
+                recognitionMessage = if (prompt.isBlank()) {
+                    "Čitam slike stroja i pločice..."
+                } else {
+                    "Čitam slike i dodatnu NexAI uputu..."
+                }
+                aiRegenerationDialogOpen = false
+                onRecognizeImages(
+                    equipmentForRecognition,
+                    recognitionImages,
+                    imageRecognitionMode,
+                    { result ->
+                        recognitionLoading = false
+                        recognitionPreview = result
+                        recognitionMessage = result.message.ifBlank { "Provjeri prepoznate podatke prije primjene." }
+                    },
+                    { message ->
+                        recognitionLoading = false
+                        recognitionMessage = message
+                    },
+                )
+            }
+            prompt.isNotBlank() -> {
+                textAiLoading = true
+                recognitionMessage = "NexAI strukturira tekst..."
+                aiRegenerationDialogOpen = false
+                onRecognizeText(
+                    equipment,
+                    prompt,
+                    isStrojeviTemplate,
+                    { result ->
+                        textAiLoading = false
+                        recognitionPreview = result
+                        recognitionMessage = result.message.ifBlank {
+                            if (isStrojeviTemplate) {
+                                "Provjeri ispitne stavke prije primjene."
+                            } else {
+                                "Provjeri strukturirane podatke prije primjene."
+                            }
+                        }
+                    },
+                    { message ->
+                        textAiLoading = false
+                        recognitionMessage = message
+                    },
+                )
+            }
+            else -> {
+                recognitionMessage = "Dodaj slike ili upiši kratku NexAI uputu."
+            }
+        }
+    }
+
+    if (aiRegenerationDialogOpen) {
+        val recognitionImages = equipment.attachments.filter { it.includeInReport && it.isRoImageAttachment() }
+        val hasParts = equipment.hasParts || equipment.parts.isNotEmpty()
+        AlertDialog(
+            onDismissRequest = { if (!recognitionLoading && !textAiLoading) aiRegenerationDialogOpen = false },
+            title = { Text("Regeneriraj NexAI") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 560.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFF8FAFC),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    ) {
+                        Column(modifier = Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Izvor", style = MaterialTheme.typography.labelSmall, color = Color(0xFF64748B))
+                            Text(
+                                "${recognitionImages.size} označenih slika · ${equipment.attachments.count { it.isRoPdfAttachment() }} PDF",
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF0F172A),
+                            )
+                        }
+                    }
+
+                    if (!isStrojeviTemplate) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (hasParts) Color(0xFFF0FDF4) else Color(0xFFF8FAFC),
+                            border = BorderStroke(1.dp, if (hasParts) Color(0xFF86EFAC) else Color(0xFFE2E8F0)),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Checkbox(
+                                    checked = hasParts,
+                                    onCheckedChange = { checked ->
+                                        onEquipmentChange(
+                                            equipment.copy(
+                                                hasParts = checked,
+                                                parts = if (checked) {
+                                                    equipment.parts.ifEmpty { listOf(defaultWorkEquipmentPart(1)) }
+                                                } else {
+                                                    emptyList()
+                                                },
+                                            ),
+                                        )
+                                    },
+                                    enabled = enabled && !recognitionLoading && !textAiLoading,
+                                )
+                                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text("Dijelovi radne opreme", fontWeight = FontWeight.Black)
+                                    Text(
+                                        if (hasParts) "${equipment.parts.ifEmpty { listOf(defaultWorkEquipmentPart(1)) }.size} dio/dijelova u ovoj koloni" else "Označi ako slike sadrže zasebne dijelove opreme.",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color(0xFF64748B),
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    WorkEquipmentAiModeSelector(
+                        selectedMode = imageRecognitionMode,
+                        onModeChange = { imageRecognitionMode = it },
+                        enabled = enabled && !recognitionLoading && !textAiLoading,
+                    )
+
+                    OutlinedTextField(
+                        value = textAiInput,
+                        onValueChange = {
+                            textAiInput = it
+                            textAiVoiceError = ""
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(if (isStrojeviTemplate) "Dodatna uputa ili diktat" else "Dodatna uputa za slike") },
+                        placeholder = {
+                            Text(
+                                if (isStrojeviTemplate) {
+                                    "npr. zaštitni poklopac ispravan, uključivanje tipkalom, kabel uredan..."
+                                } else {
+                                    "npr. ovo je UNP spremnik, dodaj radnu tvar UNP i obrati pozornost na ventile..."
+                                },
+                            )
+                        },
+                        enabled = enabled && !recognitionLoading && !textAiLoading,
+                        minLines = 3,
+                        maxLines = 7,
+                        shape = RoundedCornerShape(16.dp),
+                        trailingIcon = {
+                            IconButton(
+                                enabled = enabled && !recognitionLoading && !textAiLoading,
+                                onClick = {
+                                    textAiVoiceError = ""
+                                    val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                                    if (granted) {
+                                        textAiPendingSpeechLaunch = true
+                                    } else {
+                                        textAiPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
+                                },
+                            ) {
+                                Icon(Icons.Rounded.Mic, contentDescription = "Diktiraj za NexAI")
+                            }
+                        },
+                    )
+                    listOf(textAiVoiceError).filter { it.isNotBlank() }.forEach { message ->
+                        Text(
+                            message,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFFB45309),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { launchAiRegeneration() },
+                    enabled = enabled && !recognitionLoading && !textAiLoading && (recognitionImages.any { it.contentDataUrl.isNotBlank() } || textAiInput.isNotBlank()),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Text("Pokreni AI")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { aiRegenerationDialogOpen = false },
+                    enabled = !recognitionLoading && !textAiLoading,
+                ) {
                     Text("Odustani")
                 }
             },
@@ -15064,146 +15277,7 @@ private fun ManualWorkEquipmentInlineEditor(
                 }
             }
 
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                color = Color(0xFFF5F3FF),
-                border = BorderStroke(1.dp, Color(0xFFC4B5FD)),
-                tonalElevation = 0.dp,
-            ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.Top,
-                    ) {
-                        Surface(shape = CircleShape, color = Color(0xFFEDE9FE), modifier = Modifier.size(40.dp)) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = Color(0xFF6D28D9), modifier = Modifier.size(21.dp))
-                            }
-                        }
-                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text("NexAI tekst i diktat", fontWeight = FontWeight.Black, color = Color(0xFF312E81))
-                            Text(
-                                if (isStrojeviTemplate) {
-                                    "Diktiraj stroj i ispitne stavke. NexAI ih pretvara u redove tablice, ne samo u običan tekst."
-                                } else {
-                                    "Diktiraj podatke, nalaze, strojarski i elektro dio. NexAI ih prije upisa prikaže u pregledu."
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color(0xFF4C1D95),
-                            )
-                        }
-                    }
-                    OutlinedTextField(
-                        value = textAiInput,
-                        onValueChange = {
-                            textAiInput = it
-                            textAiVoiceError = ""
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(if (isStrojeviTemplate) "Opis stroja i ispitne stavke" else "Opis opreme i nalazi") },
-                        placeholder = {
-                            Text(
-                                if (isStrojeviTemplate) {
-                                    "npr. Stolna bušilica, zaštitni poklopac ispravan, uključivanje tipkalom, kabel uredan, zadovoljava..."
-                                } else {
-                                    "npr. Kompresor 230 V, radni medij stlačeni zrak, kabel i utikač neoštećeni, zaštita ispravna..."
-                                },
-                            )
-                        },
-                        enabled = enabled && !textAiLoading,
-                        minLines = 3,
-                        maxLines = 7,
-                        shape = RoundedCornerShape(16.dp),
-                        trailingIcon = {
-                            IconButton(
-                                enabled = enabled && !textAiLoading,
-                                onClick = {
-                                    textAiVoiceError = ""
-                                    val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-                                    if (granted) {
-                                        textAiPendingSpeechLaunch = true
-                                    } else {
-                                        textAiPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                    }
-                                },
-                            ) {
-                                Icon(Icons.Rounded.Mic, contentDescription = "Diktiraj za NexAI")
-                            }
-                        },
-                    )
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = {
-                                textAiLoading = true
-                                recognitionMessage = "NexAI strukturira tekst..."
-                                onRecognizeText(
-                                    equipment,
-                                    textAiInput,
-                                    isStrojeviTemplate,
-                                    { result ->
-                                        textAiLoading = false
-                                        recognitionPreview = result
-                                        recognitionMessage = result.message.ifBlank {
-                                            if (isStrojeviTemplate) {
-                                                "Provjeri ispitne stavke prije primjene."
-                                            } else {
-                                                "Provjeri strukturirane podatke prije primjene."
-                                            }
-                                        }
-                                    },
-                                    { message ->
-                                        textAiLoading = false
-                                        recognitionMessage = message
-                                    },
-                                )
-                            },
-                            enabled = enabled && !textAiLoading && textAiInput.isNotBlank(),
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-                        ) {
-                            if (textAiLoading) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
-                            } else {
-                                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("NexAI obradi")
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                textAiInput = ""
-                                textAiVoiceError = ""
-                                recognitionMessage = ""
-                            },
-                            enabled = enabled && !textAiLoading && textAiInput.isNotBlank(),
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-                        ) {
-                            Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Očisti")
-                        }
-                    }
-                    listOf(textAiVoiceError, recognitionMessage).filter { it.isNotBlank() }.forEach { message ->
-                        Text(
-                            message,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (message.contains("ne", ignoreCase = true) || message.contains("greška", ignoreCase = true)) Color(0xFFB45309) else Color(0xFF0F766E),
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                }
-            }
-
             if (!isStrojeviTemplate) {
-                WorkEquipmentPartsToggle(
-                    equipment = equipment,
-                    enabled = enabled,
-                    onEquipmentChange = onEquipmentChange,
-                )
-
                 WorkEquipmentAttachmentGallery(
                     title = "Slike i PDF prilozi",
                     subtitle = "Prve slike označi kao cijeli stroj i pločicu. PDF prilozi idu odvojeno na kraj zapisnika.",
@@ -15218,35 +15292,13 @@ private fun ManualWorkEquipmentInlineEditor(
 
                 if (showRecognition) {
                     val recognitionImages = equipment.attachments.filter { it.includeInReport && it.isRoImageAttachment() }
-                    WorkEquipmentAiModeSelector(
-                        selectedMode = imageRecognitionMode,
-                        onModeChange = { imageRecognitionMode = it },
-                        enabled = enabled && !recognitionLoading,
-                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Button(
-                            onClick = {
-                                recognitionLoading = true
-                                recognitionMessage = "Čitam slike stroja i pločice..."
-                                onRecognizeImages(
-                                    equipment,
-                                    recognitionImages,
-                                    imageRecognitionMode,
-                                    { result ->
-                                        recognitionLoading = false
-                                        recognitionPreview = result
-                                        recognitionMessage = result.message.ifBlank { "Provjeri prepoznate podatke prije primjene." }
-                                    },
-                                    { message ->
-                                        recognitionLoading = false
-                                        recognitionMessage = message
-                                    },
-                                )
-                            },
+                            onClick = { aiRegenerationDialogOpen = true },
                             enabled = enabled && !recognitionLoading && recognitionImages.any { it.contentDataUrl.isNotBlank() },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(14.dp),
@@ -15258,7 +15310,7 @@ private fun ManualWorkEquipmentInlineEditor(
                                 Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
                             }
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Prepoznaj iz označenih slika")
+                            Text("Regeneriraj AI")
                         }
                     }
                     if (recognitionLoading) {
@@ -15269,7 +15321,7 @@ private fun ManualWorkEquipmentInlineEditor(
                         )
                     }
                 }
-                listOf(attachmentMessage).filter { it.isNotBlank() }.forEach { message ->
+                listOf(attachmentMessage, recognitionMessage).filter { it.isNotBlank() }.forEach { message ->
                     Text(
                         message,
                         style = MaterialTheme.typography.labelSmall,
@@ -15428,35 +15480,13 @@ private fun ManualWorkEquipmentInlineEditor(
 
                 if (showRecognition) {
                     val recognitionImages = equipment.attachments.filter { it.includeInReport && it.isRoImageAttachment() }
-                    WorkEquipmentAiModeSelector(
-                        selectedMode = imageRecognitionMode,
-                        onModeChange = { imageRecognitionMode = it },
-                        enabled = enabled && !recognitionLoading,
-                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Button(
-                            onClick = {
-                                recognitionLoading = true
-                                recognitionMessage = "Čitam slike stroja i pločice..."
-                                onRecognizeImages(
-                                    equipment,
-                                    recognitionImages,
-                                    imageRecognitionMode,
-                                    { result ->
-                                        recognitionLoading = false
-                                        recognitionPreview = result
-                                        recognitionMessage = result.message.ifBlank { "Provjeri prepoznate podatke prije primjene." }
-                                    },
-                                    { message ->
-                                        recognitionLoading = false
-                                        recognitionMessage = message
-                                    },
-                                )
-                            },
+                            onClick = { aiRegenerationDialogOpen = true },
                             enabled = enabled && !recognitionLoading && recognitionImages.any { it.contentDataUrl.isNotBlank() },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(14.dp),
@@ -15468,7 +15498,7 @@ private fun ManualWorkEquipmentInlineEditor(
                                 Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
                             }
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Prepoznaj iz označenih slika")
+                            Text("Regeneriraj AI")
                         }
                     }
                     if (recognitionLoading) {
