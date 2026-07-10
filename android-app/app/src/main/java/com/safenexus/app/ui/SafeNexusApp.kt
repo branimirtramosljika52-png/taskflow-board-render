@@ -76,6 +76,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -6126,11 +6127,11 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       z-index: 9;
       left: 8px;
       right: 8px;
-      bottom: 8px;
+      top: 8px;
       display: none;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 6px;
-      padding: 8px;
+      padding: 6px;
       border: 1px solid rgba(37, 99, 235, 0.18);
       border-radius: 16px;
       background: rgba(248, 250, 252, 0.98);
@@ -6140,14 +6141,16 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       display: grid;
     }
     .table-tools button {
-      min-height: 40px;
-      padding: 8px 9px;
+      min-height: 34px;
+      padding: 6px 5px;
       border: 0;
       border-radius: 12px;
       background: #eef5ff;
       color: #1d4ed8;
       font: inherit;
       font-weight: 800;
+      font-size: 0.76rem;
+      line-height: 1.05;
       text-align: center;
     }
     .table-tools button:active {
@@ -6194,10 +6197,10 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
     <button type="button" data-command="note"><span class="cmd-mark">!</span><span class="cmd-copy"><strong>Napomena</strong><small>Istaknuti tekst</small></span></button>
   </section>
   <section id="tableTools" class="table-tools" aria-label="Tablica">
-    <button type="button" data-table-command="rowBefore">+ Red iznad</button>
-    <button type="button" data-table-command="rowAfter">+ Red ispod</button>
-    <button type="button" data-table-command="colBefore">+ Kolona lijevo</button>
-    <button type="button" data-table-command="colAfter">+ Kolona desno</button>
+    <button type="button" data-table-command="rowBefore">+ red gore</button>
+    <button type="button" data-table-command="rowAfter">+ red dolje</button>
+    <button type="button" data-table-command="colBefore">+ kol. lijevo</button>
+    <button type="button" data-table-command="colAfter">+ kol. desno</button>
   </section>
   <script>
     (function () {
@@ -6213,6 +6216,7 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       let slashTouchButton = null;
       let slashSuppressClick = false;
       let caretScrollTimer = null;
+      let manualKeyboardBottom = 0;
 
       function escapeHtml(value) {
         return String(value || "")
@@ -6312,9 +6316,10 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
 
       function updateKeyboardPadding() {
         const visualViewport = window.visualViewport;
-        const keyboardBottom = visualViewport
+        const detectedKeyboardBottom = visualViewport
           ? Math.max(0, window.innerHeight - visualViewport.height - visualViewport.offsetTop)
           : 0;
+        const keyboardBottom = Math.max(detectedKeyboardBottom, manualKeyboardBottom);
         document.documentElement.style.setProperty("--keyboard-bottom", keyboardBottom + "px");
       }
 
@@ -6329,7 +6334,11 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
         const viewportTop = visualViewport ? visualViewport.offsetTop : 0;
         const viewportHeight = visualViewport ? visualViewport.height : window.innerHeight;
         const topLimit = viewportTop + 16;
-        const bottomLimit = viewportTop + viewportHeight - 118;
+        const reservedBottom = Math.min(
+          Math.max(132, manualKeyboardBottom + 96),
+          Math.max(132, viewportHeight - 80)
+        );
+        const bottomLimit = viewportTop + viewportHeight - reservedBottom;
         if (rect.bottom > bottomLimit) {
           window.scrollBy({ top: rect.bottom - bottomLimit, behavior: "smooth" });
         } else if (rect.top < topLimit) {
@@ -6688,6 +6697,11 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
           editor.setAttribute("contenteditable", enabled ? "true" : "false");
           updateTableTools();
         },
+        setKeyboardBottom: function (value) {
+          manualKeyboardBottom = Math.max(0, Number(value) || 0);
+          updateKeyboardPadding();
+          scheduleCaretScroll();
+        },
         showCommands: openMenu,
         focus: focusEditor
       };
@@ -6710,6 +6724,7 @@ private fun DocumentationMobileRichTextWebView(
     onChange: (String) -> Unit,
     enabled: Boolean,
     modifier: Modifier = Modifier,
+    keyboardInsetPx: Int = 0,
     onWebViewReady: (WebView?) -> Unit = {},
 ) {
     val latestOnChange = rememberUpdatedState(onChange)
@@ -6763,6 +6778,10 @@ private fun DocumentationMobileRichTextWebView(
                 "window.SafeNexusEditor&&window.SafeNexusEditor.setEnabled(${if (enabled) "true" else "false"});",
                 null,
             )
+            webView.evaluateJavascript(
+                "window.SafeNexusEditor&&window.SafeNexusEditor.setKeyboardBottom(${keyboardInsetPx.coerceAtLeast(0)});",
+                null,
+            )
         },
     )
 }
@@ -6778,6 +6797,8 @@ private fun DocumentationMobileRichTextFullscreenDialog(
     var webViewRef by remember(label) { mutableStateOf<WebView?>(null) }
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
+    val density = LocalDensity.current
+    val imeBottomPx = WindowInsets.ime.getBottom(density)
     BackHandler(onBack = onDismiss)
     Dialog(
         onDismissRequest = onDismiss,
@@ -6877,6 +6898,7 @@ private fun DocumentationMobileRichTextFullscreenDialog(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(12.dp),
+                        keyboardInsetPx = imeBottomPx,
                         onWebViewReady = { webViewRef = it },
                     )
                 }
