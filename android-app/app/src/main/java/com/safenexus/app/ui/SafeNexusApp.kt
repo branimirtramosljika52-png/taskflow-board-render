@@ -5963,6 +5963,9 @@ private fun DocumentationMobileRichTextField(
     value: String,
     onChange: (String) -> Unit,
     enabled: Boolean,
+    minLines: Int = 6,
+    maxLines: Int = 14,
+    helperText: String = "Upiši / za naslov, listu ili tablicu.",
 ) {
     var commandMenuOpen by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -5977,8 +5980,8 @@ private fun DocumentationMobileRichTextField(
             },
             enabled = enabled,
             singleLine = false,
-            minLines = 6,
-            maxLines = 14,
+            minLines = minLines,
+            maxLines = maxLines,
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -5986,7 +5989,7 @@ private fun DocumentationMobileRichTextField(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "Upiši / za naslov, listu ili tablicu.",
+                helperText,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
                 modifier = Modifier.weight(1f),
@@ -46417,14 +46420,14 @@ private fun TemplateFieldInput(
                 onChange = onChange,
                 enabled = enabled,
             )
-            "longtext", "textarea" -> DocumentationMobileTextField(
+            "longtext", "textarea" -> DocumentationMobileRichTextField(
                 label = label,
                 value = value,
                 onChange = onChange,
                 enabled = enabled,
-                singleLine = false,
                 minLines = 3,
                 maxLines = 7,
+                helperText = "Upiši / za naslov, listu, tablicu ili napomenu.",
             )
             "spr_voice" -> DocumentationSprVoiceField(
                 label = label,
