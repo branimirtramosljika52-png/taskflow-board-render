@@ -16782,7 +16782,7 @@ private fun ManualWorkEquipmentAssessmentRow(
                     onClick = {
                         val nextMeetsConditions = when {
                             !active -> true
-                            !hasRequiredNote -> true
+                            item?.meetsConditions == false -> true
                             else -> item?.meetsConditions != true
                         }
                         noteEditorOpen = true
