@@ -6081,6 +6081,9 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       background: rgba(255, 255, 255, 0.98);
       box-shadow: 0 18px 34px rgba(15, 23, 42, 0.18);
       -webkit-overflow-scrolling: touch;
+      -webkit-user-select: none;
+      user-select: none;
+      transform: translateZ(0);
     }
     .slash-menu::after {
       content: "";
@@ -6199,6 +6202,8 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       let enabled = $enabledJson;
       let lastHtml = "";
       let lastTableCell = null;
+      let slashTouchY = null;
+      let slashTouchMoved = false;
 
       function escapeHtml(value) {
         return String(value || "")
@@ -6553,15 +6558,37 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
         event.preventDefault();
       });
       menu.addEventListener("touchstart", function (event) {
+        if (!event.touches || !event.touches.length) return;
+        slashTouchY = event.touches[0].clientY;
+        slashTouchMoved = false;
         event.stopPropagation();
-      }, { passive: true });
+      }, { passive: false });
       menu.addEventListener("touchmove", function (event) {
+        if (slashTouchY === null || !event.touches || !event.touches.length) return;
+        const nextY = event.touches[0].clientY;
+        const delta = slashTouchY - nextY;
+        if (Math.abs(delta) > 1) {
+          menu.scrollTop += delta;
+          slashTouchMoved = true;
+        }
+        slashTouchY = nextY;
+        event.preventDefault();
         event.stopPropagation();
-      }, { passive: true });
+      }, { passive: false });
+      menu.addEventListener("touchend", function (event) {
+        slashTouchY = null;
+        event.stopPropagation();
+      }, { passive: false });
       menu.addEventListener("wheel", function (event) {
         event.stopPropagation();
       }, { passive: true });
       menu.addEventListener("click", function (event) {
+        if (slashTouchMoved) {
+          slashTouchMoved = false;
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
         const button = event.target.closest("button[data-command]");
         if (!button) return;
         applyCommand(button.getAttribute("data-command"));
