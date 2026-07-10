@@ -55554,10 +55554,14 @@ body.is-measurement-equipment-export-open {
   width: min(260px, calc(100vw - 24px));
   gap: 4px;
   padding: 8px;
+  max-height: min(420px, calc(100vh - 24px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid rgba(205, 129, 188, 0.54);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 22px 60px rgba(43, 36, 62, 0.18);
+  -webkit-overflow-scrolling: touch;
 }
 
 .document-template-runtime-rich-command-head {

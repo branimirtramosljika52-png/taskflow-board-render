@@ -6069,21 +6069,26 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       display: none;
       gap: 6px;
       padding: 8px;
+      max-height: min(240px, calc(100vh - 18px));
+      overflow-y: auto;
+      overscroll-behavior: contain;
       border: 1px solid rgba(37, 99, 235, 0.22);
       border-radius: 16px;
       background: rgba(255, 255, 255, 0.98);
       box-shadow: 0 18px 34px rgba(15, 23, 42, 0.18);
+      -webkit-overflow-scrolling: touch;
     }
     .slash-menu.is-open {
       display: grid;
+      align-content: start;
     }
     .slash-menu button {
       display: grid;
-      grid-template-columns: 36px 1fr;
-      gap: 9px;
+      grid-template-columns: 30px 1fr;
+      gap: 7px;
       align-items: center;
-      min-height: 48px;
-      padding: 8px 10px;
+      min-height: 40px;
+      padding: 6px 8px;
       border: 0;
       border-radius: 12px;
       background: #f3f7ff;
@@ -6129,13 +6134,13 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
     .cmd-mark {
       display: inline-grid;
       place-items: center;
-      width: 32px;
-      height: 32px;
+      width: 28px;
+      height: 28px;
       border-radius: 10px;
       background: #dbeafe;
       color: #1d4ed8;
       font-weight: 900;
-      font-size: 0.83rem;
+      font-size: 0.72rem;
     }
     .cmd-copy strong,
     .cmd-copy small {
@@ -6143,10 +6148,13 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
     }
     .cmd-copy strong {
       font-weight: 850;
+      font-size: 0.88rem;
+      line-height: 1.12;
     }
     .cmd-copy small {
       color: rgba(15, 23, 42, 0.58);
-      font-size: 0.78rem;
+      font-size: 0.69rem;
+      line-height: 1.12;
       margin-top: 1px;
     }
   </style>
@@ -6287,6 +6295,7 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
         if (!enabled) return;
         focusEditor();
         closeTableTools();
+        menu.scrollTop = 0;
         menu.classList.add("is-open");
       }
 
