@@ -13020,6 +13020,7 @@ private fun IsznrManualWorkEquipment.applyImageRecognitionResult(
     } else {
         null
     }
+    val strictTemplateMode = useTemplateBase
     val base = template?.let { applyReportTemplate(it.equipment) } ?: this
     val next = base.copy(
         name = result.name.ifBlank { base.name },
@@ -13028,19 +13029,19 @@ private fun IsznrManualWorkEquipment.applyImageRecognitionResult(
         serialNumber = result.serialNumber.ifBlank { base.serialNumber },
         inventoryNumber = result.inventoryNumber.ifBlank { base.inventoryNumber },
         technicalData = result.technicalData.ifBlank { base.technicalData },
-        purposeDescription = result.purposeDescription.ifBlank { base.purposeDescription },
-        workspacePosition = result.workspacePosition.ifBlank { base.workspacePosition },
-        workingSubstancesAndRawMaterials = result.workingSubstancesAndRawMaterials.ifBlank { base.workingSubstancesAndRawMaterials },
-        useAndMaintenance = result.useAndMaintenance.ifBlank { base.useAndMaintenance },
-        methodsProceduresAndNorms = result.methodsProceduresAndNorms.ifBlank { base.methodsProceduresAndNorms },
-        deficiencies = result.deficiencies.ifBlank { base.deficiencies },
-        measuresToEliminateDeficiencies = result.measuresToEliminateDeficiencies.ifBlank { base.measuresToEliminateDeficiencies },
-        finalGrade = result.finalGrade.ifBlank { base.finalGrade }.ifBlank { "1" },
-        mechanicalItems = mergeRoAssessmentItems(base.mechanicalItems, result.mechanicalItems),
-        electricalItems = mergeRoAssessmentItems(base.electricalItems, result.electricalItems),
-        hazardRegisterIris = mergeStringValues(base.hazardRegisterIris, result.hazardRegisterIris),
-        harmfulnessRegisterIris = mergeStringValues(base.harmfulnessRegisterIris, result.harmfulnessRegisterIris),
-        strainRegisterIris = mergeStringValues(base.strainRegisterIris, result.strainRegisterIris),
+        purposeDescription = if (strictTemplateMode) base.purposeDescription else result.purposeDescription.ifBlank { base.purposeDescription },
+        workspacePosition = if (strictTemplateMode) base.workspacePosition else result.workspacePosition.ifBlank { base.workspacePosition },
+        workingSubstancesAndRawMaterials = if (strictTemplateMode) base.workingSubstancesAndRawMaterials else result.workingSubstancesAndRawMaterials.ifBlank { base.workingSubstancesAndRawMaterials },
+        useAndMaintenance = if (strictTemplateMode) base.useAndMaintenance else result.useAndMaintenance.ifBlank { base.useAndMaintenance },
+        methodsProceduresAndNorms = if (strictTemplateMode) base.methodsProceduresAndNorms else result.methodsProceduresAndNorms.ifBlank { base.methodsProceduresAndNorms },
+        deficiencies = if (strictTemplateMode) base.deficiencies else result.deficiencies.ifBlank { base.deficiencies },
+        measuresToEliminateDeficiencies = if (strictTemplateMode) base.measuresToEliminateDeficiencies else result.measuresToEliminateDeficiencies.ifBlank { base.measuresToEliminateDeficiencies },
+        finalGrade = if (strictTemplateMode) base.finalGrade.ifBlank { "1" } else result.finalGrade.ifBlank { base.finalGrade }.ifBlank { "1" },
+        mechanicalItems = if (strictTemplateMode) base.mechanicalItems else mergeRoAssessmentItems(base.mechanicalItems, result.mechanicalItems),
+        electricalItems = if (strictTemplateMode) base.electricalItems else mergeRoAssessmentItems(base.electricalItems, result.electricalItems),
+        hazardRegisterIris = if (strictTemplateMode) base.hazardRegisterIris else mergeStringValues(base.hazardRegisterIris, result.hazardRegisterIris),
+        harmfulnessRegisterIris = if (strictTemplateMode) base.harmfulnessRegisterIris else mergeStringValues(base.harmfulnessRegisterIris, result.harmfulnessRegisterIris),
+        strainRegisterIris = if (strictTemplateMode) base.strainRegisterIris else mergeStringValues(base.strainRegisterIris, result.strainRegisterIris),
         note = listOf(
             base.note,
             template?.title?.let { "NexAI predložak: $it" }.orEmpty(),
@@ -14802,8 +14803,9 @@ private fun ManualWorkEquipmentInlineEditor(
     }
 
     recognitionPreview?.let { result ->
+        val templatePreviewMode = imageRecognitionMode == WORK_EQUIPMENT_AI_MODE_TEMPLATE
         val previewTemplate = remember(result, reportTemplates, imageRecognitionMode) {
-            if (imageRecognitionMode == WORK_EQUIPMENT_AI_MODE_TEMPLATE) {
+            if (templatePreviewMode) {
                 findWorkEquipmentReportTemplateForRecognition(result, reportTemplates)
             } else {
                 null
@@ -14840,50 +14842,56 @@ private fun ManualWorkEquipmentInlineEditor(
                             onAnswer = { question, answer -> verificationAnswers = verificationAnswers + (question to answer) },
                         )
                     }
-                    listOf(
-                        "Predložak" to previewTemplate?.title.orEmpty(),
-                        "Profil" to resultProfileLabel(result),
-                        "Naziv" to result.name,
-                        "Proizvođač" to result.manufacturer,
-                        "Model / tip" to result.model,
-                        "Serijski broj" to result.serialNumber,
-                        "Inventarski broj" to result.inventoryNumber,
-                        "Tehnički podaci" to result.technicalData,
-                        "Namjena" to result.purposeDescription,
-                        "Položaj" to result.workspacePosition,
-                        "Radne tvari" to result.workingSubstancesAndRawMaterials,
-                        "Uporaba i održavanje" to result.useAndMaintenance,
-                        "Metode i norme" to result.methodsProceduresAndNorms,
-                        "Nedostaci" to result.deficiencies,
-                        "Mjere" to result.measuresToEliminateDeficiencies,
-                        "Strojarski dio" to result.mechanicalItems.size.takeIf { it > 0 }?.let { "$it stavki" }.orEmpty(),
-                        "Elektro dio" to result.electricalItems.size.takeIf { it > 0 }?.let { "$it stavki" }.orEmpty(),
-                        "Stavke iz predloška" to previewTemplate?.equipment?.let { templateEquipment ->
+                    buildList {
+                        add("Predložak" to previewTemplate?.title.orEmpty())
+                        add("Profil" to resultProfileLabel(result))
+                        add("Naziv" to result.name)
+                        add("Proizvođač" to result.manufacturer)
+                        add("Model / tip" to result.model)
+                        add("Serijski broj" to result.serialNumber)
+                        add("Inventarski broj" to result.inventoryNumber)
+                        add("Tehnički podaci" to result.technicalData)
+                        if (!templatePreviewMode) {
+                            add("Namjena" to result.purposeDescription)
+                            add("Položaj" to result.workspacePosition)
+                            add("Radne tvari" to result.workingSubstancesAndRawMaterials)
+                            add("Uporaba i održavanje" to result.useAndMaintenance)
+                            add("Metode i norme" to result.methodsProceduresAndNorms)
+                            add("Nedostaci" to result.deficiencies)
+                            add("Mjere" to result.measuresToEliminateDeficiencies)
+                            add("Strojarski dio" to result.mechanicalItems.size.takeIf { it > 0 }?.let { "$it stavki" }.orEmpty())
+                            add("Elektro dio" to result.electricalItems.size.takeIf { it > 0 }?.let { "$it stavki" }.orEmpty())
+                        }
+                        add("Stavke iz predloška" to previewTemplate?.equipment?.let { templateEquipment ->
                             val totalItems = templateEquipment.mechanicalItems.size +
                                 templateEquipment.electricalItems.size +
                                 templateEquipment.hazardRegisterIris.size +
                                 templateEquipment.harmfulnessRegisterIris.size +
                                 templateEquipment.strainRegisterIris.size
                             totalItems.takeIf { it > 0 }?.let { "$it stavki/odabira" }.orEmpty()
-                        }.orEmpty(),
-                        "Rizici" to listOf(
-                            result.hazardRegisterIris.size,
-                            result.harmfulnessRegisterIris.size,
-                            result.strainRegisterIris.size,
-                        ).sum().takeIf { it > 0 }?.let { "$it odabira" }.orEmpty(),
-                        "Izvor / baza" to result.matchedSource,
-                    ).filter { it.second.isNotBlank() }.forEach { (label, value) ->
+                        }.orEmpty())
+                        if (!templatePreviewMode) {
+                            add("Rizici" to listOf(
+                                result.hazardRegisterIris.size,
+                                result.harmfulnessRegisterIris.size,
+                                result.strainRegisterIris.size,
+                            ).sum().takeIf { it > 0 }?.let { "$it odabira" }.orEmpty())
+                        }
+                        add("Izvor / baza" to result.matchedSource)
+                    }.filter { it.second.isNotBlank() }.forEach { (label, value) ->
                         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f))
                             Text(value, fontWeight = FontWeight.Bold)
                         }
                     }
-                    WorkEquipmentRecognitionDetailsPreview(
-                        result = result,
-                        hazardOptions = hazardOptions,
-                        harmfulnessOptions = harmfulnessOptions,
-                        strainOptions = strainOptions,
-                    )
+                    if (!templatePreviewMode) {
+                        WorkEquipmentRecognitionDetailsPreview(
+                            result = result,
+                            hazardOptions = hazardOptions,
+                            harmfulnessOptions = harmfulnessOptions,
+                            strainOptions = strainOptions,
+                        )
+                    }
                     if (!result.hasRecognizedWorkEquipmentData()) {
                         Text(
                             "Nema sigurnih polja za upis. Dodaj više teksta ili jasniju sliku cijelog stroja, komandi, priključka i pločice.",
