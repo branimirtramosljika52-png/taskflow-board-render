@@ -59702,7 +59702,14 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
   }
   const nativeModel = buildDocumentationNativeTemplateModel(preset);
   const currentModel = normalizeDocumentationSprModel(entry.model);
-  const refreshNativeBlocks = ["EXEI", "EXSE", "EXOV"].includes(String(preset.serviceCode || "").trim().toUpperCase());
+  const seedCreatedAt = "2026-01-01T00:00:00.000Z";
+  const isBuiltInSeed = normalizeLooseName(entry.id) === normalizeLooseName(preset.id);
+  const hasUserEdits = Boolean(String(entry.updatedAt || "").trim())
+    && String(entry.updatedAt || "").trim() !== String(entry.createdAt || "").trim()
+    && String(entry.updatedAt || "").trim() !== seedCreatedAt;
+  const refreshNativeBlocks = ["EXEI", "EXSE", "EXOV"].includes(String(preset.serviceCode || "").trim().toUpperCase())
+    && isBuiltInSeed
+    && !hasUserEdits;
   const currentChecklists = !refreshNativeBlocks && Array.isArray(currentModel.checklists) && currentModel.checklists.length
     ? currentModel.checklists
     : nativeModel.checklists;
@@ -62477,6 +62484,7 @@ function persistDocumentationSprModelNow(statusText = "Spremljeno lokalno") {
     documentationSprSaveTimer = 0;
   }
   try {
+    syncDocumentationSprGridlineIntoModel();
     window.localStorage.setItem(
       DOCUMENTATION_SPR_STORAGE_KEY,
       JSON.stringify(cloneDocumentationSprModelForLocalDraft(documentationSprModel)),
@@ -63753,24 +63761,33 @@ function buildDocumentationSprGridlineModelFromMeasurementTable(table = {}) {
 }
 
 function syncDocumentationSprNativeMeasurementTablesIntoModel() {
-  if (!documentationSprModel || !(documentationSprNativeMeasurementGridlineApis instanceof Map)) {
+  if (!documentationSprModel) {
     return;
   }
-  documentationSprNativeMeasurementGridlineApis.forEach((entry, key) => {
-    const index = Number(key);
-    const table = documentationSprModel.measurementTables?.[index];
-    if (!table || !entry?.api?.getModel) {
-      return;
+  const tables = normalizeDocumentationSprMeasurementTables(documentationSprModel.measurementTables, documentationSprModel);
+  if (!tables.length) {
+    documentationSprModel.measurementTables = [];
+    return;
+  }
+  documentationSprModel.measurementTables = tables.map((table, index) => {
+    const mountedEntry = documentationSprNativeMeasurementGridlineApis instanceof Map
+      ? documentationSprNativeMeasurementGridlineApis.get(String(index))
+      : null;
+    mountedEntry?.api?.flush?.();
+    const rawGridlineModel = mountedEntry?.api?.getModel?.()
+      || (table.gridlineModel && typeof table.gridlineModel === "object" && !Array.isArray(table.gridlineModel)
+        ? table.gridlineModel
+        : null);
+    if (!rawGridlineModel) {
+      return table;
     }
-    entry.api.flush?.();
-    const rawGridlineModel = entry.api.getModel();
     const gridlineModel = normalizeDocumentationSprGridlineModel({
       ...rawGridlineModel,
       pageOrientation: rawGridlineModel?.pageOrientation || table.pageOrientation || table.sheet?.pageOrientation || "",
     });
     const title = String(gridlineModel.title || table.label || "").trim();
     const subtitle = String(gridlineModel.subtitle || table.summary || table.chapterTitle || "").trim();
-    documentationSprModel.measurementTables[index] = {
+    return {
       ...table,
       label: title || table.label,
       summary: subtitle || table.summary,

@@ -16724,15 +16724,15 @@ private fun ManualWorkEquipmentAssessmentRow(
         mutableStateOf(hasRequiredNote)
     }
     val rowColor = when {
-        active && !hasRequiredNote -> Color(0xFFFFFBEB)
         item?.meetsConditions == true -> Color(0xFFECFDF5)
         item?.meetsConditions == false -> Color(0xFFFFF1F2)
+        active && !hasRequiredNote -> Color(0xFFECFDF5)
         else -> MaterialTheme.colorScheme.surface
     }
     val statusColor = when {
-        active && !hasRequiredNote -> Color(0xFFD97706)
         item?.meetsConditions == true -> Color(0xFF059669)
         item?.meetsConditions == false -> Color(0xFFDC2626)
+        active && !hasRequiredNote -> Color(0xFF059669)
         else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f)
     }
 
@@ -16780,7 +16780,11 @@ private fun ManualWorkEquipmentAssessmentRow(
                 }
                 IconButton(
                     onClick = {
-                        val nextMeetsConditions = item?.meetsConditions != true
+                        val nextMeetsConditions = when {
+                            !active -> true
+                            !hasRequiredNote -> true
+                            else -> item?.meetsConditions != true
+                        }
                         noteEditorOpen = true
                         onUpsert(
                             roAssessmentItemFromOption(
@@ -16798,15 +16802,15 @@ private fun ManualWorkEquipmentAssessmentRow(
                 ) {
                     Icon(
                         imageVector = when {
-                            active && !hasRequiredNote -> Icons.Rounded.ErrorOutline
                             item?.meetsConditions == true -> Icons.Rounded.CheckCircle
                             item?.meetsConditions == false -> Icons.Rounded.ErrorOutline
+                            active && !hasRequiredNote -> Icons.Rounded.CheckCircle
                             else -> Icons.Rounded.Info
                         },
                         contentDescription = when {
-                            active && !hasRequiredNote -> "Nedostaje napomena"
                             item?.meetsConditions == true -> "Zadovoljava"
                             item?.meetsConditions == false -> "Ne zadovoljava"
+                            active && !hasRequiredNote -> "Zadovoljava"
                             else -> "Postavi status"
                         },
                         tint = statusColor,
@@ -16840,14 +16844,6 @@ private fun ManualWorkEquipmentAssessmentRow(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.48f),
                 )
-                if (active && !hasRequiredNote) {
-                    Text(
-                        "Upiši kratku vrijednost da stavka bude potpuna.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFFD97706),
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
             } else {
                 OutlinedButton(
                     onClick = { noteEditorOpen = true },
