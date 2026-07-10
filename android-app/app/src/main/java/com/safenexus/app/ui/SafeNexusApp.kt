@@ -184,6 +184,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -5957,6 +5958,446 @@ private fun applyDocumentationMobileRichTextCommand(value: String, command: Docu
     return appendDocumentationRichTextSnippet(base, command.snippet)
 }
 
+private class DocumentationMobileRichTextBridge(
+    private val onHtmlChanged: (String) -> Unit,
+) {
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    @JavascriptInterface
+    fun onChange(html: String) {
+        mainHandler.post {
+            onHtmlChanged(html)
+        }
+    }
+}
+
+private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, enabled: Boolean): String {
+    val initialJson = JSONObject.quote(initialValue)
+    val enabledJson = if (enabled) "true" else "false"
+    return """
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: transparent;
+      color: #101827;
+    }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: transparent;
+      overflow-x: hidden;
+    }
+    body {
+      padding: 0;
+      font-size: 16px;
+      line-height: 1.42;
+    }
+    #editor {
+      min-height: 112px;
+      box-sizing: border-box;
+      outline: none;
+      padding: 2px 0;
+      word-break: break-word;
+      -webkit-user-select: text;
+      user-select: text;
+    }
+    #editor[contenteditable="false"] {
+      opacity: 0.72;
+    }
+    #editor:empty::before {
+      content: "Upiši vrijednost";
+      color: rgba(15, 23, 42, 0.38);
+    }
+    p {
+      margin: 0 0 10px;
+    }
+    h1, h2, h3 {
+      margin: 12px 0 8px;
+      line-height: 1.16;
+      font-weight: 800;
+    }
+    h1 { font-size: 1.34rem; }
+    h2 { font-size: 1.18rem; }
+    h3 { font-size: 1.05rem; }
+    ul, ol {
+      margin: 6px 0 10px;
+      padding-left: 1.35rem;
+    }
+    li {
+      margin: 3px 0;
+    }
+    blockquote {
+      margin: 8px 0 10px;
+      padding: 9px 11px;
+      border-left: 4px solid #2563eb;
+      border-radius: 10px;
+      background: rgba(37, 99, 235, 0.08);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 12px;
+      table-layout: fixed;
+      background: #ffffff;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.5);
+    }
+    th, td {
+      border: 1px solid rgba(148, 163, 184, 0.55);
+      padding: 8px;
+      min-width: 72px;
+      vertical-align: top;
+    }
+    th {
+      background: #eaf2ff;
+      font-weight: 800;
+      color: #1d4ed8;
+    }
+    .slash-menu {
+      position: fixed;
+      z-index: 10;
+      left: 8px;
+      right: 8px;
+      bottom: 8px;
+      display: none;
+      gap: 6px;
+      padding: 8px;
+      border: 1px solid rgba(37, 99, 235, 0.22);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.98);
+      box-shadow: 0 18px 34px rgba(15, 23, 42, 0.18);
+    }
+    .slash-menu.is-open {
+      display: grid;
+    }
+    .slash-menu button {
+      display: grid;
+      grid-template-columns: 36px 1fr;
+      gap: 9px;
+      align-items: center;
+      min-height: 48px;
+      padding: 8px 10px;
+      border: 0;
+      border-radius: 12px;
+      background: #f3f7ff;
+      color: #111827;
+      font: inherit;
+      text-align: left;
+    }
+    .slash-menu button:active {
+      background: #dbeafe;
+    }
+    .cmd-mark {
+      display: inline-grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      background: #dbeafe;
+      color: #1d4ed8;
+      font-weight: 900;
+      font-size: 0.83rem;
+    }
+    .cmd-copy strong,
+    .cmd-copy small {
+      display: block;
+    }
+    .cmd-copy strong {
+      font-weight: 850;
+    }
+    .cmd-copy small {
+      color: rgba(15, 23, 42, 0.58);
+      font-size: 0.78rem;
+      margin-top: 1px;
+    }
+  </style>
+</head>
+<body>
+  <main id="editor" contenteditable="$enabledJson" spellcheck="false"></main>
+  <section id="slashMenu" class="slash-menu" aria-label="Naredbe">
+    <button type="button" data-command="h1"><span class="cmd-mark">H1</span><span class="cmd-copy"><strong>Naslov 1</strong><small>Glavni naslov</small></span></button>
+    <button type="button" data-command="h2"><span class="cmd-mark">H2</span><span class="cmd-copy"><strong>Naslov 2</strong><small>Podnaslov</small></span></button>
+    <button type="button" data-command="bullet"><span class="cmd-mark">•</span><span class="cmd-copy"><strong>Bullet lista</strong><small>Nabrajanje stavki</small></span></button>
+    <button type="button" data-command="numbered"><span class="cmd-mark">1.</span><span class="cmd-copy"><strong>Numerirana lista</strong><small>Enter nastavlja brojanje</small></span></button>
+    <button type="button" data-command="table"><span class="cmd-mark">▦</span><span class="cmd-copy"><strong>Tablica</strong><small>Prava tablica u tekstu</small></span></button>
+    <button type="button" data-command="note"><span class="cmd-mark">!</span><span class="cmd-copy"><strong>Napomena</strong><small>Istaknuti tekst</small></span></button>
+  </section>
+  <script>
+    (function () {
+      const editor = document.getElementById("editor");
+      const menu = document.getElementById("slashMenu");
+      let enabled = $enabledJson;
+      let lastHtml = "";
+
+      function escapeHtml(value) {
+        return String(value || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function isHtml(value) {
+        return /<\s*(p|div|br|h1|h2|h3|ul|ol|li|table|thead|tbody|tr|th|td|blockquote)\b/i.test(String(value || ""));
+      }
+
+      function tableRowsToHtml(rows) {
+        return "<table><tbody>" + rows.map((line, index) => {
+          const cells = line.split("|").map((cell) => cell.trim());
+          const tag = index === 0 ? "th" : "td";
+          return "<tr>" + cells.map((cell) => "<" + tag + ">" + escapeHtml(cell || " ") + "</" + tag + ">").join("") + "</tr>";
+        }).join("") + "</tbody></table>";
+      }
+
+      function listRowsToHtml(rows, ordered) {
+        const tag = ordered ? "ol" : "ul";
+        return "<" + tag + ">" + rows.map((line) => {
+          const cleaned = ordered
+            ? line.replace(/^\s*\d+[.)]\s*/, "")
+            : line.replace(/^\s*[-*•]\s*/, "");
+          return "<li>" + escapeHtml(cleaned || " ") + "</li>";
+        }).join("") + "</" + tag + ">";
+      }
+
+      function plainTextToHtml(value) {
+        const lines = String(value || "").replace(/\r\n/g, "\n").split("\n");
+        const html = [];
+        for (let index = 0; index < lines.length;) {
+          const line = lines[index] || "";
+          if (!line.trim()) {
+            index += 1;
+            continue;
+          }
+          if (line.includes("|")) {
+            const rows = [];
+            while (index < lines.length && (lines[index] || "").includes("|")) {
+              rows.push(lines[index] || "");
+              index += 1;
+            }
+            html.push(tableRowsToHtml(rows));
+            continue;
+          }
+          if (/^\s*\d+[.)]\s+/.test(line)) {
+            const rows = [];
+            while (index < lines.length && /^\s*\d+[.)]\s+/.test(lines[index] || "")) {
+              rows.push(lines[index] || "");
+              index += 1;
+            }
+            html.push(listRowsToHtml(rows, true));
+            continue;
+          }
+          if (/^\s*[-*•]\s+/.test(line)) {
+            const rows = [];
+            while (index < lines.length && /^\s*[-*•]\s+/.test(lines[index] || "")) {
+              rows.push(lines[index] || "");
+              index += 1;
+            }
+            html.push(listRowsToHtml(rows, false));
+            continue;
+          }
+          if (/^###\s+/.test(line)) {
+            html.push("<h3>" + escapeHtml(line.replace(/^###\s+/, "")) + "</h3>");
+          } else if (/^##\s+/.test(line)) {
+            html.push("<h2>" + escapeHtml(line.replace(/^##\s+/, "")) + "</h2>");
+          } else if (/^#\s+/.test(line)) {
+            html.push("<h1>" + escapeHtml(line.replace(/^#\s+/, "")) + "</h1>");
+          } else if (/^>\s?/.test(line)) {
+            html.push("<blockquote>" + escapeHtml(line.replace(/^>\s?/, "")) + "</blockquote>");
+          } else {
+            html.push("<p>" + escapeHtml(line) + "</p>");
+          }
+          index += 1;
+        }
+        return html.join("") || "<p><br></p>";
+      }
+
+      function normalizeContent(value) {
+        const raw = String(value || "");
+        return isHtml(raw) ? raw : plainTextToHtml(raw);
+      }
+
+      function notifyChange() {
+        const html = editor.innerHTML;
+        lastHtml = html;
+        if (window.SafeNexusRichText && window.SafeNexusRichText.onChange) {
+          window.SafeNexusRichText.onChange(html);
+        }
+      }
+
+      function focusEditor() {
+        editor.focus();
+      }
+
+      function closeMenu() {
+        menu.classList.remove("is-open");
+      }
+
+      function openMenu() {
+        if (!enabled) return;
+        focusEditor();
+        menu.classList.add("is-open");
+      }
+
+      function previousTextNodeCharacterIsSlash() {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return false;
+        const range = selection.getRangeAt(0);
+        if (!range.collapsed || range.startContainer.nodeType !== Node.TEXT_NODE) return false;
+        const text = range.startContainer.nodeValue || "";
+        return range.startOffset > 0 && text.charAt(range.startOffset - 1) === "/";
+      }
+
+      function removePreviousSlash() {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+        const range = selection.getRangeAt(0);
+        if (!range.collapsed || range.startContainer.nodeType !== Node.TEXT_NODE) return;
+        const text = range.startContainer.nodeValue || "";
+        if (range.startOffset <= 0 || text.charAt(range.startOffset - 1) !== "/") return;
+        range.startContainer.nodeValue = text.slice(0, range.startOffset - 1) + text.slice(range.startOffset);
+        range.setStart(range.startContainer, range.startOffset - 1);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+
+      function insertHtml(html) {
+        document.execCommand("insertHTML", false, html);
+      }
+
+      function applyCommand(command) {
+        if (!enabled) return;
+        focusEditor();
+        removePreviousSlash();
+        closeMenu();
+        if (command === "h1") {
+          document.execCommand("formatBlock", false, "h1");
+        } else if (command === "h2") {
+          document.execCommand("formatBlock", false, "h2");
+        } else if (command === "bullet") {
+          document.execCommand("insertUnorderedList", false, null);
+        } else if (command === "numbered") {
+          document.execCommand("insertOrderedList", false, null);
+        } else if (command === "table") {
+          insertHtml('<table><tbody><tr><th>Naslov</th><th>Vrijednost</th></tr><tr><td>Stavka</td><td>Opis</td></tr><tr><td>Napomena</td><td><br></td></tr></tbody></table><p><br></p>');
+        } else if (command === "note") {
+          insertHtml('<blockquote>Napomena: </blockquote><p><br></p>');
+        }
+        notifyChange();
+      }
+
+      function currentBlockPlainText() {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return "";
+        let node = selection.anchorNode;
+        while (node && node !== editor && node.nodeType === Node.TEXT_NODE) {
+          node = node.parentNode;
+        }
+        while (node && node !== editor && !/^(P|DIV|LI|H1|H2|H3)$/i.test(node.nodeName)) {
+          node = node.parentNode;
+        }
+        return node && node !== editor ? (node.textContent || "") : "";
+      }
+
+      function clearCurrentBlockText() {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+        let node = selection.anchorNode;
+        while (node && node !== editor && node.nodeType === Node.TEXT_NODE) {
+          node = node.parentNode;
+        }
+        while (node && node !== editor && !/^(P|DIV)$/i.test(node.nodeName)) {
+          node = node.parentNode;
+        }
+        if (node && node !== editor) {
+          node.textContent = "";
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          range.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      }
+
+      editor.addEventListener("input", function () {
+        if (previousTextNodeCharacterIsSlash()) {
+          openMenu();
+        }
+        notifyChange();
+      });
+
+      editor.addEventListener("keydown", function (event) {
+        if (!enabled) {
+          event.preventDefault();
+          return;
+        }
+        if (event.key === "Escape") {
+          closeMenu();
+          return;
+        }
+        if (event.key === " " && currentBlockPlainText().trim() === "1.") {
+          event.preventDefault();
+          clearCurrentBlockText();
+          document.execCommand("insertOrderedList", false, null);
+          notifyChange();
+          return;
+        }
+        if (event.key === " " && /^[-*]$/.test(currentBlockPlainText().trim())) {
+          event.preventDefault();
+          clearCurrentBlockText();
+          document.execCommand("insertUnorderedList", false, null);
+          notifyChange();
+        }
+      });
+
+      editor.addEventListener("blur", function () {
+        closeMenu();
+        notifyChange();
+      });
+
+      menu.addEventListener("mousedown", function (event) {
+        event.preventDefault();
+      });
+      menu.addEventListener("click", function (event) {
+        const button = event.target.closest("button[data-command]");
+        if (!button) return;
+        applyCommand(button.getAttribute("data-command"));
+      });
+
+      window.SafeNexusEditor = {
+        setContent: function (value) {
+          const html = normalizeContent(value || "");
+          if (html !== lastHtml) {
+            editor.innerHTML = html;
+            lastHtml = html;
+          }
+        },
+        setEnabled: function (nextEnabled) {
+          enabled = !!nextEnabled;
+          editor.setAttribute("contenteditable", enabled ? "true" : "false");
+        },
+        showCommands: openMenu,
+        focus: focusEditor
+      };
+
+      window.SafeNexusEditor.setContent($initialJson);
+      window.SafeNexusEditor.setEnabled($enabledJson);
+    })();
+  </script>
+</body>
+</html>
+""".trimIndent()
+}
+
+@SuppressLint("SetJavaScriptEnabled")
 @Composable
 private fun DocumentationMobileRichTextField(
     label: String,
@@ -5967,22 +6408,66 @@ private fun DocumentationMobileRichTextField(
     maxLines: Int = 14,
     helperText: String = "Upiši / za naslov, listu ili tablicu.",
 ) {
-    var commandMenuOpen by remember { mutableStateOf(false) }
+    val latestOnChange = rememberUpdatedState(onChange)
+    var webViewRef by remember(label) { mutableStateOf<WebView?>(null) }
+    var lastEditorHtml by remember(label) { mutableStateOf(value) }
+    val bridge = remember(label) {
+        DocumentationMobileRichTextBridge { html ->
+            lastEditorHtml = html
+            latestOnChange.value(html)
+        }
+    }
+    val initialHtml = remember(label) { buildDocumentationMobileRichTextEditorHtml(value, enabled) }
+    val resolvedLineBudget = maxLines.coerceAtLeast(minLines).coerceAtLeast(3)
+    val editorHeight = (resolvedLineBudget * 28 + 72).coerceIn(176, 420).dp
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        DocumentationMobileTextField(
+        DocumentationMobileFieldShell(
             label = label,
-            value = value,
-            onChange = { nextValue ->
-                onChange(nextValue)
-                if (enabled && nextValue.trimEnd().endsWith("/")) {
-                    commandMenuOpen = true
-                }
-            },
             enabled = enabled,
-            singleLine = false,
-            minLines = minLines,
-            maxLines = maxLines,
-        )
+            minHeight = editorHeight + 46.dp,
+        ) {
+            AndroidView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(editorHeight),
+                factory = { context ->
+                    WebView(context).apply {
+                        webViewRef = this
+                        webViewClient = WebViewClient()
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = false
+                        settings.textZoom = 100
+                        settings.allowFileAccess = false
+                        settings.allowContentAccess = false
+                        isVerticalScrollBarEnabled = true
+                        isHorizontalScrollBarEnabled = false
+                        setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                        addJavascriptInterface(bridge, "SafeNexusRichText")
+                        loadDataWithBaseURL(
+                            "https://safe-nexus.local/editor/",
+                            initialHtml,
+                            "text/html",
+                            "UTF-8",
+                            null,
+                        )
+                    }
+                },
+                update = { webView ->
+                    webViewRef = webView
+                    if (value != lastEditorHtml) {
+                        lastEditorHtml = value
+                        webView.evaluateJavascript(
+                            "window.SafeNexusEditor&&window.SafeNexusEditor.setContent(${JSONObject.quote(value)});",
+                            null,
+                        )
+                    }
+                    webView.evaluateJavascript(
+                        "window.SafeNexusEditor&&window.SafeNexusEditor.setEnabled(${if (enabled) "true" else "false"});",
+                        null,
+                    )
+                }
+            )
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -5995,43 +6480,18 @@ private fun DocumentationMobileRichTextField(
                 modifier = Modifier.weight(1f),
             )
             Box {
-            OutlinedButton(
-                onClick = { commandMenuOpen = true },
-                enabled = enabled,
-                shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-            ) {
-                Text("/ Naredbe")
-            }
-                DropdownMenu(
-                    expanded = commandMenuOpen,
-                    onDismissRequest = { commandMenuOpen = false },
-                ) {
-                    documentationMobileRichTextCommands.forEach { command ->
-                        DropdownMenuItem(
-                            text = {
-                                Column {
-                                    Text(command.label, fontWeight = FontWeight.Bold)
-                                    Text(
-                                        command.hint,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-                                    )
-                                }
-                            },
-                            leadingIcon = {
-                                Text(
-                                    command.marker,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Black,
-                                )
-                            },
-                            onClick = {
-                                onChange(applyDocumentationMobileRichTextCommand(value, command))
-                                commandMenuOpen = false
-                            },
+                OutlinedButton(
+                    onClick = {
+                        webViewRef?.evaluateJavascript(
+                            "window.SafeNexusEditor&&window.SafeNexusEditor.showCommands();",
+                            null,
                         )
-                    }
+                    },
+                    enabled = enabled,
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Text("/ Naredbe")
                 }
             }
         }
