@@ -12392,6 +12392,8 @@ private fun WorkEquipmentAttachmentGallery(
 
 private fun WorkEquipmentImageRecognitionResult.hasRecognizedWorkEquipmentData(): Boolean =
     listOf(
+        profileId,
+        profileName,
         name,
         manufacturer,
         model,
@@ -12448,29 +12450,15 @@ private fun WorkEquipmentImageRecognitionResult.toManualWorkEquipmentFromBatch(
             .joinToString(" ")
             .ifBlank { "Radna oprema ${index + 1}" }
     }
-    return IsznrManualWorkEquipment(
+    val seed = IsznrManualWorkEquipment(
         name = resolvedName,
-        manufacturer = manufacturer,
-        model = model,
-        serialNumber = serialNumber,
-        inventoryNumber = inventoryNumber,
-        technicalData = technicalData,
-        purposeDescription = purposeDescription,
-        workspacePosition = workspacePosition,
-        workingSubstancesAndRawMaterials = workingSubstancesAndRawMaterials,
-        useAndMaintenance = useAndMaintenance,
-        methodsProceduresAndNorms = methodsProceduresAndNorms,
-        deficiencies = deficiencies,
-        measuresToEliminateDeficiencies = measuresToEliminateDeficiencies,
-        finalGrade = finalGrade.ifBlank { "1" },
-        mechanicalItems = mechanicalItems,
-        electricalItems = electricalItems,
-        hazardRegisterIris = hazardRegisterIris,
-        harmfulnessRegisterIris = harmfulnessRegisterIris,
-        strainRegisterIris = strainRegisterIris,
-        note = matchedSource.takeIf { it.isNotBlank() }?.let { "NexAI izvor: $it" }.orEmpty(),
         attachments = batchFilesForRecognitionItem(files, this, index, total),
     )
+    return seed.applyImageRecognitionResult(
+        result = this,
+        reportTemplates = defaultWorkEquipmentReportTemplates(),
+        useTemplateBase = true,
+    ).equipment
 }
 
 private enum class WorkEquipmentImportAction(val label: String) {
@@ -12957,6 +12945,114 @@ private fun IsznrManualWorkEquipment.applyReportTemplate(template: IsznrManualWo
         hasParts = hasParts || template.hasParts || template.parts.isNotEmpty(),
         parts = template.parts.takeIf { it.isNotEmpty() } ?: parts,
     )
+
+private data class AppliedWorkEquipmentRecognition(
+    val equipment: IsznrManualWorkEquipment,
+    val template: WorkEquipmentReportTemplate?,
+)
+
+private val workEquipmentProfileToReportTemplateId = mapOf(
+    "ro-ai-profile-forklift" to "builtin-ro-template-forklift",
+    "ro-ai-profile-pressure-tank-lpg" to "builtin-ro-template-lpg-tank",
+    "ro-ai-profile-column-car-lift" to "builtin-ro-template-column-car-lift",
+    "ro-ai-profile-scissor-car-lift" to "builtin-ro-template-scissor-car-lift",
+)
+
+private fun findWorkEquipmentReportTemplateForRecognition(
+    result: WorkEquipmentImageRecognitionResult,
+    reportTemplates: List<WorkEquipmentReportTemplate>,
+): WorkEquipmentReportTemplate? {
+    val templates = reportTemplates.ifEmpty { defaultWorkEquipmentReportTemplates() }
+    val byId = templates.associateBy { it.id.trim().lowercase(Locale.getDefault()) }
+    fun byTemplateId(id: String): WorkEquipmentReportTemplate? =
+        byId[id.trim().lowercase(Locale.getDefault())]
+
+    listOf(result.profileId, result.profileName)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .forEach { raw ->
+            byTemplateId(raw)?.let { return it }
+            workEquipmentProfileToReportTemplateId[raw.lowercase(Locale.getDefault())]
+                ?.let { mappedId -> byTemplateId(mappedId) }
+                ?.let { return it }
+        }
+
+    val normalizedTexts = listOf(result.profileId, result.profileName, result.name, result.matchedSource)
+        .map { normalizeWorkEquipmentMatchText(it) }
+        .filter { it.isNotBlank() }
+
+    templates.firstOrNull { template ->
+        val title = normalizeWorkEquipmentMatchText(template.title)
+        normalizedTexts.any { text ->
+            text == title || (text.length >= 4 && title.contains(text)) || (title.length >= 4 && text.contains(title))
+        }
+    }?.let { return it }
+
+    val inferredTemplateId = when {
+        normalizedTexts.any { text ->
+            listOf("vilicar", "viljuskar", "forklift", "linde", "jungheinrich", "still", "toyota")
+                .any { token -> text.contains(token) }
+        } -> "builtin-ro-template-forklift"
+        normalizedTexts.any { text ->
+            listOf("unp", "lpg", "propan", "butan", "propan butan", "plinski spremnik")
+                .any { token -> text.contains(token) }
+        } -> "builtin-ro-template-lpg-tank"
+        normalizedTexts.any { text ->
+            listOf("skaras", "skare", "scissor", "platformska autodizalica")
+                .any { token -> text.contains(token) }
+        } -> "builtin-ro-template-scissor-car-lift"
+        normalizedTexts.any { text ->
+            listOf("stupna", "dvostupna", "cetverostupna", "kolonska", "column lift", "two post", "four post")
+                .any { token -> text.contains(token) }
+        } -> "builtin-ro-template-column-car-lift"
+        else -> ""
+    }
+    return inferredTemplateId.takeIf { it.isNotBlank() }?.let { byTemplateId(it) }
+}
+
+private fun IsznrManualWorkEquipment.applyImageRecognitionResult(
+    result: WorkEquipmentImageRecognitionResult,
+    reportTemplates: List<WorkEquipmentReportTemplate>,
+    useTemplateBase: Boolean,
+): AppliedWorkEquipmentRecognition {
+    val template = if (useTemplateBase) {
+        findWorkEquipmentReportTemplateForRecognition(result, reportTemplates)
+    } else {
+        null
+    }
+    val base = template?.let { applyReportTemplate(it.equipment) } ?: this
+    val next = base.copy(
+        name = result.name.ifBlank { base.name },
+        manufacturer = result.manufacturer.ifBlank { base.manufacturer },
+        model = result.model.ifBlank { base.model },
+        serialNumber = result.serialNumber.ifBlank { base.serialNumber },
+        inventoryNumber = result.inventoryNumber.ifBlank { base.inventoryNumber },
+        technicalData = result.technicalData.ifBlank { base.technicalData },
+        purposeDescription = result.purposeDescription.ifBlank { base.purposeDescription },
+        workspacePosition = result.workspacePosition.ifBlank { base.workspacePosition },
+        workingSubstancesAndRawMaterials = result.workingSubstancesAndRawMaterials.ifBlank { base.workingSubstancesAndRawMaterials },
+        useAndMaintenance = result.useAndMaintenance.ifBlank { base.useAndMaintenance },
+        methodsProceduresAndNorms = result.methodsProceduresAndNorms.ifBlank { base.methodsProceduresAndNorms },
+        deficiencies = result.deficiencies.ifBlank { base.deficiencies },
+        measuresToEliminateDeficiencies = result.measuresToEliminateDeficiencies.ifBlank { base.measuresToEliminateDeficiencies },
+        finalGrade = result.finalGrade.ifBlank { base.finalGrade }.ifBlank { "1" },
+        mechanicalItems = mergeRoAssessmentItems(base.mechanicalItems, result.mechanicalItems),
+        electricalItems = mergeRoAssessmentItems(base.electricalItems, result.electricalItems),
+        hazardRegisterIris = mergeStringValues(base.hazardRegisterIris, result.hazardRegisterIris),
+        harmfulnessRegisterIris = mergeStringValues(base.harmfulnessRegisterIris, result.harmfulnessRegisterIris),
+        strainRegisterIris = mergeStringValues(base.strainRegisterIris, result.strainRegisterIris),
+        note = listOf(
+            base.note,
+            template?.title?.let { "NexAI predložak: $it" }.orEmpty(),
+            result.matchedSource.takeIf { it.isNotBlank() }?.let { "NexAI izvor: $it" }.orEmpty(),
+        )
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .joinToString("\n"),
+    )
+    return AppliedWorkEquipmentRecognition(next, template)
+}
 
 private fun IsznrManualWorkEquipment.applyColumnCopy(
     source: IsznrManualWorkEquipment,
@@ -13545,7 +13641,12 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                                         fontWeight = FontWeight.Bold,
                                     )
                                 }
+                                val recognizedTemplate = findWorkEquipmentReportTemplateForRecognition(
+                                    item,
+                                    defaultWorkEquipmentReportTemplates(),
+                                )
                                 listOf(
+                                    "Predložak" to recognizedTemplate?.title.orEmpty(),
                                     "Profil" to resultProfileLabel(item),
                                     "Proizvođač" to item.manufacturer,
                                     "Model / tip" to item.model,
@@ -13556,6 +13657,14 @@ private fun WorkEquipmentBatchNexAiUploadCard(
                                     "Radne tvari" to item.workingSubstancesAndRawMaterials,
                                     "Strojarski dio" to item.mechanicalItems.size.takeIf { it > 0 }?.let { "$it stavki" }.orEmpty(),
                                     "Elektro dio" to item.electricalItems.size.takeIf { it > 0 }?.let { "$it stavki" }.orEmpty(),
+                                    "Stavke iz predloška" to recognizedTemplate?.equipment?.let { templateEquipment ->
+                                        val totalItems = templateEquipment.mechanicalItems.size +
+                                            templateEquipment.electricalItems.size +
+                                            templateEquipment.hazardRegisterIris.size +
+                                            templateEquipment.harmfulnessRegisterIris.size +
+                                            templateEquipment.strainRegisterIris.size
+                                        totalItems.takeIf { it > 0 }?.let { "$it stavki/odabira" }.orEmpty()
+                                    }.orEmpty(),
                                     "Opasnosti/štetnosti/napori" to listOf(
                                         item.hazardRegisterIris.size,
                                         item.harmfulnessRegisterIris.size,
@@ -14462,40 +14571,31 @@ private fun ManualWorkEquipmentInlineEditor(
     }
 
     fun applyRecognition(result: WorkEquipmentImageRecognitionResult, verificationAnswers: Map<String, String> = emptyMap()) {
-        onEquipmentChange(
-            equipment.copy(
-                name = result.name.ifBlank { equipment.name },
-                manufacturer = result.manufacturer.ifBlank { equipment.manufacturer },
-                model = result.model.ifBlank { equipment.model },
-                serialNumber = result.serialNumber.ifBlank { equipment.serialNumber },
-                inventoryNumber = result.inventoryNumber.ifBlank { equipment.inventoryNumber },
-                technicalData = result.technicalData.ifBlank { equipment.technicalData },
-                purposeDescription = result.purposeDescription.ifBlank { equipment.purposeDescription },
-                workspacePosition = result.workspacePosition.ifBlank { equipment.workspacePosition },
-                workingSubstancesAndRawMaterials = result.workingSubstancesAndRawMaterials.ifBlank { equipment.workingSubstancesAndRawMaterials },
-                useAndMaintenance = result.useAndMaintenance.ifBlank { equipment.useAndMaintenance },
-                methodsProceduresAndNorms = result.methodsProceduresAndNorms.ifBlank { equipment.methodsProceduresAndNorms },
-                deficiencies = result.deficiencies.ifBlank { equipment.deficiencies },
-                measuresToEliminateDeficiencies = result.measuresToEliminateDeficiencies.ifBlank { equipment.measuresToEliminateDeficiencies },
-                finalGrade = result.finalGrade.ifBlank { equipment.finalGrade }.ifBlank { "1" },
-                mechanicalItems = mergeRoAssessmentItems(equipment.mechanicalItems, result.mechanicalItems),
-                electricalItems = mergeRoAssessmentItems(equipment.electricalItems, result.electricalItems),
-                hazardRegisterIris = mergeStringValues(equipment.hazardRegisterIris, result.hazardRegisterIris),
-                harmfulnessRegisterIris = mergeStringValues(equipment.harmfulnessRegisterIris, result.harmfulnessRegisterIris),
-                strainRegisterIris = mergeStringValues(equipment.strainRegisterIris, result.strainRegisterIris),
-            ),
+        val applied = equipment.applyImageRecognitionResult(
+            result = result,
+            reportTemplates = reportTemplates,
+            useTemplateBase = imageRecognitionMode == WORK_EQUIPMENT_AI_MODE_TEMPLATE,
         )
+        onEquipmentChange(applied.equipment)
         recognitionPreview = null
         recognitionMessage = listOf(
             result.message.ifBlank { "Prepoznati podaci su primijenjeni." },
+            applied.template?.title?.let { "Predložak: $it" }.orEmpty(),
             result.matchedSource.takeIf { it.isNotBlank() }?.let { "Baza: $it" }.orEmpty(),
-            (result.mechanicalItems.size + result.electricalItems.size).takeIf { it > 0 }?.let { "$it stručnih stavki" }.orEmpty(),
-            (result.hazardRegisterIris.size + result.harmfulnessRegisterIris.size + result.strainRegisterIris.size).takeIf { it > 0 }?.let { "$it rizika" }.orEmpty(),
+            (applied.equipment.mechanicalItems.size + applied.equipment.electricalItems.size).takeIf { it > 0 }?.let { "$it stručnih stavki" }.orEmpty(),
+            (applied.equipment.hazardRegisterIris.size + applied.equipment.harmfulnessRegisterIris.size + applied.equipment.strainRegisterIris.size).takeIf { it > 0 }?.let { "$it rizika" }.orEmpty(),
             verificationAnswers.count { it.value.isNotBlank() }.takeIf { it > 0 }?.let { "$it potvrda uneseno" }.orEmpty(),
         ).filter { it.isNotBlank() }.joinToString(" ")
     }
 
     recognitionPreview?.let { result ->
+        val previewTemplate = remember(result, reportTemplates, imageRecognitionMode) {
+            if (imageRecognitionMode == WORK_EQUIPMENT_AI_MODE_TEMPLATE) {
+                findWorkEquipmentReportTemplateForRecognition(result, reportTemplates)
+            } else {
+                null
+            }
+        }
         val previewQuestions = remember(result) {
             normalizedRoVerificationQuestions(result.verificationQuestions, limit = 8)
         }
@@ -14528,6 +14628,7 @@ private fun ManualWorkEquipmentInlineEditor(
                         )
                     }
                     listOf(
+                        "Predložak" to previewTemplate?.title.orEmpty(),
                         "Profil" to resultProfileLabel(result),
                         "Naziv" to result.name,
                         "Proizvođač" to result.manufacturer,
@@ -14544,6 +14645,14 @@ private fun ManualWorkEquipmentInlineEditor(
                         "Mjere" to result.measuresToEliminateDeficiencies,
                         "Strojarski dio" to result.mechanicalItems.size.takeIf { it > 0 }?.let { "$it stavki" }.orEmpty(),
                         "Elektro dio" to result.electricalItems.size.takeIf { it > 0 }?.let { "$it stavki" }.orEmpty(),
+                        "Stavke iz predloška" to previewTemplate?.equipment?.let { templateEquipment ->
+                            val totalItems = templateEquipment.mechanicalItems.size +
+                                templateEquipment.electricalItems.size +
+                                templateEquipment.hazardRegisterIris.size +
+                                templateEquipment.harmfulnessRegisterIris.size +
+                                templateEquipment.strainRegisterIris.size
+                            totalItems.takeIf { it > 0 }?.let { "$it stavki/odabira" }.orEmpty()
+                        }.orEmpty(),
                         "Rizici" to listOf(
                             result.hazardRegisterIris.size,
                             result.harmfulnessRegisterIris.size,

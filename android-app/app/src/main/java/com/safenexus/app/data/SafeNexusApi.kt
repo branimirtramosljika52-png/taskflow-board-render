@@ -377,6 +377,7 @@ class SafeNexusApi(
         listOf(
             "BRZI TEMPLATE NACIN: korisnik zeli AI preko templatea/profila. Ne radi puni tehnicki pregled kao u detaljnom nacinu.",
             "Primarni zadatak je: 1) prepoznati najblizi profileId/profileName iz context.profiles, 2) procitati natpisnu plocicu i osnovne oznake, 3) popuniti samo stavke koje dolaze iz prepoznatog/odabranog templatea ili su direktno procitane sa slika.",
+            "profileId je kljuc predloska koji Android koristi za automatsko punjenje RO zapisnika. Zato profileId/templateId mora biti tocan ID iz context.profiles, npr. ro-ai-profile-forklift, ro-ai-profile-pressure-tank-lpg, ro-ai-profile-column-car-lift ili ro-ai-profile-scissor-car-lift.",
             "Ako context.selectedProfileId ili selectedProfileName postoji, taj profil ima prednost osim ako slike jasno prikazuju drugu opremu; tada vrati pitanje u verificationQuestions.",
             "Obavezno vrati profileId i profileName za svaki workEquipments zapis. Ako nisi siguran, vrati najblizi profil i confidence=low, ali ne izmisljaj siroke nalaze.",
             "Natpisna plocica ima prioritet za manufacturer, model, serialNumber, inventoryNumber i technicalData. Fotografija cijelog stroja sluzi za naziv, profil i osnovnu namjenu.",
@@ -1691,7 +1692,9 @@ class SafeNexusApi(
                             JSONArray().put(
                                 JSONObject()
                                     .put("profileId", "id prepoznatog profila/templatea")
+                                    .put("templateId", "isti ID kao profileId ako je brzi template nacin")
                                     .put("profileName", "naziv prepoznatog profila/templatea")
+                                    .put("templateName", "isti naziv kao profileName ako je brzi template nacin")
                                     .put("name", "naziv opreme")
                                     .put("manufacturer", "proizvodac")
                                     .put("model", "tip/model")
@@ -1876,7 +1879,9 @@ class SafeNexusApi(
                             JSONArray().put(
                                 JSONObject()
                                     .put("profileId", "id prepoznatog profila/templatea")
+                                    .put("templateId", "isti ID kao profileId ako je brzi template nacin")
                                     .put("profileName", "naziv prepoznatog profila/templatea")
+                                    .put("templateName", "isti naziv kao profileName ako je brzi template nacin")
                                     .put("name", "naziv opreme")
                                     .put("manufacturer", "proizvodac")
                                     .put("model", "tip/model")
@@ -4670,6 +4675,8 @@ private fun JSONObject.toWorkEquipmentImageRecognitionBatchResult(): WorkEquipme
         }
     }.filter { item ->
         listOf(
+            item.profileId,
+            item.profileName,
             item.name,
             item.manufacturer,
             item.model,
@@ -4700,6 +4707,8 @@ private fun JSONObject.toWorkEquipmentImageRecognitionBatchResult(): WorkEquipme
     val recognized = items.ifEmpty {
         if (
             listOf(
+                fallback.profileId,
+                fallback.profileName,
                 fallback.name,
                 fallback.manufacturer,
                 fallback.model,
