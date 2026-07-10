@@ -6094,6 +6094,38 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
     .slash-menu button:active {
       background: #dbeafe;
     }
+    .table-tools {
+      position: fixed;
+      z-index: 9;
+      left: 8px;
+      right: 8px;
+      bottom: 8px;
+      display: none;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+      padding: 8px;
+      border: 1px solid rgba(37, 99, 235, 0.18);
+      border-radius: 16px;
+      background: rgba(248, 250, 252, 0.98);
+      box-shadow: 0 16px 32px rgba(15, 23, 42, 0.14);
+    }
+    .table-tools.is-open {
+      display: grid;
+    }
+    .table-tools button {
+      min-height: 40px;
+      padding: 8px 9px;
+      border: 0;
+      border-radius: 12px;
+      background: #eef5ff;
+      color: #1d4ed8;
+      font: inherit;
+      font-weight: 800;
+      text-align: center;
+    }
+    .table-tools button:active {
+      background: #dbeafe;
+    }
     .cmd-mark {
       display: inline-grid;
       place-items: center;
@@ -6122,19 +6154,29 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
 <body>
   <main id="editor" contenteditable="$enabledJson" spellcheck="false"></main>
   <section id="slashMenu" class="slash-menu" aria-label="Naredbe">
-    <button type="button" data-command="h1"><span class="cmd-mark">H1</span><span class="cmd-copy"><strong>Naslov 1</strong><small>Glavni naslov</small></span></button>
-    <button type="button" data-command="h2"><span class="cmd-mark">H2</span><span class="cmd-copy"><strong>Naslov 2</strong><small>Podnaslov</small></span></button>
+    <button type="button" data-command="h1"><span class="cmd-mark">H1</span><span class="cmd-copy"><strong>Naslov</strong><small>Glavni naslov poglavlja</small></span></button>
+    <button type="button" data-command="h2"><span class="cmd-mark">H2</span><span class="cmd-copy"><strong>Podnaslov</strong><small>Naslov unutar poglavlja</small></span></button>
+    <button type="button" data-command="h3"><span class="cmd-mark">H3</span><span class="cmd-copy"><strong>Manji naslov</strong><small>Grupa ili kratki blok</small></span></button>
     <button type="button" data-command="bullet"><span class="cmd-mark">•</span><span class="cmd-copy"><strong>Bullet lista</strong><small>Nabrajanje stavki</small></span></button>
     <button type="button" data-command="numbered"><span class="cmd-mark">1.</span><span class="cmd-copy"><strong>Numerirana lista</strong><small>Enter nastavlja brojanje</small></span></button>
     <button type="button" data-command="table"><span class="cmd-mark">▦</span><span class="cmd-copy"><strong>Tablica</strong><small>Prava tablica u tekstu</small></span></button>
+    <button type="button" data-command="systemTable"><span class="cmd-mark">DS</span><span class="cmd-copy"><strong>Tablica opisa sustava</strong><small>Dio, opis i napomena</small></span></button>
     <button type="button" data-command="note"><span class="cmd-mark">!</span><span class="cmd-copy"><strong>Napomena</strong><small>Istaknuti tekst</small></span></button>
+  </section>
+  <section id="tableTools" class="table-tools" aria-label="Tablica">
+    <button type="button" data-table-command="rowBefore">+ Red iznad</button>
+    <button type="button" data-table-command="rowAfter">+ Red ispod</button>
+    <button type="button" data-table-command="colBefore">+ Kolona lijevo</button>
+    <button type="button" data-table-command="colAfter">+ Kolona desno</button>
   </section>
   <script>
     (function () {
       const editor = document.getElementById("editor");
       const menu = document.getElementById("slashMenu");
+      const tableTools = document.getElementById("tableTools");
       let enabled = $enabledJson;
       let lastHtml = "";
+      let lastTableCell = null;
 
       function escapeHtml(value) {
         return String(value || "")
@@ -6238,12 +6280,18 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
 
       function closeMenu() {
         menu.classList.remove("is-open");
+        updateTableTools();
       }
 
       function openMenu() {
         if (!enabled) return;
         focusEditor();
+        closeTableTools();
         menu.classList.add("is-open");
+      }
+
+      function closeTableTools() {
+        tableTools.classList.remove("is-open");
       }
 
       function previousTextNodeCharacterIsSlash() {
@@ -6273,6 +6321,97 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
         document.execCommand("insertHTML", false, html);
       }
 
+      function getCurrentTableCell() {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return null;
+        let node = selection.anchorNode;
+        if (!node) return null;
+        if (node.nodeType === Node.TEXT_NODE) {
+          node = node.parentNode;
+        }
+        while (node && node !== editor) {
+          if (/^(TD|TH)$/i.test(node.nodeName)) {
+            return node;
+          }
+          node = node.parentNode;
+        }
+        return null;
+      }
+
+      function tableCells(row) {
+        return Array.from(row ? row.children : []).filter((cell) => /^(TD|TH)$/i.test(cell.nodeName));
+      }
+
+      function createTableCellLike(referenceCell) {
+        const tagName = referenceCell && referenceCell.nodeName === "TH" ? "th" : "td";
+        const cell = document.createElement(tagName);
+        cell.innerHTML = "<br>";
+        return cell;
+      }
+
+      function focusTableCell(cell) {
+        if (!cell) return;
+        const range = document.createRange();
+        range.selectNodeContents(cell);
+        range.collapse(false);
+        const selection = window.getSelection();
+        if (!selection) return;
+        selection.removeAllRanges();
+        selection.addRange(range);
+        lastTableCell = cell;
+        focusEditor();
+      }
+
+      function updateTableTools() {
+        if (!enabled || menu.classList.contains("is-open")) {
+          closeTableTools();
+          return;
+        }
+        const cell = getCurrentTableCell();
+        lastTableCell = cell || lastTableCell;
+        tableTools.classList.toggle("is-open", !!cell);
+      }
+
+      function applyTableCommand(command) {
+        const cell = getCurrentTableCell() || lastTableCell;
+        if (!enabled || !cell || !editor.contains(cell)) return;
+        const row = cell.parentNode;
+        const table = cell.closest("table");
+        if (!row || !table) return;
+        const cells = tableCells(row);
+        const columnIndex = Math.max(0, cells.indexOf(cell));
+        let nextFocus = cell;
+
+        if (command === "rowBefore" || command === "rowAfter") {
+          const nextRow = document.createElement("tr");
+          cells.forEach((referenceCell) => nextRow.appendChild(createTableCellLike(referenceCell)));
+          if (command === "rowBefore") {
+            row.parentNode.insertBefore(nextRow, row);
+          } else {
+            row.parentNode.insertBefore(nextRow, row.nextSibling);
+          }
+          nextFocus = tableCells(nextRow)[columnIndex] || tableCells(nextRow)[0] || cell;
+        } else if (command === "colBefore" || command === "colAfter") {
+          Array.from(table.querySelectorAll("tr")).forEach((tableRow) => {
+            const rowCellList = tableCells(tableRow);
+            if (rowCellList.length === 0) return;
+            const referenceCell = rowCellList[Math.min(columnIndex, rowCellList.length - 1)];
+            const nextCell = createTableCellLike(referenceCell);
+            if (command === "colBefore") {
+              tableRow.insertBefore(nextCell, referenceCell);
+              if (tableRow === row) nextFocus = nextCell;
+            } else {
+              tableRow.insertBefore(nextCell, referenceCell.nextSibling);
+              if (tableRow === row) nextFocus = nextCell;
+            }
+          });
+        }
+
+        focusTableCell(nextFocus);
+        notifyChange();
+        updateTableTools();
+      }
+
       function applyCommand(command) {
         if (!enabled) return;
         focusEditor();
@@ -6282,16 +6421,21 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
           document.execCommand("formatBlock", false, "h1");
         } else if (command === "h2") {
           document.execCommand("formatBlock", false, "h2");
+        } else if (command === "h3") {
+          document.execCommand("formatBlock", false, "h3");
         } else if (command === "bullet") {
           document.execCommand("insertUnorderedList", false, null);
         } else if (command === "numbered") {
           document.execCommand("insertOrderedList", false, null);
         } else if (command === "table") {
           insertHtml('<table><tbody><tr><th>Naslov</th><th>Vrijednost</th></tr><tr><td>Stavka</td><td>Opis</td></tr><tr><td>Napomena</td><td><br></td></tr></tbody></table><p><br></p>');
+        } else if (command === "systemTable") {
+          insertHtml('<table><tbody><tr><th>Dio sustava</th><th>Opis</th><th>Napomena</th></tr><tr><td>Centrala</td><td><br></td><td><br></td></tr><tr><td>Elementi</td><td><br></td><td><br></td></tr></tbody></table><p><br></p>');
         } else if (command === "note") {
           insertHtml('<blockquote>Napomena: </blockquote><p><br></p>');
         }
         notifyChange();
+        updateTableTools();
       }
 
       function currentBlockPlainText() {
@@ -6332,6 +6476,7 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
           openMenu();
         }
         notifyChange();
+        updateTableTools();
       });
 
       editor.addEventListener("keydown", function (event) {
@@ -6348,6 +6493,7 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
           clearCurrentBlockText();
           document.execCommand("insertOrderedList", false, null);
           notifyChange();
+          updateTableTools();
           return;
         }
         if (event.key === " " && /^[-*]$/.test(currentBlockPlainText().trim())) {
@@ -6355,11 +6501,24 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
           clearCurrentBlockText();
           document.execCommand("insertUnorderedList", false, null);
           notifyChange();
+          updateTableTools();
         }
       });
 
+      editor.addEventListener("keyup", updateTableTools);
+      editor.addEventListener("mouseup", updateTableTools);
+      editor.addEventListener("touchend", function () {
+        window.setTimeout(updateTableTools, 80);
+      });
+      document.addEventListener("selectionchange", updateTableTools);
+
       editor.addEventListener("blur", function () {
-        closeMenu();
+        window.setTimeout(function () {
+          if (!getCurrentTableCell()) {
+            closeMenu();
+            closeTableTools();
+          }
+        }, 120);
         notifyChange();
       });
 
@@ -6370,6 +6529,14 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
         const button = event.target.closest("button[data-command]");
         if (!button) return;
         applyCommand(button.getAttribute("data-command"));
+      });
+      tableTools.addEventListener("mousedown", function (event) {
+        event.preventDefault();
+      });
+      tableTools.addEventListener("click", function (event) {
+        const button = event.target.closest("button[data-table-command]");
+        if (!button) return;
+        applyTableCommand(button.getAttribute("data-table-command"));
       });
 
       window.SafeNexusEditor = {
@@ -6383,6 +6550,7 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
         setEnabled: function (nextEnabled) {
           enabled = !!nextEnabled;
           editor.setAttribute("contenteditable", enabled ? "true" : "false");
+          updateTableTools();
         },
         showCommands: openMenu,
         focus: focusEditor

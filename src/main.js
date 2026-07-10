@@ -81019,7 +81019,7 @@ function createDocumentTemplateRuntimeRichToolbar(editor, persist = null) {
 
   const hint = document.createElement("span");
   hint.className = "document-template-runtime-rich-toolbar-hint";
-  hint.innerHTML = `<kbd>/</kbd> za naslov, bullet, tablicu, napomenu`;
+  hint.innerHTML = `<kbd>/</kbd> za naslov, podnaslov, listu, tablicu`;
 
   const openButton = document.createElement("button");
   openButton.type = "button";
@@ -81038,6 +81038,54 @@ function createDocumentTemplateRuntimeRichToolbar(editor, persist = null) {
   });
   toolbar.append(hint, openButton);
 
+  return toolbar;
+}
+
+function createDocumentTemplateRuntimeRichTableToolbar(editor, persist = null) {
+  const toolbar = document.createElement("div");
+  toolbar.className = "document-template-runtime-rich-table-toolbar";
+  toolbar.hidden = true;
+  toolbar.setAttribute("aria-label", "Alati za tablicu");
+
+  const actions = [
+    { label: "+ Red iznad", command: "addRowBefore" },
+    { label: "+ Red ispod", command: "addRowAfter" },
+    { label: "+ Kolona lijevo", command: "addColumnBefore" },
+    { label: "+ Kolona desno", command: "addColumnAfter" },
+  ];
+
+  const refresh = () => {
+    const tiptapEditor = getDocumentTemplateRuntimeTiptapEditor(editor);
+    toolbar.hidden = !(tiptapEditor && tiptapEditor.isActive("table"));
+  };
+
+  actions.forEach((action) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = action.label;
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const tiptapEditor = getDocumentTemplateRuntimeTiptapEditor(editor);
+      if (!tiptapEditor || typeof tiptapEditor.chain().focus()[action.command] !== "function") {
+        return;
+      }
+      tiptapEditor.chain().focus()[action.command]().run();
+      persist?.({ cleanDom: true });
+      refresh();
+    });
+    toolbar.append(button);
+  });
+
+  const tiptapEditor = getDocumentTemplateRuntimeTiptapEditor(editor);
+  tiptapEditor?.on?.("selectionUpdate", refresh);
+  tiptapEditor?.on?.("transaction", refresh);
+  tiptapEditor?.on?.("focus", refresh);
+  tiptapEditor?.on?.("blur", () => {
+    window.setTimeout(refresh, 80);
+  });
+
+  refresh();
   return toolbar;
 }
 
@@ -81221,7 +81269,11 @@ function createDocumentTemplateRuntimeRichTextControl({
     persist();
   }, { capture: true });
 
-  shell.append(createDocumentTemplateRuntimeRichToolbar(editor, persist), editor);
+  shell.append(
+    createDocumentTemplateRuntimeRichToolbar(editor, persist),
+    createDocumentTemplateRuntimeRichTableToolbar(editor, persist),
+    editor,
+  );
   return shell;
 }
 
