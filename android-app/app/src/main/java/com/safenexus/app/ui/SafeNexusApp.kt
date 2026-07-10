@@ -28357,34 +28357,106 @@ private fun WorkEquipmentAiModeSelector(
     enabled: Boolean,
 ) {
     val selected = workEquipmentAiModeChoices.firstOrNull { it.id == selectedMode } ?: workEquipmentAiModeChoices.first()
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            workEquipmentAiModeChoices.forEach { mode ->
-                FilterChip(
-                    selected = selected.id == mode.id,
-                    onClick = { onModeChange(mode.id) },
-                    enabled = enabled,
-                    leadingIcon = if (selected.id == mode.id) {
-                        {
-                            Icon(
-                                imageVector = Icons.Rounded.Check,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = Color(0xFFFFFBEB),
+        border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+        tonalElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(shape = CircleShape, color = Color(0xFFFEF3C7), modifier = Modifier.size(34.dp)) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(18.dp))
+                    }
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text("Način AI obrade", fontWeight = FontWeight.Black, color = Color(0xFF713F12))
+                    Text(
+                        "Odaberi brzi template ili puni pregled slike.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF92400E),
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                workEquipmentAiModeChoices.forEach { mode ->
+                    val modeSelected = selected.id == mode.id
+                    val accent = if (mode.id == WORK_EQUIPMENT_AI_MODE_TEMPLATE) Color(0xFF7C2D12) else Color(0xFF1D4ED8)
+                    val background = if (modeSelected) {
+                        if (mode.id == WORK_EQUIPMENT_AI_MODE_TEMPLATE) Color(0xFFFFEDD5) else Color(0xFFDBEAFE)
+                    } else {
+                        Color.White.copy(alpha = 0.86f)
+                    }
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable(enabled = enabled) { onModeChange(mode.id) },
+                        shape = RoundedCornerShape(15.dp),
+                        color = background,
+                        border = BorderStroke(
+                            1.dp,
+                            if (modeSelected) accent.copy(alpha = 0.34f) else Color(0xFFE2E8F0),
+                        ),
+                        tonalElevation = 0.dp,
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = if (modeSelected) accent else Color(0xFFE2E8F0),
+                                modifier = Modifier.size(22.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    if (modeSelected) {
+                                        Icon(Icons.Rounded.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                            }
+                            Text(
+                                mode.label,
+                                modifier = Modifier.weight(1f),
+                                fontWeight = FontWeight.Black,
+                                color = if (modeSelected) accent else Color(0xFF334155),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
-                    } else {
-                        null
-                    },
-                    label = { Text(mode.label) },
+                    }
+                }
+            }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = Color.White.copy(alpha = 0.66f),
+                border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.56f)),
+                tonalElevation = 0.dp,
+            ) {
+                Text(
+                    selected.hint,
+                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF713F12),
+                    fontWeight = FontWeight.SemiBold,
                 )
             }
         }
-        Text(
-            selected.hint,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
-            fontWeight = FontWeight.SemiBold,
-        )
     }
 }
 
