@@ -229,6 +229,69 @@ class SafeNexusApi(
                 verificationQuestions = listOf("Je li probno opterecenje potvrdeno dokumentacijom ili ispitivanjem?", "Je li upravljanje i kocenje funkcionalno provjereno?"),
             ))
             .put(workEquipmentRoProfileJson(
+                id = "ro-ai-profile-column-car-lift",
+                name = "Stupna autodizalica",
+                aliases = listOf("stupna autodizalica", "dvostupna autodizalica", "cetverostupna autodizalica", "auto dizalica stupna", "autodizalica stupna", "kolonska dizalica", "two post lift", "four post lift", "column lift"),
+                instruction = "Prepoznaj stupnu autodizalicu prema stupovima, nosivim rukama, platformama, komandnoj kutiji, oznaci nosivosti i sigurnosnim blokadama. Tretiraj je kao opremu za podizanje vozila, ne kao opcu dizalicu.",
+                noteExamples = listOf("Nosive ruke imaju osigurace polozaja.", "Komande podizanja i spustanja su jasno oznacene.", "Hidraulicni sustav nema vidljivog curenja."),
+                verificationQuestions = listOf("Jesu li sigurnosne blokade i osiguraci funkcionalno provjereni?", "Koja je nosivost autodizalice s natpisne plocice?"),
+                fieldDefaults = workEquipmentRoFieldDefaultsJson(
+                    purposeDescription = "Radna oprema se koristi za podizanje vozila pri servisiranju, pregledu i odrzavanju.",
+                    workspacePosition = "Autodizalica je postavljena u servisnom prostoru na cvrstoj i ravnoj podlozi.",
+                    useAndMaintenance = "Provjeriti nosive ruke/platforme, osigurace, blokade, komande, STOP, hidrauliku/prijenos, sidrenje stupova i upute proizvodaca.",
+                    methodsProceduresAndNorms = "Pregled prema propisima za radnu opremu, uputama proizvodaca i pravilima za opremu za podizanje vozila.",
+                ),
+                registerDefaults = workEquipmentRoRegisterDefaultsJson(
+                    mechanical = listOf(1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 21, 23, 24, 25, 26, 27, 29, 30, 31, 34, 35, 36),
+                    electrical = listOf(1, 2, 3, 4, 17, 18, 19, 25),
+                    hazards = listOf(1, 2, 3),
+                    harmfulnesses = listOf(3),
+                    strains = listOf(1, 2),
+                ),
+                registerInstructions = workEquipmentRoRegisterInstructionsJson(
+                    workEquipmentRoRegisterIri("ro_mechanical_engineering_registers", 2) to "Upisi stanje podloge, sidrenja i stabilnosti stupova.",
+                    workEquipmentRoRegisterIri("ro_mechanical_engineering_registers", 7) to "Opisi komande podizanja i spustanja.",
+                    workEquipmentRoRegisterIri("ro_mechanical_engineering_registers", 12) to "Opisi sigurnosne blokade, zasune i osigurace nosivih ruku/platformi.",
+                    workEquipmentRoRegisterIri("ro_mechanical_engineering_registers", 19) to "Opisi nosivu konstrukciju, ruke/platforme i vidljive deformacije.",
+                    workEquipmentRoRegisterIri("ro_mechanical_engineering_registers", 31) to "Prepisi ili navedi nosivost s plocice ako je vidljiva.",
+                    workEquipmentRoRegisterIri("ro_mechanical_engineering_registers", 34) to "Opisi hidraulicni sustav ili prijenos podizanja i eventualno curenje.",
+                    workEquipmentRoRegisterIri("ro_electrical_registers", 1) to "Prepisi napon i nacin prikljucka ako je vidljiv.",
+                    workEquipmentRoRegisterIri("ro_electrical_registers", 2) to "Opisi prikljucni kabel i izolaciju samo ako su vidljivi.",
+                ),
+            ))
+            .put(workEquipmentRoProfileJson(
+                id = "ro-ai-profile-scissor-car-lift",
+                name = "Skarasta autodizalica",
+                aliases = listOf("skarasta autodizalica", "skare autodizalica", "auto dizalica skarasta", "autodizalica skarasta", "scissor lift", "vehicle scissor lift"),
+                instruction = "Prepoznaj skarastu autodizalicu prema skarastom mehanizmu, platformi, niskoprofilnim rampama, hidraulicnim cilindrima, komandama i sigurnosnim blokadama. Tretiraj je kao opremu za podizanje vozila.",
+                noteExamples = listOf("Skarasti mehanizam je vizualno pregledan.", "Platforme su stabilne i bez vidljivih deformacija.", "Hidraulicni cilindri nemaju vidljivog curenja."),
+                verificationQuestions = listOf("Jesu li platforme i sigurnosne blokade funkcionalno provjerene?", "Je li spustanje izvedeno kontrolirano i bez zapinjanja?"),
+                fieldDefaults = workEquipmentRoFieldDefaultsJson(
+                    purposeDescription = "Radna oprema se koristi za podizanje vozila na servisnu visinu radi pregleda, servisa i odrzavanja.",
+                    workspacePosition = "Skarasta autodizalica je smjestena u servisnom prostoru na ravnoj i nosivoj podlozi.",
+                    useAndMaintenance = "Provjeriti platforme, skarasti mehanizam, osovine, hidraulicne cilindre, sigurnosne blokade, komande, STOP i upute proizvodaca.",
+                    methodsProceduresAndNorms = "Pregled prema propisima za radnu opremu, uputama proizvodaca i pravilima za opremu za podizanje vozila.",
+                ),
+                registerDefaults = workEquipmentRoRegisterDefaultsJson(
+                    mechanical = listOf(1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 21, 23, 24, 25, 26, 27, 29, 30, 31, 34, 35, 36),
+                    electrical = listOf(1, 2, 3, 4, 17, 18, 19, 25),
+                    hazards = listOf(1, 2, 3),
+                    harmfulnesses = listOf(3),
+                    strains = listOf(1, 2),
+                ),
+                registerInstructions = workEquipmentRoRegisterInstructionsJson(
+                    workEquipmentRoRegisterIri("ro_mechanical_engineering_registers", 2) to "Opisi stabilnost i smjestaj platforme na podlozi.",
+                    workEquipmentRoRegisterIri("ro_mechanical_engineering_registers", 3) to "Opisi zastitu od skarastog mehanizma i ukljestenja ako je vidljiva.",
+                    workEquipmentRoRegisterIri("ro_mechanical_engineering_registers", 7) to "Opisi komande podizanja/spustanja i nacin ukljucivanja.",
+                    workEquipmentRoRegisterIri("ro_mechanical_engineering_registers", 12) to "Opisi sigurnosne blokade, zube, zasune i osiguranje od nekontroliranog spustanja.",
+                    workEquipmentRoRegisterIri("ro_mechanical_engineering_registers", 19) to "Opisi platforme, skaraste krakove i vidljive deformacije.",
+                    workEquipmentRoRegisterIri("ro_mechanical_engineering_registers", 31) to "Prepisi nosivost s plocice ako je vidljiva ili trazi potvrdu korisnika.",
+                    workEquipmentRoRegisterIri("ro_mechanical_engineering_registers", 34) to "Opisi hidraulicne cilindre, crijeva i vidljivo curenje.",
+                    workEquipmentRoRegisterIri("ro_electrical_registers", 1) to "Prepisi napon i nacin prikljucka ako je vidljiv.",
+                    workEquipmentRoRegisterIri("ro_electrical_registers", 2) to "Opisi prikljucni kabel, izolaciju i vidljivo stanje prikljucka.",
+                ),
+            ))
+            .put(workEquipmentRoProfileJson(
                 id = "ro-ai-profile-saw-grinder",
                 name = "Pila / brusilica",
                 aliases = listOf("pila", "kruzna pila", "tracna pila", "brusilica", "rezalica", "grinder"),
@@ -237,6 +300,50 @@ class SafeNexusApi(
                 verificationQuestions = listOf("Je li zastitni pokrov radnog elementa na mjestu?", "Je li STOP / iskljucivanje funkcionalno provjereno?"),
             ))
 
+    private fun workEquipmentRoFieldDefaultsJson(
+        technicalData: String = "",
+        purposeDescription: String = "",
+        workspacePosition: String = "",
+        useAndMaintenance: String = "",
+        methodsProceduresAndNorms: String = "",
+    ): JSONObject =
+        JSONObject()
+            .put("technicalData", technicalData)
+            .put("purposeDescription", purposeDescription)
+            .put("workspacePosition", workspacePosition)
+            .put("useAndMaintenance", useAndMaintenance)
+            .put("methodsProceduresAndNorms", methodsProceduresAndNorms)
+
+    private fun workEquipmentRoRegisterDefaultsJson(
+        mechanical: List<Int> = emptyList(),
+        electrical: List<Int> = emptyList(),
+        hazards: List<Int> = emptyList(),
+        harmfulnesses: List<Int> = emptyList(),
+        strains: List<Int> = emptyList(),
+    ): JSONObject =
+        JSONObject()
+            .put("mechanical", workEquipmentRoRegisterIrisJson("ro_mechanical_engineering_registers", mechanical))
+            .put("electrical", workEquipmentRoRegisterIrisJson("ro_electrical_registers", electrical))
+            .put("hazards", workEquipmentRoRegisterIrisJson("hazard_registers", hazards))
+            .put("harmfulnesses", workEquipmentRoRegisterIrisJson("harmfulness_registers", harmfulnesses))
+            .put("strains", workEquipmentRoRegisterIrisJson("strain_registers", strains))
+
+    private fun workEquipmentRoRegisterIrisJson(path: String, ids: List<Int>): JSONArray =
+        JSONArray(ids.map { id -> workEquipmentRoRegisterIri(path, id) })
+
+    private fun workEquipmentRoRegisterIri(path: String, id: Int): String =
+        "/api/v3/$path/$id"
+
+    private fun workEquipmentRoRegisterInstructionsJson(vararg entries: Pair<String, String>): JSONObject {
+        val json = JSONObject()
+        entries.forEach { (key, value) ->
+            if (key.isNotBlank() && value.isNotBlank()) {
+                json.put(key, value)
+            }
+        }
+        return json
+    }
+
     private fun workEquipmentRoProfileJson(
         id: String,
         name: String,
@@ -244,6 +351,9 @@ class SafeNexusApi(
         instruction: String,
         noteExamples: List<String>,
         verificationQuestions: List<String> = emptyList(),
+        fieldDefaults: JSONObject = JSONObject(),
+        registerDefaults: JSONObject = JSONObject(),
+        registerInstructions: JSONObject = JSONObject(),
     ): JSONObject =
         JSONObject()
             .put("id", id)
@@ -253,6 +363,9 @@ class SafeNexusApi(
             .put("noteRule", "Napomena/vrijednost nije uvjet za rucni unos ni IS ZNR slanje, ali NexAI ne treba vracati prazne strojarske ili elektro stavke. Kada ima siguran izvor, upisi konkretan customContent do $RO_ASSESSMENT_NOTE_MAX_LENGTH znakova. U customContent ne pisati 'treba provjeriti/potvrditi' niti 'vidi se na fotografiji/slici'; to ide u verificationQuestions ili se pise kao direktan nalaz.")
             .put("noteExamples", JSONArray(noteExamples))
             .put("verificationQuestions", JSONArray(verificationQuestions))
+            .put("fieldDefaults", fieldDefaults)
+            .put("registerDefaults", registerDefaults)
+            .put("registerInstructions", registerInstructions)
 
     private fun normalizeWorkEquipmentRecognitionMode(value: String): String =
         when (value.trim().lowercase(Locale.getDefault())) {

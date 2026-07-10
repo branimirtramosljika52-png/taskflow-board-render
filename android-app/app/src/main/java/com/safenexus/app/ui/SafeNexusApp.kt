@@ -12717,6 +12717,113 @@ private data class WorkEquipmentColumnCopyOptions(
     val technicalData: Boolean = true,
 )
 
+private fun workEquipmentReportTemplateRegisterIri(path: String, id: Int): String =
+    "/api/v3/$path/$id"
+
+private fun workEquipmentReportTemplateMechanicalItem(
+    id: Int,
+    label: String,
+    content: String,
+): IsznrRoAssessmentItem =
+    IsznrRoAssessmentItem(
+        registerIri = workEquipmentReportTemplateRegisterIri("ro_mechanical_engineering_registers", id),
+        label = label,
+        customContent = content,
+        meetsConditions = true,
+    )
+
+private fun workEquipmentReportTemplateElectricalItem(
+    id: Int,
+    label: String,
+    content: String,
+): IsznrRoAssessmentItem =
+    IsznrRoAssessmentItem(
+        registerIri = workEquipmentReportTemplateRegisterIri("ro_electrical_registers", id),
+        label = label,
+        customContent = content,
+        meetsConditions = true,
+    )
+
+private fun defaultWorkEquipmentReportTemplates(): List<WorkEquipmentReportTemplate> =
+    listOf(
+        WorkEquipmentReportTemplate(
+            id = "builtin-ro-template-column-car-lift",
+            title = "Stupna autodizalica",
+            equipment = IsznrManualWorkEquipment(
+                name = "Stupna autodizalica",
+                purposeDescription = "Radna oprema se koristi za podizanje vozila pri servisiranju, pregledu i održavanju.",
+                workspacePosition = "Autodizalica je postavljena u servisnom prostoru na čvrstoj i ravnoj podlozi.",
+                workingSubstancesAndRawMaterials = "Radna tvar: hidraulično ulje.",
+                useAndMaintenance = "Provjerava se stanje nosivih ruku/platformi, osigurača, blokada, komandi, STOP-a, hidraulike/prijenosa, sidrenja stupova i uputa proizvođača.",
+                methodsProceduresAndNorms = "Pregled se provodi prema propisima za radnu opremu, uputama proizvođača i pravilima za opremu za podizanje vozila.",
+                finalGrade = "1",
+                mechanicalItems = listOf(
+                    workEquipmentReportTemplateMechanicalItem(1, "Smještaj i slobodan pristup", "Prostor oko autodizalice omogućuje pristup, rad i održavanje."),
+                    workEquipmentReportTemplateMechanicalItem(2, "Stabilnost i postavljanje", "Stupovi autodizalice stabilno su postavljeni na nosivu podlogu."),
+                    workEquipmentReportTemplateMechanicalItem(7, "Uključivanje i isključivanje", "Uključivanje i upravljanje izvedeno je preko komandne kutije."),
+                    workEquipmentReportTemplateMechanicalItem(8, "Isključivanje u slučaju opasnosti", "Uređaj za zaustavljanje u slučaju opasnosti dostupan je rukovatelju."),
+                    workEquipmentReportTemplateMechanicalItem(10, "Upravljanje", "Komande podizanja i spuštanja jasno su označene i dostupne."),
+                    workEquipmentReportTemplateMechanicalItem(12, "Zaštitne naprave i uređaji", "Sigurnosne blokade i osigurači nosivih ruku predviđeni su za siguran rad."),
+                    workEquipmentReportTemplateMechanicalItem(19, "Nosiva konstrukcija", "Nosivi elementi, ruke i stupovi nemaju vidljivih deformacija."),
+                    workEquipmentReportTemplateMechanicalItem(31, "Radno opterećenje", "Nosivost se očitava s natpisne pločice ili dokumentacije proizvođača."),
+                    workEquipmentReportTemplateMechanicalItem(34, "Hidraulički sustav", "Hidraulički sustav i elementi podizanja pregledani su bez vidljivog curenja."),
+                    workEquipmentReportTemplateMechanicalItem(35, "Statičko ispitivanje", "Statičko ispitivanje provodi se s poznatim ispitnim opterećenjem."),
+                    workEquipmentReportTemplateMechanicalItem(36, "Dinamičko ispitivanje", "Dinamičko ispitivanje provodi se kroz podizanje i spuštanje tereta."),
+                ),
+                electricalItems = listOf(
+                    workEquipmentReportTemplateElectricalItem(1, "Priključak na električnu mrežu", "Električni priključak i nazivni napon provjeravaju se prema pločici opreme."),
+                    workEquipmentReportTemplateElectricalItem(2, "Kabel i izolacija", "Priključni kabel i izolacija pregledani su bez vidljivih oštećenja."),
+                    workEquipmentReportTemplateElectricalItem(3, "Priključne naprave", "Priključne naprave su dostupne i pregledane."),
+                    workEquipmentReportTemplateElectricalItem(17, "Zaštita od kratkog spoja i preopterećenja", "Zaštita električnog kruga provjerava se prema ugrađenoj opremi i dokumentaciji."),
+                    workEquipmentReportTemplateElectricalItem(19, "Nekontrolirano uključenje", "Upravljanje je izvedeno tako da se spriječi nekontrolirano uključenje."),
+                ),
+                hazardRegisterIris = listOf(1, 2, 3).map { workEquipmentReportTemplateRegisterIri("hazard_registers", it) },
+                harmfulnessRegisterIris = listOf(3).map { workEquipmentReportTemplateRegisterIri("harmfulness_registers", it) },
+                strainRegisterIris = listOf(1, 2).map { workEquipmentReportTemplateRegisterIri("strain_registers", it) },
+            ).asReportTemplateEquipment(),
+        ),
+        WorkEquipmentReportTemplate(
+            id = "builtin-ro-template-scissor-car-lift",
+            title = "Škarasta autodizalica",
+            equipment = IsznrManualWorkEquipment(
+                name = "Škarasta autodizalica",
+                purposeDescription = "Radna oprema se koristi za podizanje vozila na servisnu visinu radi pregleda, servisa i održavanja.",
+                workspacePosition = "Škarasta autodizalica je smještena u servisnom prostoru na ravnoj i nosivoj podlozi.",
+                workingSubstancesAndRawMaterials = "Radna tvar: hidraulično ulje.",
+                useAndMaintenance = "Provjeravaju se platforme, škarasti mehanizam, osovine, hidraulični cilindri, sigurnosne blokade, komande, STOP i upute proizvođača.",
+                methodsProceduresAndNorms = "Pregled se provodi prema propisima za radnu opremu, uputama proizvođača i pravilima za opremu za podizanje vozila.",
+                finalGrade = "1",
+                mechanicalItems = listOf(
+                    workEquipmentReportTemplateMechanicalItem(1, "Smještaj i slobodan pristup", "Prostor oko škaraste autodizalice omogućuje pristup, rad i održavanje."),
+                    workEquipmentReportTemplateMechanicalItem(2, "Stabilnost i postavljanje", "Platforma autodizalice stabilno je postavljena na nosivu podlogu."),
+                    workEquipmentReportTemplateMechanicalItem(3, "Zaštita od pokretnih dijelova", "Škarasti mehanizam je pregledan s obzirom na zaštitu od uklještenja."),
+                    workEquipmentReportTemplateMechanicalItem(7, "Uključivanje i isključivanje", "Uključivanje i upravljanje izvedeno je preko komandnih elemenata."),
+                    workEquipmentReportTemplateMechanicalItem(8, "Isključivanje u slučaju opasnosti", "Uređaj za zaustavljanje u slučaju opasnosti dostupan je rukovatelju."),
+                    workEquipmentReportTemplateMechanicalItem(10, "Upravljanje", "Komande podizanja i spuštanja jasno su označene i dostupne."),
+                    workEquipmentReportTemplateMechanicalItem(12, "Zaštitne naprave i uređaji", "Sigurnosne blokade predviđene su za osiguranje platforme pri radu."),
+                    workEquipmentReportTemplateMechanicalItem(19, "Nosiva konstrukcija", "Platforme i škarasti krakovi nemaju vidljivih deformacija."),
+                    workEquipmentReportTemplateMechanicalItem(31, "Radno opterećenje", "Nosivost se očitava s natpisne pločice ili dokumentacije proizvođača."),
+                    workEquipmentReportTemplateMechanicalItem(34, "Hidraulički sustav", "Hidraulički cilindri, crijeva i priključci pregledani su bez vidljivog curenja."),
+                    workEquipmentReportTemplateMechanicalItem(35, "Statičko ispitivanje", "Statičko ispitivanje provodi se s poznatim ispitnim opterećenjem."),
+                    workEquipmentReportTemplateMechanicalItem(36, "Dinamičko ispitivanje", "Dinamičko ispitivanje provodi se kroz kontrolirano podizanje i spuštanje platforme."),
+                ),
+                electricalItems = listOf(
+                    workEquipmentReportTemplateElectricalItem(1, "Priključak na električnu mrežu", "Električni priključak i nazivni napon provjeravaju se prema pločici opreme."),
+                    workEquipmentReportTemplateElectricalItem(2, "Kabel i izolacija", "Priključni kabel i izolacija pregledani su bez vidljivih oštećenja."),
+                    workEquipmentReportTemplateElectricalItem(3, "Priključne naprave", "Priključne naprave su dostupne i pregledane."),
+                    workEquipmentReportTemplateElectricalItem(17, "Zaštita od kratkog spoja i preopterećenja", "Zaštita električnog kruga provjerava se prema ugrađenoj opremi i dokumentaciji."),
+                    workEquipmentReportTemplateElectricalItem(19, "Nekontrolirano uključenje", "Upravljanje je izvedeno tako da se spriječi nekontrolirano uključenje."),
+                ),
+                hazardRegisterIris = listOf(1, 2, 3).map { workEquipmentReportTemplateRegisterIri("hazard_registers", it) },
+                harmfulnessRegisterIris = listOf(3).map { workEquipmentReportTemplateRegisterIri("harmfulness_registers", it) },
+                strainRegisterIris = listOf(1, 2).map { workEquipmentReportTemplateRegisterIri("strain_registers", it) },
+            ).asReportTemplateEquipment(),
+        ),
+    )
+
+private fun isBuiltinWorkEquipmentReportTemplateId(id: String): Boolean =
+    id.startsWith("builtin-ro-template-")
+
 private fun workEquipmentColumnCopySources(
     equipments: List<IsznrManualWorkEquipment>,
     activeIndex: Int,
@@ -12804,7 +12911,7 @@ private fun Context.loadWorkEquipmentReportTemplates(): List<WorkEquipmentReport
             .getString(WORK_EQUIPMENT_REPORT_TEMPLATE_ITEMS_KEY, "[]")
             .orEmpty()
         val array = JSONArray(raw.ifBlank { "[]" })
-        buildList {
+        val storedTemplates = buildList {
             for (index in 0 until array.length()) {
                 val item = array.optJSONObject(index) ?: continue
                 val id = item.optString("id").trim().ifBlank { "ro-template-$index" }
@@ -12813,11 +12920,14 @@ private fun Context.loadWorkEquipmentReportTemplates(): List<WorkEquipmentReport
                 add(WorkEquipmentReportTemplate(id = id, title = title, equipment = equipment.asReportTemplateEquipment()))
             }
         }
-    }.getOrDefault(emptyList())
+        defaultWorkEquipmentReportTemplates() + storedTemplates.filterNot {
+            isBuiltinWorkEquipmentReportTemplateId(it.id)
+        }
+    }.getOrDefault(defaultWorkEquipmentReportTemplates())
 
 private fun Context.saveWorkEquipmentReportTemplates(templates: List<WorkEquipmentReportTemplate>) {
     val array = JSONArray()
-    templates.forEach { template ->
+    templates.filterNot { isBuiltinWorkEquipmentReportTemplateId(it.id) }.forEach { template ->
         array.put(
             JSONObject()
                 .put("id", template.id)
@@ -28287,6 +28397,8 @@ private val workEquipmentAiProfileChoices = listOf(
     WorkEquipmentAiProfileChoice("ro-ai-profile-pressure-tank-lpg", "Spremnik / UNP", "Radna tvar UNP, armatura, ventili, uzemljenje, požar/eksplozija."),
     WorkEquipmentAiProfileChoice("ro-ai-profile-analyzer", "Analizator", "Servisni aparat, zaslon, sonde, priključci i pločica."),
     WorkEquipmentAiProfileChoice("ro-ai-profile-crane", "Dizalica", "Kuka, lanac/uže, nosivost, vitlo, komande i kočenje."),
+    WorkEquipmentAiProfileChoice("ro-ai-profile-column-car-lift", "Stupna autodizalica", "Stupovi, nosive ruke, blokade, hidraulika i nosivost."),
+    WorkEquipmentAiProfileChoice("ro-ai-profile-scissor-car-lift", "Škarasta autodizalica", "Škarasti mehanizam, platforme, blokade, hidraulika i spuštanje."),
     WorkEquipmentAiProfileChoice("ro-ai-profile-saw-grinder", "Pila / brusilica", "Disk, traka, štitnik, prašina, buka i vibracije."),
 )
 
