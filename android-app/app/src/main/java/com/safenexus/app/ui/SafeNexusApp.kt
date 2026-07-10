@@ -6653,10 +6653,10 @@ private fun DocumentationMobileRichTextWebView(
     onWebViewReady: (WebView?) -> Unit = {},
 ) {
     val latestOnChange = rememberUpdatedState(onChange)
-    var lastEditorHtml by remember(label) { mutableStateOf(value) }
+    val lastEditorHtml = remember(label) { arrayOf(value) }
     val bridge = remember(label) {
         DocumentationMobileRichTextBridge { html ->
-            lastEditorHtml = html
+            lastEditorHtml[0] = html
             latestOnChange.value(html)
         }
     }
@@ -6692,8 +6692,8 @@ private fun DocumentationMobileRichTextWebView(
         },
         update = { webView ->
             onWebViewReady(webView)
-            if (value != lastEditorHtml) {
-                lastEditorHtml = value
+            if (value != lastEditorHtml[0] && !webView.hasFocus()) {
+                lastEditorHtml[0] = value
                 webView.evaluateJavascript(
                     "window.SafeNexusEditor&&window.SafeNexusEditor.setContent(${JSONObject.quote(value)});",
                     null,
