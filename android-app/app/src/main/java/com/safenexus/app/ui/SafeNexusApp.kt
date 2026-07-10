@@ -5994,6 +5994,7 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       overflow-x: hidden;
     }
     body {
+      position: relative;
       padding: 0;
       font-size: 16px;
       line-height: 1.42;
@@ -6063,13 +6064,13 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
     .slash-menu {
       position: fixed;
       z-index: 10;
-      left: 8px;
-      right: 8px;
-      bottom: 8px;
+      left: 6px;
+      right: 6px;
+      top: 6px;
       display: none;
-      gap: 6px;
-      padding: 8px;
-      max-height: min(240px, calc(100vh - 18px));
+      gap: 5px;
+      padding: 6px;
+      max-height: 188px;
       overflow-y: auto;
       overscroll-behavior: contain;
       border: 1px solid rgba(37, 99, 235, 0.22);
@@ -6292,12 +6293,13 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       }
 
       function openMenu() {
-        if (!enabled) return;
-        focusEditor();
-        closeTableTools();
-        menu.scrollTop = 0;
-        menu.classList.add("is-open");
-      }
+      if (!enabled) return;
+      focusEditor();
+      closeTableTools();
+      menu.scrollTop = 0;
+      menu.classList.add("is-open");
+      menu.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
 
       function closeTableTools() {
         tableTools.classList.remove("is-open");
