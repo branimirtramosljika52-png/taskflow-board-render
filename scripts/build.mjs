@@ -184,6 +184,19 @@ async function buildDocumentationSprPdfBundle() {
   });
 }
 
+async function buildMainBrowserBundle() {
+  await esbuild.build({
+    entryPoints: [resolve(rootDir, "src", "main.js")],
+    outfile: resolve(distDir, "src", "main.js"),
+    bundle: true,
+    format: "esm",
+    target: "es2020",
+    minify: false,
+    sourcemap: false,
+    external: ["/assets/*"],
+  });
+}
+
 async function copyBrowserPdfFonts() {
   const sourceDir = resolve(rootDir, "node_modules", "dejavu-fonts-ttf", "ttf");
   const targetDir = resolve(distDir, "assets", "fonts");
@@ -270,5 +283,6 @@ for (const entryModulePath of browserEntryModules) {
 await buildOzoPanelBundle();
 await buildWorkEquipmentRoPanelBundle();
 await buildDocumentationSprPdfBundle();
+await buildMainBrowserBundle();
 await buildOzoTailwindCss();
 await compressDistAssets();

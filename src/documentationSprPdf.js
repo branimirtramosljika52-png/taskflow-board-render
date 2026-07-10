@@ -1768,21 +1768,56 @@ function formatNativeRichTextHtml(value = "") {
   const lines = source.split("\n").map((line) => line.trim()).filter(Boolean);
   const html = [];
   let listItems = [];
+  let tableRows = [];
   const flushList = () => {
     if (!listItems.length) return;
     html.push(`<ul>${listItems.map((item) => `<li>${escapeNativeHtml(item)}</li>`).join("")}</ul>`);
     listItems = [];
   };
+  const flushTable = () => {
+    if (!tableRows.length) return;
+    const rows = tableRows.map((cells, rowIndex) => {
+      const tag = rowIndex === 0 ? "th" : "td";
+      return `<tr>${cells.map((cell) => `<${tag}>${escapeNativeHtml(cell || "-")}</${tag}>`).join("")}</tr>`;
+    }).join("");
+    html.push(`<table class="compact-table"><tbody>${rows}</tbody></table>`);
+    tableRows = [];
+  };
+  const flushStructuredBlocks = () => {
+    flushList();
+    flushTable();
+  };
   lines.forEach((line) => {
+    const tableCells = line.includes("|")
+      ? line.split("|").map((cell) => cell.trim())
+      : [];
+    if (tableCells.length >= 2 && tableCells.some(Boolean)) {
+      flushList();
+      tableRows.push(tableCells);
+      return;
+    }
+
     const bulletMatch = line.match(/^\s*(?:[-*]|\d+[.)])\s+(.+)$/);
     if (bulletMatch) {
+      flushTable();
       listItems.push(bulletMatch[1]);
       return;
     }
-    flushList();
+    flushStructuredBlocks();
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
+    if (headingMatch) {
+      const level = Math.min(3, headingMatch[1].length);
+      html.push(`<h${level}>${escapeNativeHtml(headingMatch[2])}</h${level}>`);
+      return;
+    }
+    const quoteMatch = line.match(/^>\s*(.+)$/);
+    if (quoteMatch) {
+      html.push(`<blockquote>${escapeNativeHtml(quoteMatch[1])}</blockquote>`);
+      return;
+    }
     html.push(`<p>${escapeNativeHtml(line)}</p>`);
   });
-  flushList();
+  flushStructuredBlocks();
   return html.join("\n");
 }
 
@@ -2867,8 +2902,12 @@ export function buildDocumentationNativeHtml({
     .meta-table th, .technical-table th, .sn-ex-assessments th, .sn-ex-checklist th { width: 31%; background: #f1f5f9; text-align: left; font-weight: 700; }
     .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .text-box { border: 1px solid #cbd5e1; padding: 9px 10px; min-height: 28px; }
+    .text-box h1 { margin: 0 0 7px; font-size: 13px; text-align: left; text-transform: none; color: #0f172a; }
+    .text-box h2 { margin: 0 0 7px; font-size: 11px; text-transform: none; color: #0f172a; }
+    .text-box h3 { margin: 0 0 6px; font-size: 10px; color: #0f172a; }
     .text-box p { margin: 0 0 7px; }
     .text-box p:last-child { margin-bottom: 0; }
+    .text-box blockquote { margin: 6px 0; padding: 6px 8px; border-left: 3px solid #0f72ba; background: #f8fafc; color: #334155; }
     .text-box ul, .text-box ol { margin: 0 0 7px 18px; padding: 0; }
     .text-box table { margin: 6px 0; }
     .text-box th, .text-box td { border: 1px solid #cbd5e1; padding: 4px 5px; }

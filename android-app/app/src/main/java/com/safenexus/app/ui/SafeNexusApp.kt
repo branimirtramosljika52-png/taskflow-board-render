@@ -5899,6 +5899,64 @@ private fun appendDocumentationRichTextSnippet(value: String, snippet: String): 
     return if (current.isBlank()) snippet else "$current\n$snippet"
 }
 
+private data class DocumentationMobileRichTextCommand(
+    val label: String,
+    val hint: String,
+    val marker: String,
+    val snippet: String,
+)
+
+private val documentationMobileRichTextCommands = listOf(
+    DocumentationMobileRichTextCommand(
+        label = "Naslov 1",
+        hint = "Glavni naslov poglavlja",
+        marker = "H1",
+        snippet = "# Naslov",
+    ),
+    DocumentationMobileRichTextCommand(
+        label = "Naslov 2",
+        hint = "Podnaslov ili grupa",
+        marker = "H2",
+        snippet = "## Podnaslov",
+    ),
+    DocumentationMobileRichTextCommand(
+        label = "Bullet lista",
+        hint = "Točke za nabrajanje",
+        marker = "•",
+        snippet = "- stavka\n- stavka",
+    ),
+    DocumentationMobileRichTextCommand(
+        label = "Numerirana lista",
+        hint = "Redoslijed 1, 2, 3",
+        marker = "1.",
+        snippet = "1. prva stavka\n2. druga stavka",
+    ),
+    DocumentationMobileRichTextCommand(
+        label = "Tablica",
+        hint = "Naslov i vrijednost u dva stupca",
+        marker = "▦",
+        snippet = "Naslov | Vrijednost\nStavka | Opis\nNapomena | ",
+    ),
+    DocumentationMobileRichTextCommand(
+        label = "Tablica opisa sustava",
+        hint = "Dio sustava, opis i napomena",
+        marker = "DS",
+        snippet = "Dio sustava | Opis | Napomena\nCentrala |  | \nElementi |  | ",
+    ),
+    DocumentationMobileRichTextCommand(
+        label = "Napomena",
+        hint = "Istaknuti činjenični tekst",
+        marker = "!",
+        snippet = "> Napomena: ",
+    ),
+)
+
+private fun applyDocumentationMobileRichTextCommand(value: String, command: DocumentationMobileRichTextCommand): String {
+    val trimmed = value.trimEnd()
+    val base = if (trimmed.endsWith("/") || trimmed.endsWith("\\")) trimmed.dropLast(1).trimEnd() else trimmed
+    return appendDocumentationRichTextSnippet(base, command.snippet)
+}
+
 @Composable
 private fun DocumentationMobileRichTextField(
     label: String,
@@ -5906,37 +5964,72 @@ private fun DocumentationMobileRichTextField(
     onChange: (String) -> Unit,
     enabled: Boolean,
 ) {
+    var commandMenuOpen by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
         DocumentationMobileTextField(
             label = label,
             value = value,
-            onChange = onChange,
+            onChange = { nextValue ->
+                onChange(nextValue)
+                if (enabled && nextValue.trimEnd().endsWith("/")) {
+                    commandMenuOpen = true
+                }
+            },
             enabled = enabled,
             singleLine = false,
             minLines = 6,
             maxLines = 14,
         )
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            Text(
+                "Upiši / za naslov, listu ili tablicu.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                modifier = Modifier.weight(1f),
+            )
+            Box {
             OutlinedButton(
-                onClick = { onChange(appendDocumentationRichTextSnippet(value, "- nova stavka")) },
+                onClick = { commandMenuOpen = true },
                 enabled = enabled,
                 shape = RoundedCornerShape(12.dp),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
             ) {
-                Text("Bullet")
+                Text("/ Naredbe")
             }
-            OutlinedButton(
-                onClick = {
-                    onChange(appendDocumentationRichTextSnippet(value, "Stavka | Opis\nDio sustava | \nNapomena | "))
-                },
-                enabled = enabled,
-                shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-            ) {
-                Text("Tablica")
+                DropdownMenu(
+                    expanded = commandMenuOpen,
+                    onDismissRequest = { commandMenuOpen = false },
+                ) {
+                    documentationMobileRichTextCommands.forEach { command ->
+                        DropdownMenuItem(
+                            text = {
+                                Column {
+                                    Text(command.label, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        command.hint,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                                    )
+                                }
+                            },
+                            leadingIcon = {
+                                Text(
+                                    command.marker,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Black,
+                                )
+                            },
+                            onClick = {
+                                onChange(applyDocumentationMobileRichTextCommand(value, command))
+                                commandMenuOpen = false
+                            },
+                        )
+                    }
+                }
             }
         }
     }

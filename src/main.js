@@ -310,6 +310,15 @@ import {
   normalizeChatPreviewText,
   replaceEmojiShortcuts,
 } from "./chatMessageFormat.js";
+import { Editor, Extension } from "@tiptap/core";
+import StarterKit from "@tiptap/starter-kit";
+import { Table } from "@tiptap/extension-table";
+import TableRow from "@tiptap/extension-table-row";
+import TableCell from "@tiptap/extension-table-cell";
+import TableHeader from "@tiptap/extension-table-header";
+import Placeholder from "@tiptap/extension-placeholder";
+import Link from "@tiptap/extension-link";
+import Suggestion from "@tiptap/suggestion";
 import {
   APP_ROLE_PERMISSION_KEYS,
   COMPANY_PERMISSION_SCOPE_GENERAL,
@@ -64668,10 +64677,10 @@ function persistDocumentationSprSystemRichEditorValue({ cleanDom = false } = {})
   if (!(editor instanceof HTMLElement) || !documentationSprModel) {
     return;
   }
-  const html = sanitizeRichTextHtml(editor.innerHTML);
+  const html = getDocumentTemplateRuntimeRichEditorHtml(editor);
   const text = richTextHtmlToPlainText(html);
   if (cleanDom) {
-    editor.innerHTML = html;
+    setDocumentTemplateRuntimeRichEditorHtml(editor, html);
   }
   documentationSprModel.systemDescription = (text || /<img\b/i.test(html)) ? html : "";
   if (documentationSprSystemDescriptionInput instanceof HTMLTextAreaElement) {
@@ -64747,8 +64756,8 @@ function setDocumentationSprSystemRichValue(value = "") {
     documentationSprSystemDescriptionInput.value = html;
   }
   const editor = getDocumentationSprSystemRichEditor();
-  if (editor instanceof HTMLElement && editor.innerHTML !== html) {
-    editor.innerHTML = html;
+  if (editor instanceof HTMLElement && getDocumentTemplateRuntimeRichEditorHtml(editor) !== html) {
+    setDocumentTemplateRuntimeRichEditorHtml(editor, html);
   }
   bindDocumentationSprSystemRichImagePaste();
 }
@@ -64759,7 +64768,7 @@ function syncDocumentationSprSystemRichValueIntoModel() {
   }
   const editor = getDocumentationSprSystemRichEditor();
   if (editor instanceof HTMLElement) {
-    const html = normalizeRichTextHtml(editor.innerHTML);
+    const html = normalizeRichTextHtml(getDocumentTemplateRuntimeRichEditorHtml(editor));
     const text = richTextHtmlToPlainText(html);
     documentationSprModel.systemDescription = (text || /<img\b/i.test(html)) ? html : "";
     if (documentationSprSystemDescriptionInput instanceof HTMLTextAreaElement) {
@@ -64805,10 +64814,10 @@ function persistDocumentationSprResultsRichEditorValue({ cleanDom = false } = {}
   if (!(editor instanceof HTMLElement) || !documentationSprModel) {
     return;
   }
-  const html = sanitizeRichTextHtml(editor.innerHTML);
+  const html = getDocumentTemplateRuntimeRichEditorHtml(editor);
   const text = richTextHtmlToPlainText(html);
   if (cleanDom) {
-    editor.innerHTML = html;
+    setDocumentTemplateRuntimeRichEditorHtml(editor, html);
   }
   documentationSprModel.resultsText = (text || /<img\b/i.test(html)) ? html : "";
   if (documentationSprResultsTextInput instanceof HTMLTextAreaElement) {
@@ -64884,8 +64893,8 @@ function setDocumentationSprResultsRichValue(value = "") {
     documentationSprResultsTextInput.value = html;
   }
   const editor = getDocumentationSprResultsRichEditor();
-  if (editor instanceof HTMLElement && editor.innerHTML !== html) {
-    editor.innerHTML = html;
+  if (editor instanceof HTMLElement && getDocumentTemplateRuntimeRichEditorHtml(editor) !== html) {
+    setDocumentTemplateRuntimeRichEditorHtml(editor, html);
   }
   bindDocumentationSprResultsRichImagePaste();
 }
@@ -64896,7 +64905,7 @@ function syncDocumentationSprResultsRichValueIntoModel() {
   }
   const editor = getDocumentationSprResultsRichEditor();
   if (editor instanceof HTMLElement) {
-    const html = normalizeRichTextHtml(editor.innerHTML);
+    const html = normalizeRichTextHtml(getDocumentTemplateRuntimeRichEditorHtml(editor));
     const text = richTextHtmlToPlainText(html);
     documentationSprModel.resultsText = (text || /<img\b/i.test(html)) ? html : "";
     if (documentationSprResultsTextInput instanceof HTMLTextAreaElement) {
@@ -80470,23 +80479,101 @@ function buildDocumentTemplateToggleDerivedValues(field = {}, context = {}, plac
 }
 
 const DOCUMENT_TEMPLATE_RUNTIME_RICH_COMMANDS = Object.freeze([
-  { id: "heading", label: "Naslov", hint: "Veliki naslov", html: "<h2>Naslov</h2>" },
-  { id: "subheading", label: "Podnaslov", hint: "Manji naslov", html: "<h3>Podnaslov</h3>" },
-  { id: "paragraph", label: "Tekst", hint: "Novi odlomak", html: "<p>Tekst</p>" },
-  { id: "bullet", label: "Bullet lista", hint: "Lista s točkama", html: "<ul><li>Stavka</li></ul>" },
-  { id: "numbered", label: "Numerirana lista", hint: "Lista 1, 2, 3", html: "<ol><li>Stavka</li></ol>" },
+  {
+    id: "heading1",
+    icon: "H1",
+    label: "Naslov 1",
+    hint: "Glavni naslov poglavlja",
+    keywords: ["naslov", "h1", "glavni", "veliki"],
+    html: "<h1>Naslov</h1><p><br></p>",
+  },
+  {
+    id: "heading2",
+    icon: "H2",
+    label: "Naslov 2",
+    hint: "Podnaslov unutar opisa",
+    keywords: ["naslov", "h2", "podnaslov", "sekcija"],
+    html: "<h2>Podnaslov</h2><p><br></p>",
+  },
+  {
+    id: "heading3",
+    icon: "H3",
+    label: "Naslov 3",
+    hint: "Manji naslov ili grupa",
+    keywords: ["naslov", "h3", "manji", "grupa"],
+    html: "<h3>Manji naslov</h3><p><br></p>",
+  },
+  {
+    id: "paragraph",
+    icon: "T",
+    label: "Tekst",
+    hint: "Obični odlomak",
+    keywords: ["tekst", "odlomak", "normalno", "paragraf"],
+    html: "<p>Tekst</p>",
+  },
+  {
+    id: "bullet",
+    icon: "•",
+    label: "Bullet lista",
+    hint: "Točke za nabrajanje",
+    keywords: ["bullet", "lista", "nabrajanje", "tocke", "stavke"],
+    html: "<ul><li>Stavka</li><li>Stavka</li></ul><p><br></p>",
+  },
+  {
+    id: "numbered",
+    icon: "1.",
+    label: "Numerirana lista",
+    hint: "Redoslijed 1, 2, 3",
+    keywords: ["brojevi", "lista", "numerirana", "redoslijed"],
+    html: "<ol><li>Prva stavka</li><li>Druga stavka</li></ol><p><br></p>",
+  },
   {
     id: "table",
+    icon: "▦",
     label: "Tablica",
-    hint: "2 x 2 tablica",
-    html: "<table><tbody><tr><th>Naslov</th><th>Vrijednost</th></tr><tr><td>Stavka</td><td>Opis</td></tr></tbody></table>",
+    hint: "Tablica 2 stupca",
+    keywords: ["tablica", "table", "stupac", "red", "kolona"],
+    html: "<table><tbody><tr><th>Naslov</th><th>Vrijednost</th></tr><tr><td>Stavka</td><td>Opis</td></tr></tbody></table><p><br></p>",
   },
-  { id: "placeholder", label: "Placeholder", hint: "Token u tekstu", html: "<p>{{PLACEHOLDER}}</p>" },
+  {
+    id: "systemTable",
+    icon: "DS",
+    label: "Tablica opisa sustava",
+    hint: "Dio sustava, opis, napomena",
+    keywords: ["sustav", "opis", "dokumentacija", "centrala", "javljači", "javljači"],
+    html: "<table><tbody><tr><th>Dio sustava</th><th>Opis</th><th>Napomena</th></tr><tr><td>Centrala</td><td></td><td></td></tr><tr><td>Elementi</td><td></td><td></td></tr></tbody></table><p><br></p>",
+  },
+  {
+    id: "note",
+    icon: "!",
+    label: "Napomena",
+    hint: "Istaknuti činjenični tekst",
+    keywords: ["napomena", "info", "upozorenje", "činjenica"],
+    html: "<blockquote><p>Napomena: </p></blockquote><p><br></p>",
+  },
+  {
+    id: "divider",
+    icon: "—",
+    label: "Razdjelnik",
+    hint: "Tanka linija između dijelova",
+    keywords: ["linija", "razdjelnik", "separator"],
+    html: "<hr><p><br></p>",
+  },
+  {
+    id: "placeholder",
+    icon: "{{}}",
+    label: "Placeholder",
+    hint: "Token u tekstu",
+    keywords: ["placeholder", "token", "polje"],
+    html: "<p>{{PLACEHOLDER}}</p>",
+  },
 ]);
 
 let documentTemplateRuntimeRichMenu = null;
 let documentTemplateRuntimeRichTarget = null;
 let documentTemplateRuntimeRichRange = null;
+let documentTemplateRuntimeRichTriggerRange = null;
+let documentTemplateRuntimeRichQuery = "";
 let documentTemplateRuntimeRichCommandIndex = 0;
 let documentTemplateRuntimeRichSuppressEscapeKeyup = false;
 
@@ -80494,6 +80581,36 @@ function stopDocumentTemplateRuntimeRichKeyEvent(event) {
   event.preventDefault();
   event.stopPropagation();
   event.stopImmediatePropagation?.();
+}
+
+function getDocumentTemplateRuntimeTiptapEditor(target) {
+  if (!target) return null;
+  const surface = target instanceof HTMLElement
+    ? (target.classList.contains("document-template-runtime-rich-editor")
+      ? target
+      : target.closest?.(".document-template-runtime-rich-editor"))
+    : null;
+  return surface?.__safeNexusTiptapEditor || target.__safeNexusTiptapEditor || null;
+}
+
+function getDocumentTemplateRuntimeRichEditorHtml(target) {
+  const tiptapEditor = getDocumentTemplateRuntimeTiptapEditor(target);
+  if (tiptapEditor) {
+    return sanitizeRichTextHtml(tiptapEditor.getHTML());
+  }
+  return target instanceof HTMLElement ? sanitizeRichTextHtml(target.innerHTML) : "";
+}
+
+function setDocumentTemplateRuntimeRichEditorHtml(target, html = "", { emitUpdate = false } = {}) {
+  const normalizedHtml = normalizeRichTextHtml(html);
+  const tiptapEditor = getDocumentTemplateRuntimeTiptapEditor(target);
+  if (tiptapEditor) {
+    tiptapEditor.commands.setContent(normalizedHtml || "<p></p>", { emitUpdate });
+    return;
+  }
+  if (target instanceof HTMLElement) {
+    target.innerHTML = normalizedHtml;
+  }
 }
 
 function isDocumentTemplateRuntimeRichSelectionInside(target) {
@@ -80509,6 +80626,63 @@ function rememberDocumentTemplateRuntimeRichSelection(target) {
     return;
   }
   documentTemplateRuntimeRichRange = selection.getRangeAt(0).cloneRange();
+}
+
+function getDocumentTemplateRuntimeRichSlashMatch(target) {
+  const selection = window.getSelection?.();
+  if (!selection || selection.rangeCount === 0 || !selection.isCollapsed || !isDocumentTemplateRuntimeRichSelectionInside(target)) {
+    return null;
+  }
+  let node = selection.anchorNode;
+  let offset = selection.anchorOffset;
+  if (node instanceof HTMLElement) {
+    const previous = node.childNodes[Math.max(0, offset - 1)];
+    if (previous?.nodeType === Node.TEXT_NODE) {
+      node = previous;
+      offset = previous.textContent?.length || 0;
+    }
+  }
+  if (!node || node.nodeType !== Node.TEXT_NODE) {
+    return null;
+  }
+  const text = String(node.textContent || "").slice(0, offset);
+  const match = text.match(/(?:^|[\s\u00a0])([\\/][\p{L}\p{N}_-]*)$/u);
+  if (!match) {
+    return null;
+  }
+  const trigger = match[1] || "";
+  const start = offset - trigger.length;
+  const range = document.createRange();
+  range.setStart(node, start);
+  range.setEnd(node, offset);
+  return {
+    range,
+    query: trigger.slice(1),
+  };
+}
+
+function normalizeDocumentTemplateRuntimeRichQuery(value = "") {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function getDocumentTemplateRuntimeRichVisibleCommands() {
+  const query = normalizeDocumentTemplateRuntimeRichQuery(documentTemplateRuntimeRichQuery);
+  if (!query) {
+    return DOCUMENT_TEMPLATE_RUNTIME_RICH_COMMANDS;
+  }
+  return DOCUMENT_TEMPLATE_RUNTIME_RICH_COMMANDS.filter((command) => {
+    const haystack = normalizeDocumentTemplateRuntimeRichQuery([
+      command.id,
+      command.label,
+      command.hint,
+      ...(Array.isArray(command.keywords) ? command.keywords : []),
+    ].join(" "));
+    return haystack.includes(query);
+  });
 }
 
 function restoreDocumentTemplateRuntimeRichSelection(target) {
@@ -80540,6 +80714,11 @@ function getDocumentTemplateRuntimeRichMenuRect(target) {
 function insertDocumentTemplateRuntimeRichHtml(target, html = "") {
   const safeHtml = sanitizeRichTextHtml(html);
   if (!safeHtml) return;
+  const tiptapEditor = getDocumentTemplateRuntimeTiptapEditor(target);
+  if (tiptapEditor) {
+    tiptapEditor.chain().focus().insertContent(safeHtml).run();
+    return;
+  }
   restoreDocumentTemplateRuntimeRichSelection(target);
   if (document.queryCommandSupported?.("insertHTML")) {
     document.execCommand("insertHTML", false, safeHtml);
@@ -80575,6 +80754,8 @@ function hideDocumentTemplateRuntimeRichCommandMenu({ keepEscapeKeyupTrap = fals
   documentTemplateRuntimeRichMenu = null;
   documentTemplateRuntimeRichTarget = null;
   documentTemplateRuntimeRichRange = null;
+  documentTemplateRuntimeRichTriggerRange = null;
+  documentTemplateRuntimeRichQuery = "";
   documentTemplateRuntimeRichCommandIndex = 0;
 }
 
@@ -80584,8 +80765,233 @@ function updateDocumentTemplateRuntimeRichCommandSelection() {
   });
 }
 
+function positionDocumentTemplateRuntimeRichCommandMenu(target) {
+  if (!(target instanceof HTMLElement) || !(documentTemplateRuntimeRichMenu instanceof HTMLElement)) return;
+  const rect = getDocumentTemplateRuntimeRichMenuRect(target);
+  const menuRect = documentTemplateRuntimeRichMenu.getBoundingClientRect();
+  const left = Math.min(window.innerWidth - menuRect.width - 12, Math.max(12, rect.left));
+  const top = Math.min(window.innerHeight - menuRect.height - 12, Math.max(12, rect.bottom + 8));
+  documentTemplateRuntimeRichMenu.style.left = `${left}px`;
+  documentTemplateRuntimeRichMenu.style.top = `${top}px`;
+}
+
+function renderDocumentTemplateRuntimeRichCommandMenu(target) {
+  if (!(target instanceof HTMLElement) || !(documentTemplateRuntimeRichMenu instanceof HTMLElement)) return;
+  const commands = getDocumentTemplateRuntimeRichVisibleCommands();
+  documentTemplateRuntimeRichMenu.replaceChildren();
+  const head = document.createElement("div");
+  head.className = "document-template-runtime-rich-command-head";
+  head.innerHTML = `<span>/</span><strong>${escapeHtml(documentTemplateRuntimeRichQuery || "Naredbe")}</strong><small>${commands.length ? "Enter za odabir" : "Nema rezultata"}</small>`;
+  documentTemplateRuntimeRichMenu.append(head);
+
+  if (!commands.length) {
+    const empty = document.createElement("div");
+    empty.className = "document-template-runtime-rich-command-empty";
+    empty.textContent = "Nema takve naredbe.";
+    documentTemplateRuntimeRichMenu.append(empty);
+    documentTemplateRuntimeRichCommandIndex = 0;
+    positionDocumentTemplateRuntimeRichCommandMenu(target);
+    return;
+  }
+
+  documentTemplateRuntimeRichCommandIndex = Math.min(documentTemplateRuntimeRichCommandIndex, commands.length - 1);
+  commands.forEach((command, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.documentTemplateRuntimeRichCommand = command.id;
+    button.setAttribute("role", "menuitem");
+    button.innerHTML = `
+      <span class="document-template-runtime-rich-command-icon">${escapeHtml(command.icon || "/")}</span>
+      <span class="document-template-runtime-rich-command-copy">
+        <strong>${escapeHtml(command.label)}</strong>
+        <small>${escapeHtml(command.hint)}</small>
+      </span>
+    `;
+    button.addEventListener("mouseenter", () => {
+      documentTemplateRuntimeRichCommandIndex = index;
+      updateDocumentTemplateRuntimeRichCommandSelection();
+    });
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      applyDocumentTemplateRuntimeRichCommand(command, target);
+    });
+    documentTemplateRuntimeRichMenu.append(button);
+  });
+  updateDocumentTemplateRuntimeRichCommandSelection();
+  positionDocumentTemplateRuntimeRichCommandMenu(target);
+}
+
+function getDocumentTemplateRuntimeTiptapSlashItems(query = "") {
+  const normalizedQuery = normalizeDocumentTemplateRuntimeRichQuery(query);
+  const commands = !normalizedQuery
+    ? DOCUMENT_TEMPLATE_RUNTIME_RICH_COMMANDS
+    : DOCUMENT_TEMPLATE_RUNTIME_RICH_COMMANDS.filter((command) => {
+      const haystack = normalizeDocumentTemplateRuntimeRichQuery([
+        command.id,
+        command.label,
+        command.hint,
+        ...(Array.isArray(command.keywords) ? command.keywords : []),
+      ].join(" "));
+      return haystack.includes(normalizedQuery);
+    });
+  return commands.slice(0, 10);
+}
+
+function applyDocumentTemplateRuntimeTiptapSlashCommand(editor, range, command) {
+  if (!editor || !command) return;
+  const safeHtml = sanitizeRichTextHtml(command.html || "");
+  const chain = editor.chain().focus().deleteRange(range);
+  if (safeHtml) {
+    chain.insertContent(safeHtml).run();
+    return;
+  }
+  chain.run();
+}
+
+function renderDocumentTemplateRuntimeTiptapSlashList(element, props, selectedIndex, selectItem) {
+  if (!(element instanceof HTMLElement)) return;
+  const items = Array.isArray(props?.items) ? props.items : [];
+  element.replaceChildren();
+
+  const head = document.createElement("div");
+  head.className = "document-template-runtime-rich-command-head";
+  head.innerHTML = `<span>/</span><strong>${escapeHtml(props?.query || "Naredbe")}</strong><small>${items.length ? "Enter za odabir" : "Nema rezultata"}</small>`;
+  element.append(head);
+
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.className = "document-template-runtime-rich-command-empty";
+    empty.textContent = "Nema takve naredbe.";
+    element.append(empty);
+    return;
+  }
+
+  items.forEach((command, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.documentTemplateRuntimeRichCommand = command.id;
+    button.classList.toggle("is-active", index === selectedIndex);
+    button.setAttribute("role", "menuitem");
+    button.innerHTML = `
+      <span class="document-template-runtime-rich-command-icon">${escapeHtml(command.icon || "/")}</span>
+      <span class="document-template-runtime-rich-command-copy">
+        <strong>${escapeHtml(command.label)}</strong>
+        <small>${escapeHtml(command.hint)}</small>
+      </span>
+    `;
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      selectItem(index);
+    });
+    element.append(button);
+  });
+}
+
+function createDocumentTemplateRuntimeTiptapSlashRenderer() {
+  let element = null;
+  let unmount = null;
+  let props = null;
+  let selectedIndex = 0;
+
+  const selectItem = (index) => {
+    const item = props?.items?.[index];
+    if (item) {
+      props.command(item);
+    }
+  };
+
+  const update = (nextProps) => {
+    props = nextProps;
+    selectedIndex = Math.min(selectedIndex, Math.max(0, (props.items?.length || 1) - 1));
+    renderDocumentTemplateRuntimeTiptapSlashList(element, props, selectedIndex, selectItem);
+  };
+
+  return {
+    onStart(nextProps) {
+      element = document.createElement("div");
+      element.className = "document-template-runtime-rich-command-menu is-tiptap";
+      element.setAttribute("role", "menu");
+      element.setAttribute("aria-label", "Brzo dodavanje formatiranja");
+      selectedIndex = 0;
+      update(nextProps);
+      unmount = nextProps.mount(element, {
+        autoUpdate: { animationFrame: true },
+      });
+    },
+    onUpdate(nextProps) {
+      update(nextProps);
+    },
+    onKeyDown({ event }) {
+      const itemCount = props?.items?.length || 0;
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        selectedIndex = (selectedIndex + 1) % Math.max(1, itemCount);
+        renderDocumentTemplateRuntimeTiptapSlashList(element, props, selectedIndex, selectItem);
+        return true;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        selectedIndex = (selectedIndex - 1 + Math.max(1, itemCount)) % Math.max(1, itemCount);
+        renderDocumentTemplateRuntimeTiptapSlashList(element, props, selectedIndex, selectItem);
+        return true;
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+        selectItem(selectedIndex);
+        return true;
+      }
+      return false;
+    },
+    onExit() {
+      unmount?.();
+      element?.remove();
+      element = null;
+      unmount = null;
+      props = null;
+      selectedIndex = 0;
+    },
+  };
+}
+
+function createDocumentTemplateRuntimeTiptapSlashExtension() {
+  return Extension.create({
+    name: "safeNexusSlashCommands",
+    addProseMirrorPlugins() {
+      return [
+        Suggestion({
+          editor: this.editor,
+          char: "/",
+          allowedPrefixes: null,
+          allowSpaces: false,
+          startOfLine: false,
+          placement: "bottom-start",
+          offset: { mainAxis: 8, crossAxis: 0 },
+          items: ({ query }) => getDocumentTemplateRuntimeTiptapSlashItems(query),
+          command: ({ editor, range, props }) => {
+            applyDocumentTemplateRuntimeTiptapSlashCommand(editor, range, props);
+          },
+          render: () => createDocumentTemplateRuntimeTiptapSlashRenderer(),
+        }),
+      ];
+    },
+  });
+}
+
 function applyDocumentTemplateRuntimeRichCommand(command, target = documentTemplateRuntimeRichTarget) {
   if (!command || !(target instanceof HTMLElement)) return;
+  if (documentTemplateRuntimeRichTriggerRange) {
+    const selection = window.getSelection?.();
+    if (selection) {
+      const range = documentTemplateRuntimeRichTriggerRange.cloneRange();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      range.deleteContents();
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      documentTemplateRuntimeRichRange = range.cloneRange();
+    }
+  }
   insertDocumentTemplateRuntimeRichHtml(target, command.html);
   hideDocumentTemplateRuntimeRichCommandMenu();
   target.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertHTML", data: "" }));
@@ -80611,90 +81017,66 @@ function createDocumentTemplateRuntimeRichToolbar(editor, persist = null) {
   toolbar.className = "document-template-runtime-rich-toolbar";
   toolbar.setAttribute("aria-label", "Alati za uređivanje teksta");
 
-  const commands = [
-    { id: "h2", label: "Naslov", exec: "formatBlock", value: "h2" },
-    { id: "h3", label: "Podnaslov", exec: "formatBlock", value: "h3" },
-    { id: "p", label: "Tekst", exec: "formatBlock", value: "p" },
-    { id: "bold", label: "B", exec: "bold" },
-    { id: "italic", label: "I", exec: "italic" },
-    { id: "underline", label: "U", exec: "underline" },
-    { id: "ul", label: "• Lista", exec: "insertUnorderedList" },
-    { id: "ol", label: "1. Lista", exec: "insertOrderedList" },
-    {
-      id: "table",
-      label: "Tablica",
-      html: "<table><tbody><tr><th>Naslov</th><th>Vrijednost</th></tr><tr><td>Stavka</td><td>Opis</td></tr></tbody></table>",
-    },
-    { id: "clear", label: "Tx", exec: "removeFormat", cleanDom: true },
-  ];
+  const hint = document.createElement("span");
+  hint.className = "document-template-runtime-rich-toolbar-hint";
+  hint.innerHTML = `<kbd>/</kbd> za naslov, bullet, tablicu, napomenu`;
 
-  commands.forEach((command) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset.documentTemplateRuntimeRichToolbarCommand = command.id;
-    button.innerHTML = command.id === "bold"
-      ? "<strong>B</strong>"
-      : command.id === "italic"
-        ? "<em>I</em>"
-        : command.id === "underline"
-          ? "<u>U</u>"
-          : escapeHtml(command.label);
-    button.title = command.label;
-    button.setAttribute("aria-label", command.label);
-    button.addEventListener("mousedown", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      applyDocumentTemplateRuntimeRichToolbarCommand(editor, command, persist);
-    });
-    toolbar.append(button);
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.className = "document-template-runtime-rich-toolbar-open";
+  openButton.textContent = "/ Naredbe";
+  openButton.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const tiptapEditor = getDocumentTemplateRuntimeTiptapEditor(editor);
+    if (tiptapEditor) {
+      tiptapEditor.chain().focus().insertContent("/").run();
+      return;
+    }
+    restoreDocumentTemplateRuntimeRichSelection(editor);
+    showDocumentTemplateRuntimeRichCommandMenu(editor);
   });
+  toolbar.append(hint, openButton);
 
   return toolbar;
 }
 
-function showDocumentTemplateRuntimeRichCommandMenu(target) {
+function showDocumentTemplateRuntimeRichCommandMenu(target, slashMatch = null) {
   if (!(target instanceof HTMLElement)) return;
-  rememberDocumentTemplateRuntimeRichSelection(target);
+  const match = slashMatch || getDocumentTemplateRuntimeRichSlashMatch(target);
+  if (match?.range) {
+    documentTemplateRuntimeRichTriggerRange = match.range.cloneRange();
+    documentTemplateRuntimeRichQuery = match.query || "";
+    documentTemplateRuntimeRichRange = match.range.cloneRange();
+  } else {
+    rememberDocumentTemplateRuntimeRichSelection(target);
+    documentTemplateRuntimeRichTriggerRange = null;
+    documentTemplateRuntimeRichQuery = "";
+  }
   hideDocumentTemplateRuntimeRichCommandMenu();
   documentTemplateRuntimeRichTarget = target;
+  if (match?.range) {
+    documentTemplateRuntimeRichTriggerRange = match.range.cloneRange();
+    documentTemplateRuntimeRichQuery = match.query || "";
+    documentTemplateRuntimeRichRange = match.range.cloneRange();
+  }
   documentTemplateRuntimeRichCommandIndex = 0;
 
   const menu = document.createElement("div");
   menu.className = "document-template-runtime-rich-command-menu";
   menu.setAttribute("role", "menu");
   menu.setAttribute("aria-label", "Brzo dodavanje formatiranja");
-  DOCUMENT_TEMPLATE_RUNTIME_RICH_COMMANDS.forEach((command, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset.documentTemplateRuntimeRichCommand = command.id;
-    button.setAttribute("role", "menuitem");
-    button.innerHTML = `<strong>${escapeHtml(command.label)}</strong><span>${escapeHtml(command.hint)}</span>`;
-    button.addEventListener("mouseenter", () => {
-      documentTemplateRuntimeRichCommandIndex = index;
-      updateDocumentTemplateRuntimeRichCommandSelection();
-    });
-    button.addEventListener("mousedown", (event) => {
-      event.preventDefault();
-      applyDocumentTemplateRuntimeRichCommand(command, target);
-    });
-    menu.append(button);
-  });
 
   document.body.append(menu);
-  const rect = getDocumentTemplateRuntimeRichMenuRect(target);
-  const menuRect = menu.getBoundingClientRect();
-  const left = Math.min(window.innerWidth - menuRect.width - 12, Math.max(12, rect.left));
-  const top = Math.min(window.innerHeight - menuRect.height - 12, Math.max(12, rect.bottom + 8));
-  menu.style.left = `${left}px`;
-  menu.style.top = `${top}px`;
   documentTemplateRuntimeRichMenu = menu;
+  renderDocumentTemplateRuntimeRichCommandMenu(target);
   document.addEventListener("keydown", trapDocumentTemplateRuntimeRichCommandKeydown, true);
   document.addEventListener("keyup", trapDocumentTemplateRuntimeRichCommandKeyup, true);
-  updateDocumentTemplateRuntimeRichCommandSelection();
 }
 
 function handleDocumentTemplateRuntimeRichCommandKeys(event) {
   if (!documentTemplateRuntimeRichMenu || !documentTemplateRuntimeRichTarget) return false;
+  const visibleCommands = getDocumentTemplateRuntimeRichVisibleCommands();
   if (event.key === "Escape") {
     stopDocumentTemplateRuntimeRichKeyEvent(event);
     documentTemplateRuntimeRichSuppressEscapeKeyup = true;
@@ -80707,20 +81089,40 @@ function handleDocumentTemplateRuntimeRichCommandKeys(event) {
     documentTemplateRuntimeRichCommandIndex = (
       documentTemplateRuntimeRichCommandIndex
       + direction
-      + DOCUMENT_TEMPLATE_RUNTIME_RICH_COMMANDS.length
-    ) % DOCUMENT_TEMPLATE_RUNTIME_RICH_COMMANDS.length;
+      + visibleCommands.length
+    ) % Math.max(1, visibleCommands.length);
     updateDocumentTemplateRuntimeRichCommandSelection();
     return true;
   }
   if (event.key === "Enter" || event.key === "Tab") {
     stopDocumentTemplateRuntimeRichKeyEvent(event);
-    applyDocumentTemplateRuntimeRichCommand(
-      DOCUMENT_TEMPLATE_RUNTIME_RICH_COMMANDS[documentTemplateRuntimeRichCommandIndex],
-      documentTemplateRuntimeRichTarget,
-    );
+    if (visibleCommands.length) {
+      applyDocumentTemplateRuntimeRichCommand(
+        visibleCommands[documentTemplateRuntimeRichCommandIndex],
+        documentTemplateRuntimeRichTarget,
+      );
+    }
     return true;
   }
   return false;
+}
+
+function updateDocumentTemplateRuntimeRichSlashMenu(target) {
+  if (!(target instanceof HTMLElement)) return;
+  const match = getDocumentTemplateRuntimeRichSlashMatch(target);
+  if (!match) {
+    hideDocumentTemplateRuntimeRichCommandMenu();
+    return;
+  }
+  documentTemplateRuntimeRichTarget = target;
+  documentTemplateRuntimeRichTriggerRange = match.range.cloneRange();
+  documentTemplateRuntimeRichRange = match.range.cloneRange();
+  documentTemplateRuntimeRichQuery = match.query || "";
+  if (!documentTemplateRuntimeRichMenu) {
+    showDocumentTemplateRuntimeRichCommandMenu(target, match);
+    return;
+  }
+  renderDocumentTemplateRuntimeRichCommandMenu(target);
 }
 
 function trapDocumentTemplateRuntimeRichCommandKeydown(event) {
@@ -80750,54 +81152,74 @@ function createDocumentTemplateRuntimeRichTextControl({
 
   const editor = document.createElement("div");
   editor.className = "document-template-runtime-rich-editor";
-  editor.contentEditable = "true";
-  editor.spellcheck = true;
   editor.setAttribute("role", "textbox");
   editor.setAttribute("aria-multiline", "true");
   editor.dataset.placeholder = placeholder;
   editor.dataset.documentTemplateRuntimeRichSurface = "true";
   editor.style.minHeight = `${Math.max(120, minHeight)}px`;
-  editor.innerHTML = normalizeRichTextHtml(value);
 
   const persist = ({ cleanDom = false } = {}) => {
-    const html = sanitizeRichTextHtml(editor.innerHTML);
+    const tiptapEditor = getDocumentTemplateRuntimeTiptapEditor(editor);
+    const html = tiptapEditor
+      ? sanitizeRichTextHtml(tiptapEditor.getHTML())
+      : sanitizeRichTextHtml(editor.innerHTML);
     const text = richTextHtmlToPlainText(html);
-    if (cleanDom) {
+    if (cleanDom && tiptapEditor) {
+      tiptapEditor.commands.setContent(html || "<p></p>", { emitUpdate: false });
+    } else if (cleanDom) {
       editor.innerHTML = html;
     }
     onChange?.((text || /<img\b/i.test(html)) ? html : "");
   };
 
-  editor.addEventListener("input", () => {
-    persist();
+  const tiptapEditor = new Editor({
+    element: editor,
+    extensions: [
+      StarterKit.configure({
+        link: false,
+      }),
+      Link.configure({
+        openOnClick: false,
+        autolink: true,
+        defaultProtocol: "https",
+      }),
+      Table.configure({
+        resizable: true,
+      }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      Placeholder.configure({
+        placeholder,
+        showOnlyWhenEditable: true,
+      }),
+      createDocumentTemplateRuntimeTiptapSlashExtension(),
+    ],
+    content: normalizeRichTextHtml(value) || "<p></p>",
+    editorProps: {
+      attributes: {
+        class: "document-template-runtime-rich-prosemirror",
+        spellcheck: "true",
+      },
+    },
+    onUpdate: () => {
+      persist();
+    },
+    onBlur: () => {
+      persist({ cleanDom: true });
+    },
   });
-  editor.addEventListener("blur", () => {
-    persist({ cleanDom: true });
-  });
-  editor.addEventListener("keydown", (event) => {
-    if (handleDocumentTemplateRuntimeRichCommandKeys(event)) {
-      return;
-    }
-    if (event.key === "\\" || event.key === "/") {
-      stopDocumentTemplateRuntimeRichKeyEvent(event);
-      showDocumentTemplateRuntimeRichCommandMenu(editor);
-      return;
-    }
-    if (event.key === "Escape") {
-      stopDocumentTemplateRuntimeRichKeyEvent(event);
-      hideDocumentTemplateRuntimeRichCommandMenu();
-      editor.blur();
-    }
-  });
+  editor.__safeNexusTiptapEditor = tiptapEditor;
+  tiptapEditor.view.dom.__safeNexusTiptapEditor = tiptapEditor;
+  tiptapEditor.view.dom.dataset.documentTemplateRuntimeRichSurface = "true";
+
   editor.addEventListener("paste", (event) => {
     const html = getRichTextHtmlFromClipboard(event.clipboardData);
     if (!html) return;
     event.preventDefault();
     insertDocumentTemplateRuntimeRichHtml(editor, html);
     persist();
-  });
-  editor.addEventListener("keyup", () => rememberDocumentTemplateRuntimeRichSelection(editor));
-  editor.addEventListener("mouseup", () => rememberDocumentTemplateRuntimeRichSelection(editor));
+  }, { capture: true });
 
   shell.append(createDocumentTemplateRuntimeRichToolbar(editor, persist), editor);
   return shell;
@@ -85784,9 +86206,10 @@ function getUserQualificationAreaDefinitions(user = null) {
       return;
     }
     const qualification = getRawUserQualificationForArea(user, key);
-    const hasDraftDefinition = userQualificationEditorDraftDefinitions.some((draft) => (
-      normalizeQualificationAreaKey(draft.key) === key
-    ));
+    const hasDraftDefinition = userQualificationEditorDraftDefinitions.has(key)
+      || Array.from(userQualificationEditorDraftDefinitions.values()).some((draft) => (
+        normalizeQualificationAreaKey(draft.key) === key
+      ));
     const shouldShowFallbackDefault = serviceDefinitions.length === 0 && definition.builtIn;
     if (hasQualificationContent(qualification) || hasDraftDefinition || shouldShowFallbackDefault) {
       definitions.set(key, definition);

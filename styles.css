@@ -55392,6 +55392,23 @@ body.is-measurement-equipment-export-open {
   outline: none;
 }
 
+.document-template-runtime-rich-prosemirror {
+  min-height: inherit;
+  outline: none;
+}
+
+.document-template-runtime-rich-prosemirror > *:last-child {
+  margin-bottom: 0;
+}
+
+.document-template-runtime-rich-prosemirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: #8b7898;
+  pointer-events: none;
+}
+
 .document-template-runtime-rich-editor:focus {
   border-color: rgba(82, 154, 113, 0.62);
   box-shadow:
@@ -55435,8 +55452,14 @@ body.is-measurement-equipment-export-open {
   margin: .35em 0 .75em;
 }
 
+.document-template-runtime-rich-editor .tableWrapper {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 .document-template-runtime-rich-editor th,
 .document-template-runtime-rich-editor td {
+  position: relative;
   border: 1px solid rgba(47, 104, 84, 0.2);
   padding: 7px 9px;
   vertical-align: top;
@@ -55445,6 +55468,47 @@ body.is-measurement-equipment-export-open {
 .document-template-runtime-rich-editor th {
   background: rgba(241, 247, 244, 0.98);
   font-weight: 700;
+}
+
+.document-template-runtime-rich-editor .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(37, 99, 235, 0.08);
+  pointer-events: none;
+}
+
+.document-template-runtime-rich-editor .column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: -2px;
+  width: 4px;
+  background: rgba(37, 99, 235, 0.4);
+  pointer-events: none;
+}
+
+.document-template-runtime-rich-toolbar-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  color: #6a5a79;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.document-template-runtime-rich-toolbar-hint kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  min-height: 24px;
+  border: 1px solid rgba(157, 178, 214, 0.5);
+  border-radius: 8px;
+  background: #fff;
+  color: #2563eb;
+  font: inherit;
+  font-weight: 900;
 }
 
 .document-template-preview-system-rich-text {
@@ -55464,9 +55528,51 @@ body.is-measurement-equipment-export-open {
   box-shadow: 0 22px 60px rgba(43, 36, 62, 0.18);
 }
 
+.document-template-runtime-rich-command-head {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 2px 10px;
+  align-items: center;
+  padding: 6px 8px 8px;
+  border-bottom: 1px solid rgba(205, 129, 188, 0.24);
+}
+
+.document-template-runtime-rich-command-head span {
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: rgba(219, 234, 254, 0.95);
+  color: #2563eb;
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.document-template-runtime-rich-command-head strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #172033;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-template-runtime-rich-command-head small,
+.document-template-runtime-rich-command-empty {
+  color: #6a5a79;
+  font-size: 0.72rem;
+}
+
+.document-template-runtime-rich-command-empty {
+  padding: 12px 10px;
+}
+
 .document-template-runtime-rich-command-menu button {
   display: grid;
-  gap: 2px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
   width: 100%;
   border: 0;
   border-radius: 12px;
@@ -55481,14 +55587,35 @@ body.is-measurement-equipment-export-open {
   background: linear-gradient(135deg, rgba(240, 252, 244, 0.98), rgba(251, 247, 255, 0.98));
 }
 
-.document-template-runtime-rich-command-menu strong {
+.document-template-runtime-rich-command-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(238, 242, 255, 0.96);
+  color: #2563eb;
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.document-template-runtime-rich-command-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.document-template-runtime-rich-command-copy strong {
   color: #172033;
   font-size: 0.84rem;
 }
 
-.document-template-runtime-rich-command-menu span {
+.document-template-runtime-rich-command-copy small {
+  overflow: hidden;
   color: #6a5a79;
   font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .document-template-preview-field-value.is-resizable-input {
