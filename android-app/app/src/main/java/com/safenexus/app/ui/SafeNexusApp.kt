@@ -6073,7 +6073,7 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       max-height: min(268px, calc(100dvh - 12px));
       overflow-y: scroll;
       overflow-x: hidden;
-      touch-action: pan-y;
+      touch-action: none;
       overscroll-behavior: contain;
       scrollbar-gutter: stable;
       border: 1px solid rgba(37, 99, 235, 0.22);
@@ -6083,6 +6083,7 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       -webkit-overflow-scrolling: touch;
       -webkit-user-select: none;
       user-select: none;
+      -webkit-tap-highlight-color: transparent;
       transform: translateZ(0);
     }
     .slash-menu::after {
@@ -6202,8 +6203,11 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       let enabled = $enabledJson;
       let lastHtml = "";
       let lastTableCell = null;
+      let slashTouchX = null;
       let slashTouchY = null;
       let slashTouchMoved = false;
+      let slashTouchButton = null;
+      let slashSuppressClick = false;
 
       function escapeHtml(value) {
         return String(value || "")
@@ -6559,16 +6563,22 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       });
       menu.addEventListener("touchstart", function (event) {
         if (!event.touches || !event.touches.length) return;
+        slashTouchX = event.touches[0].clientX;
         slashTouchY = event.touches[0].clientY;
         slashTouchMoved = false;
+        slashTouchButton = event.target.closest("button[data-command]");
+        event.preventDefault();
         event.stopPropagation();
       }, { passive: false });
       menu.addEventListener("touchmove", function (event) {
         if (slashTouchY === null || !event.touches || !event.touches.length) return;
+        const nextX = event.touches[0].clientX;
         const nextY = event.touches[0].clientY;
         const delta = slashTouchY - nextY;
         if (Math.abs(delta) > 1) {
           menu.scrollTop += delta;
+        }
+        if (Math.abs(delta) > 4 || (slashTouchX !== null && Math.abs(nextX - slashTouchX) > 8)) {
           slashTouchMoved = true;
         }
         slashTouchY = nextY;
@@ -6576,13 +6586,26 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
         event.stopPropagation();
       }, { passive: false });
       menu.addEventListener("touchend", function (event) {
+        if (!slashTouchMoved && slashTouchButton) {
+          slashSuppressClick = true;
+          applyCommand(slashTouchButton.getAttribute("data-command"));
+        }
+        slashTouchX = null;
         slashTouchY = null;
+        slashTouchButton = null;
+        event.preventDefault();
         event.stopPropagation();
       }, { passive: false });
       menu.addEventListener("wheel", function (event) {
         event.stopPropagation();
       }, { passive: true });
       menu.addEventListener("click", function (event) {
+        if (slashSuppressClick) {
+          slashSuppressClick = false;
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
         if (slashTouchMoved) {
           slashTouchMoved = false;
           event.preventDefault();
