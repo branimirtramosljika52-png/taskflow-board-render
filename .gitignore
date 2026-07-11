@@ -29,7 +29,6 @@ assets/mobile/*.apk
 !assets/mobile/SafeNexus-0.1.412.apk
 !assets/mobile/SafeNexus-0.1.413.apk
 !assets/mobile/SafeNexus-0.1.414.apk
-!assets/mobile/SafeNexus-0.1.420.apk
-!assets/mobile/SafeNexus-0.1.421.apk
+!assets/mobile/SafeNexus-0.1.422.apk
 *-firebase-adminsdk-*.json
 firebase-service-account*.json

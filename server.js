@@ -99,7 +99,6 @@ import {
 } from "./src/measurementFormatting.js";
 import {
   buildDocumentationNativeHtml,
-  generateDocumentationHandoverPdfBlob,
   generateDocumentationSprPdfBlob,
 } from "./src/documentationSprPdf.js";
 import {
@@ -119,7 +118,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.421.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.422.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -12224,10 +12223,6 @@ function assertHandoverUsesWordTemplate(entry = {}, template = {}) {
     return;
   }
 
-  if (entry?.forceRenderModel === true) {
-    return;
-  }
-
   if (entry?.forceRenderModel || !template?.referenceDocument || !isWordTemplateFile(template.referenceDocument)) {
     throw new Error("Primopredajni zapisnik mora se generirati iz Word predloska (.docx/.dotx).");
   }
@@ -12235,15 +12230,6 @@ function assertHandoverUsesWordTemplate(entry = {}, template = {}) {
 
 function resolveMobileTemplateForExportEntry(documentTemplates = [], entry = {}, scopedSnapshot = {}) {
   const normalizedTemplateId = normalizeInputValue(entry?.templateId);
-  if (isHandoverTemplateExportEntry(entry) && entry?.forceRenderModel === true) {
-    return {
-      id: normalizedTemplateId || "native-handover",
-      title: "Primopredajni zapisnik",
-      documentType: "Primopredajni zapisnik",
-      outputFileName: normalizeInputValue(entry?.fileName || entry?.baseFileName || "primopredaja"),
-      referenceDocument: null,
-    };
-  }
   const workOrder = (Array.isArray(scopedSnapshot.workOrders) ? scopedSnapshot.workOrders : [])
     .find((item) => normalizeInputValue(item?.id) === normalizeInputValue(entry?.workOrderId));
   const nativeIdMatch = normalizedTemplateId.match(/^native-([a-z0-9]+)-(\d+)$/i);
@@ -12330,15 +12316,6 @@ async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot
         fileName,
       });
       pdfBuffers[entryIndex] = sprFile.buffer;
-      continue;
-    }
-
-    if (isHandoverTemplateExportEntry(entry) && entry?.forceRenderModel === true) {
-      const fileName = sanitizeGeneratedDocumentFileName(
-        entry?.fileName || template.outputFileName || template.title || `zapisnik-${entryIndex + 1}`,
-        { fallback: "primopredaja", extension: "pdf" },
-      );
-      pdfBuffers[entryIndex] = await buildNativeHandoverPdfBuffer(entry, fileName);
       continue;
     }
 
@@ -12480,19 +12457,6 @@ async function generatePdfFileEntriesForTemplateEntries(entries = [], scopedSnap
         template,
         fileName,
         buffer: sprFile.buffer,
-      };
-    }
-
-    if (isHandoverTemplateExportEntry(entry) && entry?.forceRenderModel === true) {
-      return {
-        entry,
-        template,
-        fileName,
-        buffer: await finalizeGeneratedTemplatePdfBuffer(
-          await buildNativeHandoverPdfBuffer(entry, fileName),
-          entry,
-          options,
-        ),
       };
     }
 
@@ -12649,33 +12613,6 @@ async function finalizeGeneratedTemplatePdfBuffer(pdfBuffer = Buffer.alloc(0), e
   return await addGeneratedTemplateDigitalSignatureFields(stampedPdfBuffer, entry, options.signatureSettings);
 }
 
-function resolveNativeHandoverProtocolFromEntry(entry = {}) {
-  const placeholders = entry?.placeholders && typeof entry.placeholders === "object"
-    ? entry.placeholders
-    : {};
-  const direct = placeholders.PRIMOPREDAJNI_ZAPISNIK
-    || placeholders.primopredajni_zapisnik
-    || placeholders.handoverProtocol
-    || entry?.handoverProtocol;
-  if (direct && typeof direct === "object" && !Array.isArray(direct)) {
-    return direct;
-  }
-  const blocks = Array.isArray(entry?.renderModel?.blocks) ? entry.renderModel.blocks : [];
-  return blocks.find((block) => (
-    block
-      && typeof block === "object"
-      && (block.type === "handover_protocol" || block.__docxBlockType === "handover_protocol")
-  )) || {};
-}
-
-async function buildNativeHandoverPdfBuffer(entry = {}, fileName = "") {
-  const handoverPdf = await generateDocumentationHandoverPdfBlob({
-    protocol: resolveNativeHandoverProtocolFromEntry(entry),
-    fileName,
-  });
-  return Buffer.from(handoverPdf.bytes);
-}
-
 async function buildRiskAssessmentGeneratedDocumentFromBody(body = {}, {
   pdf = false,
   signatureSettings = {},
@@ -12803,21 +12740,6 @@ async function generateTemplateDocumentFilesForEntries(entries = [], scopedSnaps
         buffer: sprFile.buffer,
       });
       sprPdfMs += Date.now() - sprPdfStartedAt;
-      continue;
-    }
-
-    if (isHandoverTemplateExportEntry(entry) && entry?.forceRenderModel === true) {
-      const renderModelPdfStartedAt = Date.now();
-      bundle.files.push({
-        kind: "pdf",
-        fileName: pdfFileName,
-        buffer: await finalizeGeneratedTemplatePdfBuffer(
-          await buildNativeHandoverPdfBuffer(entry, pdfFileName),
-          entry,
-          options,
-        ),
-      });
-      renderModelPdfMs += Date.now() - renderModelPdfStartedAt;
       continue;
     }
 
@@ -28911,14 +28833,8 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
   let mergedDefaults = null;
 
   services.forEach((service, serviceIndex) => {
-    const linkedTemplateIds = Array.from(new Set(
-      getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot)
-        .map((templateId) => String(templateId || "").trim())
-        .filter(Boolean)
-        .filter((templateId) => isActiveMobileDocumentTemplate(templateById.get(String(templateId)))),
-    ));
     const nativeTemplate = buildMobileNativeDocumentationTemplate(service, serviceIndex, workOrder, scopedSnapshot);
-    if (nativeTemplate && linkedTemplateIds.length === 0) {
+    if (nativeTemplate) {
       const latestRecord = findLatestMobileDocumentRecordForTemplate(nativeTemplate, workOrder, scopedSnapshot);
       const latestMeasurementRecord = findLatestMobileDocumentRecordForTemplate(
         nativeTemplate,
@@ -28950,7 +28866,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
       }
       return;
     }
-    linkedTemplateIds.forEach((templateId) => {
+    getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot).forEach((templateId) => {
       const template = templateById.get(String(templateId));
       if (!isActiveMobileDocumentTemplate(template)) {
         return;
@@ -29647,20 +29563,7 @@ const MOBILE_DOCUMENTATION_NATIVE_HTML_SERVICE_KEYS = new Set(
 );
 
 function shouldUseMobileDocumentationNativeHtmlPdf(model = {}) {
-  const enabled = String(process.env.MOBILE_DOCUMENTATION_NATIVE_HTML_PDF || "").trim().toLowerCase();
-  if (!["1", "true", "yes", "da"].includes(enabled)) {
-    return false;
-  }
-  const lookupValues = [
-    model.serviceCode,
-    model.serviceName,
-    model.templateCode,
-    model.reportTitle,
-    model.certificateTitle,
-  ];
-  return lookupValues.some((value) => MOBILE_DOCUMENTATION_NATIVE_HTML_SERVICE_KEYS.has(
-    normalizeMobileDocumentationNativeHtmlServiceKey(value),
-  ));
+  return false;
 }
 
 function getMobileSprFirstValue(source = {}, keys = []) {
@@ -33008,7 +32911,7 @@ function getMobileMeasurementTableExplicitEnabled(common = {}, template = {}, ta
   }
   const included = new Set(common.includedMeasurementTableKeys.map(normalizeMobileMeasurementUsageKey).filter(Boolean));
   if (included.size === 0) {
-    return null;
+    return false;
   }
   return getMobileMeasurementTableCandidateKeys(template, table, index).some((key) => included.has(key));
 }
@@ -33798,36 +33701,32 @@ async function buildMobileDocumentationSprPdfFile({
     || model.recordNumber
     || `${normalizeInputValue(model.serviceCode || entry.serviceCode || template.serviceCode || "zapisnik")}-zapisnik.pdf`;
   if (shouldUseMobileDocumentationNativeHtmlPdf(model)) {
-    try {
-      const html = buildDocumentationNativeHtml({
-        model,
-        rows,
-      });
-      const htmlFileName = sanitizeGeneratedDocumentFileName(
-        requestedFileName.replace(/\.(pdf|docx?|dotx|html?)$/i, "") || model.recordNumber || "zapisnik",
-        { fallback: "zapisnik", extension: "html" },
-      );
-      const pdfBuffer = await convertHtmlToPdfBuffer(html, {
-        fileName: htmlFileName,
-        title: model.recordNumber || model.reportTitle || model.serviceName || "Zapisnik",
-        preferWarmChromium: true,
-      });
-      const htmlEntry = {
-        ...preparedEntry,
-        templateReferenceKind: "html",
-      };
-      return {
-        kind: "pdf",
-        fileName: sanitizeGeneratedDocumentFileName(requestedFileName, {
-          fallback: "zapisnik",
-          extension: "pdf",
-        }),
-        buffer: await finalizeGeneratedTemplatePdfBuffer(pdfBuffer, htmlEntry, options),
-        entry: htmlEntry,
-      };
-    } catch (error) {
-      console.warn("Native HTML PDF nije dostupan, koristim pdf-lib fallback.", error);
-    }
+    const html = buildDocumentationNativeHtml({
+      model,
+      rows,
+    });
+    const htmlFileName = sanitizeGeneratedDocumentFileName(
+      requestedFileName.replace(/\.(pdf|docx?|dotx|html?)$/i, "") || model.recordNumber || "zapisnik",
+      { fallback: "zapisnik", extension: "html" },
+    );
+    const pdfBuffer = await convertHtmlToPdfBuffer(html, {
+      fileName: htmlFileName,
+      title: model.recordNumber || model.reportTitle || model.serviceName || "Zapisnik",
+      preferWarmChromium: true,
+    });
+    const htmlEntry = {
+      ...preparedEntry,
+      templateReferenceKind: "html",
+    };
+    return {
+      kind: "pdf",
+      fileName: sanitizeGeneratedDocumentFileName(requestedFileName, {
+        fallback: "zapisnik",
+        extension: "pdf",
+      }),
+      buffer: await finalizeGeneratedTemplatePdfBuffer(pdfBuffer, htmlEntry, options),
+      entry: htmlEntry,
+    };
   }
   const result = await generateDocumentationSprPdfBlob({
     model,
@@ -34421,14 +34320,10 @@ function buildMobileHandoverExportEntry(workOrder = {}, scopedSnapshot = {}, com
   if (common.includeHandoverProtocol === false) {
     return null;
   }
-  const wordTemplate = findMobileHandoverTemplate(scopedSnapshot);
-  const template = wordTemplate || {
-    id: "native-handover",
-    title: "Primopredajni zapisnik",
-    documentType: "Primopredajni zapisnik",
-    outputFileName: "primopredaja",
-  };
-  const useWordTemplate = Boolean(wordTemplate?.referenceDocument && isWordTemplateFile(wordTemplate.referenceDocument));
+  const template = findMobileHandoverTemplate(scopedSnapshot);
+  if (!template) {
+    return null;
+  }
   const handoverProtocol = buildMobileHandoverProtocol(workOrder, scopedSnapshot, common);
   if (!handoverProtocol.rows.length) {
     return null;
@@ -34441,11 +34336,7 @@ function buildMobileHandoverExportEntry(workOrder = {}, scopedSnapshot = {}, com
     .join("\n");
   const workOrderNumber = normalizeInputValue(handoverProtocol.workOrderNumber || workOrder.workOrderNumber || workOrder.number);
   const baseFileName = sanitizeGeneratedDocumentFileName(
-    [
-      workOrderNumber || workOrder.id || "RN",
-      handoverProtocol.customerName || workOrder.companyName,
-      "PrimopredajniZapisnik",
-    ].filter(Boolean).join("-"),
+    `Primopredaja ${workOrderNumber || workOrder.id || "RN"}`,
     { fallback: "primopredaja", extension: "" },
   ).replace(/\.$/, "");
   const signatureGroup = buildMobileHandoverSignatureGroup(common, scopedSnapshot)
@@ -34511,10 +34402,10 @@ function buildMobileHandoverExportEntry(workOrder = {}, scopedSnapshot = {}, com
     templateId: normalizeInputValue(template.id),
     workOrderId: normalizeInputValue(workOrder.id),
     exportKind: "handover",
-    forceRenderModel: !useWordTemplate,
+    forceRenderModel: false,
     baseFileName,
     fileName: baseFileName,
-    templateReferenceKind: useWordTemplate ? "word" : "native",
+    templateReferenceKind: "word",
     signatureGroup,
     htmlFileName: `${baseFileName}.html`,
     pdfFileName: outputFileName,
@@ -42672,16 +42563,14 @@ async function handleApiRequest(request, response, url) {
         body.documentStampSettings || body.pdfStampSettings || body.stampSettings,
       );
       assertHandoverUsesWordTemplate(body, template);
-      const pdfBuffer = isHandoverTemplateExportEntry(body) && body?.forceRenderModel === true
-        ? await buildNativeHandoverPdfBuffer(body, fileName)
-        : shouldUseFastTemplateRenderPdf(body) && !hasStoredTemplateReference
-          ? await buildPdfFromRenderModel(body.renderModel)
-          : await generatePdfBufferForTemplate(template, {
-            placeholders: body.placeholders ?? {},
-            fileName: body.fileName || template.outputFileName || template.title || "zapisnik.html",
-            appendBlocks: body.appendBlocks ?? [],
-            disableHtmlFallback: isHandoverTemplateExportEntry(body),
-          });
+      const pdfBuffer = shouldUseFastTemplateRenderPdf(body) && !hasStoredTemplateReference
+        ? await buildPdfFromRenderModel(body.renderModel)
+        : await generatePdfBufferForTemplate(template, {
+          placeholders: body.placeholders ?? {},
+          fileName: body.fileName || template.outputFileName || template.title || "zapisnik.html",
+          appendBlocks: body.appendBlocks ?? [],
+          disableHtmlFallback: isHandoverTemplateExportEntry(body),
+        });
       const signedPdfBuffer = await finalizeGeneratedTemplatePdfBuffer(pdfBuffer, body, {
         signatureSettings,
         documentStampSettings,
@@ -42834,7 +42723,6 @@ async function handleApiRequest(request, response, url) {
         && body?.useTemplatePdf !== true
         && !["template", "word", "html"].includes(String(body?.pdfEngine || "").trim().toLowerCase())
         && !entriesUseStoredTemplateReference
-        && !entries.some((entry) => isHandoverTemplateExportEntry(entry) && entry?.forceRenderModel === true)
         && entries.every((entry) => hasTemplateRenderPdfModel(entry?.renderModel));
       let mergedPdf = null;
       if (canUseFastPdf) {

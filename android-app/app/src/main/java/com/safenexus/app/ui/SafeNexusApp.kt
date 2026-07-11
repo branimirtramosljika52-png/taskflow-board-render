@@ -31144,18 +31144,12 @@ private fun WorkOrderDocumentationTemplate.matchesDocumentationServiceFlowItem(i
     if (templateNativeCode.isNotBlank() && itemNativeCode.isNotBlank() && templateNativeCode != itemNativeCode) {
         return false
     }
-    if (templateNativeCode.isNotBlank() && itemNativeCode.isNotBlank()) {
-        if (serviceIndex >= 0 && item.serviceIndex >= 0 && serviceIndex != item.serviceIndex) {
-            return false
-        }
-        return true
-    }
     if (templateCode.isNotBlank() && itemCode.isNotBlank() && templateCode != itemCode && templateNativeCode.isBlank()) {
         return false
     }
 
     if (documentationServiceKey().equals(item.serviceKey, ignoreCase = true)) return true
-    if (serviceIndex >= 0 && item.serviceIndex >= 0 && serviceIndex == item.serviceIndex && itemNativeCode.isBlank()) return true
+    if (serviceIndex >= 0 && item.serviceIndex >= 0 && serviceIndex == item.serviceIndex) return true
     if (templateCode.isNotBlank() && itemCode.isNotBlank() && templateCode == itemCode) return true
     if (templateNativeCode.isNotBlank() && itemNativeCode.isNotBlank() && templateNativeCode == itemNativeCode) return true
 
@@ -31164,36 +31158,6 @@ private fun WorkOrderDocumentationTemplate.matchesDocumentationServiceFlowItem(i
     return templateName.isNotBlank() &&
         itemName.isNotBlank() &&
         (templateName == itemName || templateName.contains(itemName) || itemName.contains(templateName))
-}
-
-private fun WorkOrderMeasurementTable.nativeDocumentationServiceCode(): String =
-    documentationNativeServiceCodeForText(
-        buildList {
-            add(id)
-            add(key)
-            add(tokenKey)
-            add(label)
-            add(helpText)
-            add(summary)
-            add(sourceSheet)
-            sheet.columns.forEach { column ->
-                add(column.id)
-                add(column.label)
-                add(column.placeholder)
-            }
-        }
-            .filter { it.isNotBlank() }
-            .joinToString(" "),
-    )
-
-private fun WorkOrderMeasurementTable.matchesSelectedNativeService(
-    selectedNativeCode: String,
-    templateNativeCode: String,
-): Boolean {
-    if (selectedNativeCode.isBlank()) return true
-    val tableNativeCode = nativeDocumentationServiceCode()
-    if (tableNativeCode.isNotBlank()) return tableNativeCode == selectedNativeCode
-    return templateNativeCode.isBlank() || templateNativeCode == selectedNativeCode
 }
 
 private fun normalizeDocumentationFlowTabCode(code: String): String {
@@ -31640,17 +31604,7 @@ private fun buildDocumentationEnvironmentVisibility(templates: List<WorkOrderDoc
 }
 
 private fun WorkOrderDocumentationTemplate.documentationServiceKey(): String {
-    val nativeCode = nativeDocumentationServiceCode()
-    val indexKey = serviceIndex.takeIf { it >= 0 }?.let { index ->
-        if (nativeCode.isNotBlank()) {
-            "native-$nativeCode-service-$index"
-        } else {
-            "service-$index"
-        }
-    }.orEmpty()
-    if (indexKey.isBlank() && nativeCode.isNotBlank()) {
-        return "native-$nativeCode"
-    }
+    val indexKey = serviceIndex.takeIf { it >= 0 }?.let { "service-$it" }.orEmpty()
     val fallback = listOf(serviceCode, serviceName, documentType, title)
         .firstOrNull { it.isNotBlank() }
         .orEmpty()
@@ -32416,9 +32370,6 @@ private fun WorkOrderDocumentationWizardDialog(
             else -> serviceFlowItems.firstOrNull()
         }
     }
-    val selectedFlowNativeCode = remember(selectedFlowItem?.serviceCode, selectedFlowItem?.serviceName, selectedFlowItem?.serviceKey) {
-        selectedFlowItem?.nativeDocumentationServiceCode().orEmpty()
-    }
     val activeTemplates = remember(
         context.templates,
         selectedFlowItem?.serviceKey,
@@ -32882,16 +32833,9 @@ private fun WorkOrderDocumentationWizardDialog(
     val allMeasurementTemplates = remember(baseMeasurementTemplates, physicalFactorsMeasurementTemplates) {
         (baseMeasurementTemplates + physicalFactorsMeasurementTemplates).distinctBy { it.id }
     }
-    val measurementTemplates = remember(activeTemplates, selectedFlowNativeCode) {
+    val measurementTemplates = remember(activeTemplates) {
         activeTemplates
-            .map { template ->
-                val templateNativeCode = template.nativeDocumentationServiceCode()
-                template.copy(
-                    measurementTables = template.measurementTables
-                        .filter { it.sheet.columns.isNotEmpty() }
-                        .filter { table -> table.matchesSelectedNativeService(selectedFlowNativeCode, templateNativeCode) },
-                )
-            }
+            .map { template -> template.copy(measurementTables = template.measurementTables.filter { it.sheet.columns.isNotEmpty() }) }
             .filter { it.measurementTables.isNotEmpty() }
     }
     var measurementPreviewOpen by rememberSaveable(workOrder.id, selectedObjectId) { mutableStateOf(false) }

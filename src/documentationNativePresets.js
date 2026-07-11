@@ -285,7 +285,6 @@ function tableSpec({
   sourceSheet = "",
   formulaOnly = false,
   includeInReport = true,
-  pdfRowsPerPage = 0,
 }) {
   const key = id;
   return {
@@ -302,7 +301,6 @@ function tableSpec({
     sourceSheet,
     formulaOnly: formulaOnly === true,
     includeInReport: includeInReport !== false,
-    pdfRowsPerPage: Number(pdfRowsPerPage) || 0,
     columns,
     rows: rows || blankRows(columns, blankRowCount, blankSeed),
     headerRows,
@@ -3350,7 +3348,6 @@ function cistaTableSpec({
   formulaOnly = false,
   includeInReport = true,
   rowBuilder = null,
-  pdfRowsPerPage = 0,
 } = {}) {
   const cistaColumns = makeCistaColumns(columns);
   return tableSpec({
@@ -3369,7 +3366,6 @@ function cistaTableSpec({
     sourceSheet,
     formulaOnly,
     includeInReport,
-    pdfRowsPerPage,
   });
 }
 
@@ -3435,7 +3431,6 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
         c11: "DA",
       }),
       pageOrientation: "landscape",
-      pdfRowsPerPage: 5,
     },
   ],
   EMM: [
@@ -3454,7 +3449,6 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
         c7: `=IF(B${rowNumber}="","",IF(E${rowNumber}<2,"DA","NE"))`,
       }),
       pageOrientation: "landscape",
-      pdfRowsPerPage: 5,
     },
   ],
   VS: [
@@ -3564,7 +3558,6 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
         c15: `=N${rowNumber}`,
       }),
       pageOrientation: "landscape",
-      pdfRowsPerPage: 5,
     },
     {
       id: "exei-cista-oi",
@@ -3584,7 +3577,6 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
         c8: `=IF(B${rowNumber}="","","DA")`,
       }),
       pageOrientation: "portrait",
-      pdfRowsPerPage: 5,
     },
     {
       id: "exei-cista-zuds",
@@ -3602,7 +3594,6 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
         c17: `=IF(J${rowNumber}="","","DA")`,
       }),
       pageOrientation: "portrait",
-      pdfRowsPerPage: 4,
     },
     {
       id: "exei-cista-pe-ipk",
@@ -3623,7 +3614,6 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
         c16: `=IF(C${rowNumber}="","","DA")`,
       }),
       pageOrientation: "portrait",
-      pdfRowsPerPage: 4,
     },
     {
       id: "exei-cista-pe-direct",
@@ -3641,7 +3631,6 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
         c16: `=IF(F${rowNumber}="","","DA")`,
       }),
       pageOrientation: "landscape",
-      pdfRowsPerPage: 5,
     },
     {
       id: "exei-cista-motors",
@@ -3664,7 +3653,6 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
         c15: `=IF(B${rowNumber}="","","DA")`,
       }),
       pageOrientation: "landscape",
-      pdfRowsPerPage: 2,
     },
     {
       id: "exei-cista-overload-e",
@@ -3682,7 +3670,6 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
         c21: `=IF(E${rowNumber}="","","DA")`,
       }),
       pageOrientation: "portrait",
-      pdfRowsPerPage: 3,
     },
     {
       id: "exei-cista-overload-d",
@@ -3699,7 +3686,6 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
         c18: `=IF(E${rowNumber}="","","DA")`,
       }),
       pageOrientation: "portrait",
-      pdfRowsPerPage: 3,
     },
   ],
   EXSE: [
@@ -4530,7 +4516,6 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
           rd: ">1",
           pass: "DA",
         })),
-        pdfRowsPerPage: 12,
       }),
       tableSpec({
         id: "eiz-k",
@@ -5234,7 +5219,6 @@ export function createDocumentationMeasurementTablesForService(serviceCode = "")
       sourceSheet: table.sourceSheet || "",
       formulaOnly: table.formulaOnly === true,
       includeInReport: table.includeInReport !== false,
-      pdfRowsPerPage: Number(table.pdfRowsPerPage) || 0,
       sheet: {
         columns: columns.map((column) => withDocumentationColumnAiMapping(tableId, column)),
         rows: rows.map((row, index) => ({
