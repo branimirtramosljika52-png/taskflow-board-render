@@ -69615,6 +69615,28 @@ function isDocumentTemplateSystemDescriptionValue(value = null) {
   );
 }
 
+function isDocumentTemplateSystemDescriptionField(field = {}) {
+  const lookup = [
+    field?.id,
+    field?.key,
+    field?.tokenKey,
+    field?.label,
+    field?.wordLabel,
+    field?.helpText,
+    field?.fieldType,
+    field?.actualFieldType,
+    field?.type,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean).join(" ");
+  const looseLookup = normalizeLooseName(lookup);
+  return lookup.includes("systemdescription")
+    || lookup.includes("system_description")
+    || lookup.includes("opis sustava")
+    || lookup.includes("opis sistema")
+    || looseLookup.includes("systemdescription")
+    || looseLookup.includes("opis sustava")
+    || looseLookup.includes("opis sistema");
+}
+
 function getDocumentTemplateSystemDescriptionValueByKeys(source = {}, keys = []) {
   if (!source || typeof source !== "object" || Array.isArray(source)) {
     return "";
@@ -72454,7 +72476,7 @@ function getDocumentTemplateRuntimeAiFields(template = {}) {
     .map((field, index) => {
       const fieldType = String(field?.type || "text").trim().toLowerCase();
       const config = getDocumentTemplateFieldAiConfigForTemplate(field, index);
-      const isSystemDescription = fieldType === "system_description";
+      const isSystemDescription = isDocumentTemplateSystemDescriptionField(field);
       if (!hasDocumentTemplateFieldAiConfig(config, field) && !isSystemDescription) {
         return null;
       }
@@ -73393,14 +73415,14 @@ function formatDocumentTemplateRuntimeAiSuggestionValue(value = "", field = null
     return "";
   }
   if (isDocumentTemplateSystemDescriptionValue(value)) {
-    return String(field?.type || "").trim().toLowerCase() === "system_description"
+    return isDocumentTemplateSystemDescriptionField(field)
       ? buildDocumentTemplateSystemDescriptionSummaryText(value)
       : buildDocumentTemplateSystemDescriptionNarrativeText(value, {
         includeBlockTitle: false,
         includeRowHeadings: true,
       });
   }
-  if (String(field?.type || "").trim().toLowerCase() === "system_description") {
+  if (isDocumentTemplateSystemDescriptionField(field)) {
     const normalizedValue = normalizeDocumentTemplateSystemDescriptionRuntimeValue(field, value);
     return buildDocumentTemplateSystemDescriptionSummaryText(normalizedValue);
   }
@@ -76249,8 +76271,8 @@ function buildDocumentTemplateDraft() {
         : null,
       sectionSubtitle: String(field.sectionSubtitle || "").trim(),
       systemRows: normalizeDocumentTemplateSystemDescriptionRows(field.systemRows, {
-        ensureOne: field.type === "system_description",
-        fallbackRows: field.type === "system_description"
+        ensureOne: isDocumentTemplateSystemDescriptionField(field),
+        fallbackRows: isDocumentTemplateSystemDescriptionField(field)
           ? createDefaultDocumentTemplateSystemDescriptionRows()
           : [],
       }),
@@ -76322,10 +76344,10 @@ function buildDocumentTemplateDraft() {
             ? false
             : Boolean(field.signatureMultiple ?? true),
           signatureIncludeScan: Boolean(field.signatureIncludeScan),
-          sectionSubtitle: field.type === "system_description"
+          sectionSubtitle: isDocumentTemplateSystemDescriptionField(field)
             ? String(field.sectionSubtitle || "").trim()
             : "",
-          systemRows: field.type === "system_description"
+          systemRows: isDocumentTemplateSystemDescriptionField(field)
             ? normalizeDocumentTemplateSystemDescriptionRows(field.systemRows, {
               ensureOne: true,
               fallbackRows: createDefaultDocumentTemplateSystemDescriptionRows(),
@@ -81396,7 +81418,7 @@ function getDocumentTemplateFieldPreviewValue(field = {}, context = {}, index = 
     return `Potpis (${getSignatureAreaLabel(field.signatureArea || "elektro")})`;
   }
 
-  if (field.type === "system_description") {
+  if (isDocumentTemplateSystemDescriptionField(field)) {
     const runtimeWorkOrderId = String(context.sampleWorkOrder?.id || "").trim();
     const runtimeValue = runtimeWorkOrderId
       ? getDocumentTemplateRuntimeFieldValue(runtimeWorkOrderId, field.id)
@@ -82409,7 +82431,7 @@ function buildDocumentTemplateFieldPreviewMarkup(field = {}, context = {}, index
     `;
   }
 
-  if (field.type === "system_description") {
+  if (isDocumentTemplateSystemDescriptionField(field)) {
     const model = normalizeDocumentTemplateSystemDescriptionRuntimeValue(
       field,
       getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode }),
@@ -83308,7 +83330,7 @@ function buildDocumentTemplateFieldWordPlaceholderValue(field = {}, context = {}
     return buildDocumentTemplateGridlineWordPlaceholder(field, context);
   }
 
-  if (field.type === "system_description") {
+  if (isDocumentTemplateSystemDescriptionField(field)) {
     return buildDocumentTemplateSystemDescriptionWordPlaceholder(field, context, index);
   }
 
@@ -83346,7 +83368,7 @@ function buildDocumentTemplateFieldWordPlaceholderValue(field = {}, context = {}
 }
 
 function buildDocumentTemplateFieldExportText(field = {}, context = {}, index = 0) {
-  if (field.type === "system_description") {
+  if (isDocumentTemplateSystemDescriptionField(field)) {
     return buildDocumentTemplateSystemDescriptionSummaryText(
       getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false }),
     );
@@ -84511,7 +84533,7 @@ function buildDocumentTemplateRuntimePdfBlocks(template = buildDocumentTemplateD
         };
       }
 
-      if (field.type === "system_description") {
+      if (isDocumentTemplateSystemDescriptionField(field)) {
         const value = normalizeDocumentTemplateSystemDescriptionRuntimeValue(
           field,
           getDocumentTemplateFieldPreviewValue(field, context, index, { placeholderMode: false }),
@@ -96354,7 +96376,7 @@ function isDocumentTemplateRuntimeStandardBasicField(field = {}) {
 }
 
 function getDocumentTemplateFieldDefaultRuntimeValue(field = {}) {
-  if (String(field?.type || "").trim().toLowerCase() === "system_description") {
+  if (isDocumentTemplateSystemDescriptionField(field)) {
     return normalizeDocumentTemplateSystemDescriptionRuntimeValue(field);
   }
 
@@ -96571,7 +96593,7 @@ function getDocumentTemplateRuntimeInitialValue(field = {}, workOrderId = "") {
     if (commonFieldValue !== undefined) {
       return commonFieldValue;
     }
-    if (String(field?.type || "").trim().toLowerCase() === "system_description") {
+    if (isDocumentTemplateSystemDescriptionField(field)) {
       return createDocumentTemplateSystemDescriptionBlankValue(field);
     }
     return field.type === "checkbox" || field.type === "toggle" ? false : "";
@@ -99869,7 +99891,30 @@ function renderDocumentTemplateRuntimeFieldRows() {
   };
 
   const createStandardFieldControl = (field, workOrderId, workOrder = null) => {
-    const fieldRuntimeType = String(field?.fieldType || field?.actualFieldType || field?.type || "text").trim().toLowerCase();
+    const rawFieldRuntimeType = String(field?.fieldType || field?.actualFieldType || field?.type || "text").trim().toLowerCase();
+    const fieldLookup = [
+      field?.id,
+      field?.key,
+      field?.tokenKey,
+      field?.label,
+      field?.wordLabel,
+      field?.helpText,
+      field?.fieldType,
+      field?.actualFieldType,
+      field?.type,
+    ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean).join(" ");
+    const fieldLookupLoose = typeof normalizeLooseName === "function" ? normalizeLooseName(fieldLookup) : fieldLookup;
+    const isSystemDescriptionRuntimeField = fieldLookup.includes("systemdescription")
+      || fieldLookup.includes("system_description")
+      || fieldLookup.includes("opis sustava")
+      || fieldLookup.includes("opis sistema")
+      || fieldLookupLoose.includes("systemdescription")
+      || fieldLookupLoose.includes("opis sustava")
+      || fieldLookupLoose.includes("opis sistema");
+    const fieldRuntimeType = isSystemDescriptionRuntimeField
+      && !["longtext", "richtext", "textarea", "system_description"].includes(rawFieldRuntimeType)
+      ? "system_description"
+      : rawFieldRuntimeType;
     const isRuntimeRichTextField = ["longtext", "richtext", "textarea", "system_description"].includes(fieldRuntimeType);
     const wrapper = document.createElement(field.type === "toggle" ? "div" : "label");
     wrapper.className = isRuntimeRichTextField ? "field field-span-full" : "field";
@@ -101201,7 +101246,7 @@ function renderDocumentTemplateRuntimeFieldRows() {
       fieldShell.className = "field field-span-full";
       fieldShell.append(createGridlineFieldControl(field, activeWorkOrder));
       grid.append(fieldShell);
-    } else if (field.type === "system_description") {
+    } else if (isDocumentTemplateSystemDescriptionField(field)) {
       const fieldShell = document.createElement("div");
       fieldShell.className = "field field-span-full";
       fieldShell.append(createSystemDescriptionFieldControl(field, activeWorkOrder));
@@ -101928,7 +101973,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     const labelSpan = document.createElement("span");
     labelSpan.textContent = field.type === "chapter"
       ? "Ime bloka"
-      : field.type === "system_description"
+      : isDocumentTemplateSystemDescriptionField(field)
         ? "Naslov bloka"
         : "Naziv u aplikaciji";
     const labelInput = document.createElement("input");
@@ -101971,7 +102016,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
     const wordLabelSpan = document.createElement("span");
     wordLabelSpan.textContent = field.type === "chapter"
       ? "Naslov u HTML-u"
-      : field.type === "system_description"
+      : isDocumentTemplateSystemDescriptionField(field)
         ? "Placeholder bloka u HTML-u"
         : "Placeholder u HTML-u";
     const wordLabelInput = document.createElement("input");
@@ -102488,7 +102533,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
         ? `Interni blok buildera. U njemu je ${chapterCount} ${chapterCount === 1 ? "stavka" : "stavki"} i sve sljedeće stavke ulaze unutra do novog bloka.`
         : "Interni blok buildera. Dodaj polja, tekst ili Excel ispod njega i sve će automatski ući u ovu cjelinu.";
       specialInfoField.append(specialInfoValue);
-    } else if (field.type === "system_description") {
+    } else if (isDocumentTemplateSystemDescriptionField(field)) {
       specialInfoField.hidden = true;
 
       const subtitleField = document.createElement("label");
@@ -102830,7 +102875,7 @@ function renderDocumentTemplateFieldRows({ renderSupport = true, supportImmediat
       grid.append(columnsField);
     } else if (field.type === "gridline") {
       // Gridline is rendered directly on the canvas as a light browser-only table.
-    } else if (field.type === "system_description") {
+    } else if (isDocumentTemplateSystemDescriptionField(field)) {
       // system description fields already appended above
     } else if (field.type === "legal_list") {
       // legal fields already appended above

@@ -46877,8 +46877,30 @@ private fun isDocumentationRecommendationsTemplateField(
         lookup.contains("preporuk") || lookup.contains("napomen")
     }
 
+private fun isDocumentationSystemDescriptionTemplateField(field: WorkOrderDocumentationField): Boolean {
+    val rawLookup = listOf(
+        field.id,
+        field.key,
+        field.tokenKey,
+        field.label,
+        field.helpText,
+        field.type,
+    )
+        .joinToString(" ")
+        .lowercase(Locale.getDefault())
+    val normalizedLookup = normalizeTemplateSectionLookup(rawLookup)
+    return rawLookup.contains("systemdescription") ||
+        rawLookup.contains("system_description") ||
+        rawLookup.contains("opis sustava") ||
+        rawLookup.contains("opis sistema") ||
+        normalizedLookup.contains("systemdescription") ||
+        normalizedLookup.contains("opis sustava") ||
+        normalizedLookup.contains("opis sistema")
+}
+
 private fun isDocumentationRichAiField(field: WorkOrderDocumentationField): Boolean =
-    field.type.lowercase(Locale.getDefault()) in setOf("richtext", "longtext", "textarea", "system_description")
+    field.type.lowercase(Locale.getDefault()) in setOf("richtext", "longtext", "textarea", "system_description") ||
+        isDocumentationSystemDescriptionTemplateField(field)
 
 private fun documentationSatisfactoryValueIsPositive(value: String): Boolean {
     val lookup = normalizeTemplateSectionLookup(value)
@@ -47473,8 +47495,17 @@ private fun TemplateFieldInput(
     onOpenAiSource: (() -> Unit)? = null,
 ) {
     val label = if (field.required) "${field.label} *" else field.label
+    val normalizedFieldType = field.type.lowercase(Locale.getDefault())
+    val resolvedFieldType = if (
+        isDocumentationSystemDescriptionTemplateField(field) &&
+        normalizedFieldType !in setOf("richtext", "longtext", "textarea", "system_description")
+    ) {
+        "system_description"
+    } else {
+        normalizedFieldType
+    }
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        when (field.type.lowercase(Locale.getDefault())) {
+        when (resolvedFieldType) {
             "dropdown", "select" -> DocumentationMobileSelectField(
                 label = label,
                 value = value,

@@ -118,7 +118,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.417.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.418.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -25177,6 +25177,36 @@ function normalizeMobileTemplateFieldLookup(value = "") {
     .toLowerCase();
 }
 
+function isMobileDocumentTemplateSystemDescriptionField(field = {}) {
+  const rawLookup = [
+    field?.id,
+    field?.key,
+    field?.tokenKey,
+    field?.label,
+    field?.wordLabel,
+    field?.helpText,
+    field?.fieldType,
+    field?.actualFieldType,
+    field?.type,
+  ].map((value) => normalizeInputValue(value).toLowerCase()).filter(Boolean).join(" ");
+  const normalizedLookup = normalizeMobileTemplateFieldLookup(rawLookup);
+  return rawLookup.includes("systemdescription")
+    || rawLookup.includes("system_description")
+    || rawLookup.includes("opis sustava")
+    || rawLookup.includes("opis sistema")
+    || normalizedLookup.includes("systemdescription")
+    || normalizedLookup.includes("opis sustava")
+    || normalizedLookup.includes("opis sistema");
+}
+
+function getMobileDocumentTemplateEffectiveFieldType(field = {}) {
+  const fieldType = normalizeInputValue(field?.fieldType || field?.actualFieldType || field?.type || "text").toLowerCase();
+  return isMobileDocumentTemplateSystemDescriptionField(field)
+    && !["richtext", "longtext", "textarea", "system_description"].includes(fieldType)
+    ? "system_description"
+    : fieldType;
+}
+
 function normalizeMobileTemplateConclusionLookup(value = "") {
   return normalizeMobileTemplateFieldLookup(value)
     .normalize("NFD")
@@ -25636,7 +25666,7 @@ function hasMobileMeasurementColumnAiMapping(input = {}) {
 }
 
 function getMobileDocumentTemplateDefaultAiTypeForField(field = {}) {
-  const fieldType = normalizeInputValue(field?.type || "text").toLowerCase();
+  const fieldType = getMobileDocumentTemplateEffectiveFieldType(field);
   if (fieldType === "dropdown") {
     return "enum";
   }
@@ -25659,7 +25689,7 @@ function getMobileDocumentTemplateDefaultAiTypeForField(field = {}) {
 }
 
 function shouldMobileDocumentTemplateFieldUseDefaultAi(field = {}) {
-  const fieldType = normalizeInputValue(field?.type || "text").toLowerCase();
+  const fieldType = getMobileDocumentTemplateEffectiveFieldType(field);
   return [
     "system_description",
     "text",
@@ -25675,8 +25705,8 @@ function shouldMobileDocumentTemplateFieldUseDefaultAi(field = {}) {
 }
 
 function shouldMobileDocumentTemplateFieldUseRichHtmlAi(field = {}) {
-  const fieldType = normalizeInputValue(field?.type || "text").toLowerCase();
-  return ["richtext", "longtext", "textarea"].includes(fieldType);
+  const fieldType = getMobileDocumentTemplateEffectiveFieldType(field);
+  return ["richtext", "longtext", "textarea", "system_description"].includes(fieldType);
 }
 
 function mergeMobileAiConfigList(sourceValue, defaultValue, maxItems = 160) {
@@ -25846,8 +25876,8 @@ function buildMobileDocumentTemplateAiFields(template = {}, aiSettings = {}) {
       if (field.hidden === true || field.mobileHidden === true || field.excludeFromMobile === true) {
         return null;
       }
-      const fieldType = normalizeInputValue(field?.type || "text").toLowerCase();
-      const isSystemDescription = fieldType === "system_description";
+      const fieldType = getMobileDocumentTemplateEffectiveFieldType(field);
+      const isSystemDescription = isMobileDocumentTemplateSystemDescriptionField(field);
       const config = getMobileDocumentTemplateFieldAiConfigForRuntime(field, index, aiSettings);
       if (!isSystemDescription && !hasMobileDocumentTemplateFieldAiConfig(config, field)) {
         return null;
@@ -29026,7 +29056,7 @@ function buildMobileDocumentTemplateCustomFieldPayload(template = {}, common = {
   const fieldValues = {};
 
   (Array.isArray(template?.customFields) ? template.customFields : []).forEach((field, index) => {
-    const fieldType = normalizeInputValue(field?.type || "text").toLowerCase();
+    const fieldType = getMobileDocumentTemplateEffectiveFieldType(field);
     if (fieldType === "system_description") {
       if (field.hidden === true || field.mobileHidden === true || field.excludeFromMobile === true) {
         return;
