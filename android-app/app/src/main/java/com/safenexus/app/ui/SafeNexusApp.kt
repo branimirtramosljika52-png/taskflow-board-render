@@ -6231,6 +6231,16 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
         return /<\s*(p|div|br|h1|h2|h3|ul|ol|li|table|thead|tbody|tr|th|td|blockquote)\b/i.test(String(value || ""));
       }
 
+      function decodeHtmlEntities(value) {
+        const raw = String(value || "");
+        if (!/&(?:lt|gt|amp|quot|#39|apos);/i.test(raw)) {
+          return raw;
+        }
+        const textarea = document.createElement("textarea");
+        textarea.innerHTML = raw;
+        return textarea.value;
+      }
+
       function tableRowsToHtml(rows) {
         return "<table><tbody>" + rows.map((line, index) => {
           const cells = line.split("|").map((cell) => cell.trim());
@@ -6302,7 +6312,7 @@ private fun buildDocumentationMobileRichTextEditorHtml(initialValue: String, ena
       }
 
       function normalizeContent(value) {
-        const raw = String(value || "");
+        const raw = decodeHtmlEntities(value);
         return isHtml(raw) ? raw : plainTextToHtml(raw);
       }
 
@@ -6928,6 +6938,25 @@ private fun DocumentationMobileRichTextField(
             label = label,
             enabled = enabled,
             minHeight = editorHeight + 46.dp,
+            trailing = {
+                IconButton(
+                    onClick = {
+                        webViewRef?.evaluateJavascript(
+                            "window.SafeNexusEditor&&window.SafeNexusEditor.showCommands();",
+                            null,
+                        )
+                    },
+                    enabled = enabled,
+                    modifier = Modifier.size(42.dp),
+                ) {
+                    Text(
+                        "/",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            },
         ) {
             DocumentationMobileRichTextWebView(
                 label = label,

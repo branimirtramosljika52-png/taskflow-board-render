@@ -1099,15 +1099,6 @@ const SVZ_REVIEW_ITEMS = [
   "Korisnik posjeduje knjigu odrzavanja sustava",
 ];
 
-const SVZ_SYSTEM_ELEMENTS = [
-  "Centralni uredjaj",
-  "Automatski detektori pozara",
-  "Rucni javljaci pozara",
-  "Alarmne sirene",
-  "Rezervno napajanje",
-  "Sustavi u sprezi",
-];
-
 const GAS_TECHNICAL_FIELDS = [
   technicalField("meterManufacturer", "Proizvodjac plinomjera", ""),
   technicalField("meterType", "Tip i velicina plinomjera", ""),
@@ -4762,13 +4753,6 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
         summary: "Vizualni pregled, simulacija javljaca, centrala, sirene, rezervno napajanje i sustavi u sprezi.",
         items: SVZ_REVIEW_ITEMS,
         assessmentLabel: "Stabilni sustav za dojavu pozara",
-      }),
-      makeChecklistFromItems({
-        id: "svz-elements",
-        label: "Oprema sustava za dojavu pozara",
-        summary: "Centralni uredjaj, detektori, rucni javljaci, sirene, napajanje i sustavi u sprezi.",
-        items: SVZ_SYSTEM_ELEMENTS,
-        assessmentLabel: "Oprema sustava za dojavu pozara",
       }),
     ],
     measurementAssessments: makeAssessmentEntries("SVZ", [
