@@ -31144,12 +31144,18 @@ private fun WorkOrderDocumentationTemplate.matchesDocumentationServiceFlowItem(i
     if (templateNativeCode.isNotBlank() && itemNativeCode.isNotBlank() && templateNativeCode != itemNativeCode) {
         return false
     }
+    if (templateNativeCode.isNotBlank() && itemNativeCode.isNotBlank()) {
+        if (serviceIndex >= 0 && item.serviceIndex >= 0 && serviceIndex != item.serviceIndex) {
+            return false
+        }
+        return true
+    }
     if (templateCode.isNotBlank() && itemCode.isNotBlank() && templateCode != itemCode && templateNativeCode.isBlank()) {
         return false
     }
 
     if (documentationServiceKey().equals(item.serviceKey, ignoreCase = true)) return true
-    if (serviceIndex >= 0 && item.serviceIndex >= 0 && serviceIndex == item.serviceIndex) return true
+    if (serviceIndex >= 0 && item.serviceIndex >= 0 && serviceIndex == item.serviceIndex && itemNativeCode.isBlank()) return true
     if (templateCode.isNotBlank() && itemCode.isNotBlank() && templateCode == itemCode) return true
     if (templateNativeCode.isNotBlank() && itemNativeCode.isNotBlank() && templateNativeCode == itemNativeCode) return true
 
@@ -31604,7 +31610,17 @@ private fun buildDocumentationEnvironmentVisibility(templates: List<WorkOrderDoc
 }
 
 private fun WorkOrderDocumentationTemplate.documentationServiceKey(): String {
-    val indexKey = serviceIndex.takeIf { it >= 0 }?.let { "service-$it" }.orEmpty()
+    val nativeCode = nativeDocumentationServiceCode()
+    val indexKey = serviceIndex.takeIf { it >= 0 }?.let { index ->
+        if (nativeCode.isNotBlank()) {
+            "native-$nativeCode-service-$index"
+        } else {
+            "service-$index"
+        }
+    }.orEmpty()
+    if (indexKey.isBlank() && nativeCode.isNotBlank()) {
+        return "native-$nativeCode"
+    }
     val fallback = listOf(serviceCode, serviceName, documentType, title)
         .firstOrNull { it.isNotBlank() }
         .orEmpty()
