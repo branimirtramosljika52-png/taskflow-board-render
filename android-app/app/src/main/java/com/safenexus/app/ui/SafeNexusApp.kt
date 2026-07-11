@@ -47133,11 +47133,17 @@ private fun TemplateBlockDetailRow(
     val signatureSummary = remember(block, standardValues) {
         documentationSignatureBlockSelectionSummary(block, standardValues)
     }
+    val isSystemDescriptionField = editableField?.let(::isDocumentationSystemDescriptionTemplateField) == true
     val shouldFlattenEditableField = editableField != null &&
         signatureSummary == null &&
-        !isDocumentationDefectsTemplateField(editableField, block) &&
-        !isDocumentationSatisfactoryTemplateField(editableField, block) &&
-        !isDocumentationRecommendationsTemplateField(editableField, block)
+        (
+            isSystemDescriptionField ||
+                (
+                    !isDocumentationDefectsTemplateField(editableField, block) &&
+                        !isDocumentationSatisfactoryTemplateField(editableField, block) &&
+                        !isDocumentationRecommendationsTemplateField(editableField, block)
+                    )
+            )
     if (shouldFlattenEditableField && editableField != null) {
         TemplateFieldInput(
             field = editableField,
