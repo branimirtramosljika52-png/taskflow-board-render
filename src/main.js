@@ -99869,8 +99869,9 @@ function renderDocumentTemplateRuntimeFieldRows() {
   };
 
   const createStandardFieldControl = (field, workOrderId, workOrder = null) => {
+    const isRuntimeRichTextField = field.type === "longtext" || field.type === "richtext";
     const wrapper = document.createElement(field.type === "toggle" ? "div" : "label");
-    wrapper.className = field.type === "longtext" ? "field field-span-full" : "field";
+    wrapper.className = isRuntimeRichTextField ? "field field-span-full" : "field";
     const title = document.createElement("span");
     title.textContent = createFieldTitle(field, 0);
     appendDocumentTemplateRuntimeTitleAiPill(title, field, workOrderId);
@@ -99924,11 +99925,14 @@ function renderDocumentTemplateRuntimeFieldRows() {
           { type: "success" },
         );
       });
-    } else if (field.type === "longtext") {
+    } else if (isRuntimeRichTextField) {
       const fieldHeight = normalizeDocumentTemplateFieldHeight(field.fieldHeight, field.type || "longtext");
       control = createDocumentTemplateRuntimeRichTextControl({
         value: getDocumentTemplateRuntimeInitialValue(field, workOrderId) ?? "",
         minHeight: Math.max(120, fieldHeight * 28),
+        placeholder: field.type === "richtext"
+          ? "Upiši / za naslov, listu, tablicu ili napomenu..."
+          : "Zalijepi tekst iz Worda ili pritisni / za naslov, listu ili tablicu",
         onChange: (value) => {
           setDocumentTemplateRuntimeFieldValue(workOrderId, field.id, value, { render: false });
           renderDocumentTemplatePreviewContent();
