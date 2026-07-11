@@ -1125,6 +1125,9 @@ async function drawOpeningPages(pdfDoc, model, rows, fonts, headerImage) {
   let { page, y, sectionOffset } = drawPageOne(pdfDoc, model, rows, fonts, headerImage);
   const systemDescription = String(model.systemDescription || "").trim();
   const showResultsText = !usesSingleSystemDescription(model);
+  const certificateLayout = isCertificateCapableReport(model) && shouldIssueCertificate(model);
+  const openingServiceCode = clean(getServiceCode(model)).toUpperCase();
+  const separatedOpeningLayout = certificateLayout || openingServiceCode === "EIZ";
   const ensureSpace = (neededHeight = 72) => {
     if (y - neededHeight >= BOTTOM_Y) {
       return;
@@ -1134,13 +1137,21 @@ async function drawOpeningPages(pdfDoc, model, rows, fonts, headerImage) {
     y = next.y;
   };
 
-  ensureSpace(64);
+  if (separatedOpeningLayout) {
+    ({ page, y } = createContinuationPage(pdfDoc, model, fonts));
+  } else {
+    ensureSpace(64);
+  }
   y = drawSectionTitle(page, 4 + sectionOffset, "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA", y, fonts);
   y = drawPlainList(page, model.projectDocumentation, y, fonts, { maxLines: 4, fontSize: 8.6, lineHeight: 11.2 });
   y -= 8;
 
   if (systemDescription) {
-    ensureSpace(96);
+    if (separatedOpeningLayout) {
+      ({ page, y } = createContinuationPage(pdfDoc, model, fonts));
+    } else {
+      ensureSpace(96);
+    }
     y = drawSectionTitle(page, 5 + sectionOffset, "OPIS SUSTAVA", y, fonts);
     const richSystem = await drawRichTextBlocks(pdfDoc, page, model, systemDescription, y, fonts);
     page = richSystem.page;
@@ -1148,7 +1159,11 @@ async function drawOpeningPages(pdfDoc, model, rows, fonts, headerImage) {
   }
 
   if (showResultsText) {
-    ensureSpace(96);
+    if (separatedOpeningLayout) {
+      ({ page, y } = createContinuationPage(pdfDoc, model, fonts));
+    } else {
+      ensureSpace(96);
+    }
     y = drawSectionTitle(page, 5 + sectionOffset + (systemDescription ? 1 : 0), "REZULTATI ISPITIVANJA", y, fonts);
     const richResult = await drawRichTextBlocks(pdfDoc, page, model, model.resultsText, y, fonts);
     page = richResult.page;
@@ -1183,6 +1198,193 @@ async function drawOpeningPages(pdfDoc, model, rows, fonts, headerImage) {
       y = noteResult.y - 2;
     }
   }
+}
+
+function drawEizAllowedValuesPage(pdfDoc, model, fonts) {
+  if (clean(getServiceCode(model)).toUpperCase() !== "EIZ") {
+    return null;
+  }
+  let { page, y } = createContinuationPage(pdfDoc, model, fonts);
+  y = drawSectionTitle(page, 7, "DOZVOLJENE VRIJEDNOSTI I REZULTATI ISPITIVANJA", y, fonts);
+  drawPlainList(page, [
+    "MJERENJE/ISPITIVANJE ZASTITNOG UREDAJA DIFERENCIJALNE STRUJE - ZUDS (FID / RCD)",
+    "Uvjet ispravnosti djelovanja zastite: Iisk < Idn; tisk < tdoz. Standardni RCD provjerava se prema nazivnoj diferencijalnoj struji, vremenu iskljucenja i naponu dodira.",
+    "Znacenje oznaka za ZUDS: In - nazivna struja ZUDS-a [A]; Idn - nazivna diferencijalna struja [mA]; Iisk - izmjerena struja prorade [mA]; tisk - izmjereno vrijeme prorade [ms]; U0 - napon dodira [V].",
+    "",
+    "MJERENJE IMPEDANCIJE PETLJE KVARA - INDIREKTNI DODIR",
+    "Uvjet djelotvorne zastite je neprekinutost zastitnog vodica i automatsko iskljucenje napajanja u propisanom vremenu. Rezultati se ocjenjuju usporedbom izmjerene impedancije i struje kvara s karakteristikom zastitnog uredaja.",
+    "Znacenje oznaka: Z(L-PE) - impedancija petlje kvara; Izem - izracunata struja zemljospoja; Z(L-N) i Z(L-L) - impedancije petlje kratkog spoja; U0 - nazivni napon prema zemlji.",
+    "",
+    "MJERENJE OTPORA IZOLACIJE - DIREKTNI DODIR",
+    "Mjerenjem otpora izolacije ispituje se stanje vodica elektricne instalacije. Ispitivanje se provodi izmedu faznih vodica, nultog vodica i zastitnog vodica, u beznaponskom stanju i s odspojenim trosilima.",
+    "Za nazivne napone do ukljucivo 500 V koristi se ispitni napon 500 V d.c.; najmanji dozvoljeni otpor izolacije iznosi 1,0 Mohm, osim za SELV i PELV krugove gdje je kriterij 0,5 Mohm.",
+    "",
+    "ISPITIVANJE KONTINUITETA ZASTITNOG VODICA",
+    "Kontinuitet zastitnog vodica i vodica za izjednacavanje potencijala provjerava se mjerenjem otpora izmedu ispitnih mjesta. Rezultat zadovoljava ako je izmjereni otpor manji od dozvoljene vrijednosti.",
+  ].join("\n"), y, fonts, {
+    fontSize: 7.6,
+    lineHeight: 9.8,
+    maxLines: 42,
+    bottomY: BOTTOM_Y + 8,
+  });
+  return page;
+}
+
+const EXTRA_SERVICE_CRITERIA_TEXT = Object.freeze({
+  SPR: [
+    "Panik (sigurnosna) rasvjeta mora osvjetljavati prostor izlaza minimalnim osvjetljenjem propisanim projektom i primjenjivim normama.",
+    "Ispitivanje djelotvornosti obavlja se simuliranjem nestanka elektricne energije kako bi se provjerilo ukljucenje rasvjetnih tijela, ispravnost autonomnog napajanja i oznacavanje evakuacijskih puteva.",
+    "Pregledom i ispitivanjem utvrduju se mjerna mjesta, broj lampi, izmjereno osvjetljenje Ei, zahtijevano minimalno osvjetljenje Eimin i ocjena zadovoljavanja.",
+    "Znacenje oznaka: Ei - izmjereno osvjetljenje sigurnosne rasvjete [lux]; Eimin - zahtijevano minimalno osvjetljenje [lux].",
+  ],
+  TZIN: [
+    "Tipkala za isklop elektricne energije u slucaju nuzde provjeravaju se vizualnim pregledom, funkcionalnim ispitivanjem i usporedbom izvedenog stanja s projektnom dokumentacijom.",
+    "Za svako mjerno mjesto evidentira se lokacija, broj tipkala, tip tipkala i rezultat ispitivanja.",
+    "Ispitivanje je zadovoljilo kada je tipkalo dostupno, oznaceno, mehanicki ispravno i funkcionalno iskljucuje napajanje u predvidenom opsegu.",
+  ],
+  SVZ: [
+    "Pregled sustava za dojavu pozara obuhvaca centralni uredaj, javljače, rucne javljace, sirene, napajanje, prijenos signala i sustave u sprezi.",
+    "Funkcionalno ispitivanje provodi se aktiviranjem odabranih automatskih i rucnih javljaca te provjerom prikaza mjesta pozara, zvucne signalizacije i izvrsnih funkcija.",
+    "Opis sustava i rezultati ispitivanja vode se prema izvedenom stanju, dostupnoj dokumentaciji i obuhvatu pregleda.",
+  ],
+  VS: [
+    "Ispitivanje sustava ventilacije provodi se pregledom izvedenog stanja, provjerom otvora i mjerenjem brzine strujanja zraka.",
+    "Za svako mjerno mjesto evidentiraju se efektivni volumen, vrsta i povrsina otvora, brzina strujanja, protok i potrebni broj izmjena zraka.",
+    "Rezultat zadovoljava kada izmjereni ili izracunati podaci ispunjavaju projektirane i propisane vrijednosti.",
+  ],
+  PZP: [
+    "Pregled prostora za pusace obuhvaca izdvojenost prostora, ventilaciju, podtlak i sprjecavanje sirenja zraka oneciscenog duhanskim dimom u druge prostore.",
+    "Ispituju se uvjeti prostora, efektivni volumen, otvori, protok zraka, broj izmjena i trazeni podtlak.",
+    "Rezultat zadovoljava kada su uvjeti izvedeni i odrzavani u skladu s propisanim zahtjevima.",
+  ],
+  SZOM: [
+    [
+      "Pregled sustava zastite od djelovanja munje obuhvaca hvataljke, odvode, mjerne spojeve, uzemljivac, izjednacavanje potencijala i stanje spojeva.",
+      "Vizualnim pregledom provjerava se izvedeno stanje vanjskog i unutarnjeg sustava zastite od munje, mehanicka ostecenja, korozija, prekidi vodica i dostupnost mjernih spojeva.",
+      "Mjerenjem se utvrduje elektricna povezanost metalnih masa, otpor rasprostiranja uzemljivaca i kontinuitet dijelova sustava.",
+    ],
+    [
+      "Uvjet ispravnosti mjerenja odreduje se prema projektu, izvedenom stanju, vrsti uzemljivaca i primjenjivim tehnickim propisima.",
+      "Za svako mjerno mjesto upisuju se izmjerena vrijednost, dozvoljena vrijednost i ocjena zadovoljavanja.",
+      "Rezultati se prikazuju u ispitnom listu SZOM, a zakljucna ocjena donosi se usporedbom svih izmjerenih vrijednosti i vizualnog stanja sustava.",
+    ],
+  ],
+  PPZ: [
+    [
+      "Opis sustava protupozarnih zaklopki obuhvaca lokacije zaklopki, oznake, dimenzije, pristup za pregled i vezu sa sustavom dojave pozara.",
+      "Pregledom se provjerava izvedeno stanje, dostupnost, oznacenost, cistoca, mogucnost zatvaranja i stanje mehanizma.",
+    ],
+    [
+      "Funkcionalnim ispitivanjem provjerava se zatvaranje zaklopki, povrat u radni polozaj i signalizacija stanja prema centralnom uredaju ili nadzornom sustavu.",
+      "Za svaku zaklopku evidentira se oznaka, serijski broj, dimenzija i zakljucna ocjena.",
+    ],
+    [
+      "Uvjerenje se izdaje kada su sve pregledane protupozarne zaklopke ispravne, funkcionalne i uskladene s dostupnom dokumentacijom.",
+      "U slucaju odstupanja zapisuje se cinjenicno stanje i preporucuje otklanjanje uocenih nedostataka.",
+    ],
+  ],
+  PLINSKAKOTLOVNICA: [
+    [
+      "Pregled plinske kotlovnice obuhvaca gradevinski dio kotlovnice, pristup, ventilaciju, oznake, sigurnosne elemente i stanje instalacije.",
+      "Provjeravaju se uvjeti prostora, vrata, otvori, oprema za pocetno gasenje pozara i mogucnost sigurnog rada.",
+    ],
+    [
+      "Plinska instalacija pregledava se od zapornog elementa do trosila, ukljucivo nosace, spojeve, oznake, ventilaciju i mogucnost zatvaranja dovoda plina.",
+      "Posebno se evidentiraju zaporni ventili, regulator, sigurnosni ventili i elementi za odzracivanje.",
+    ],
+    [
+      "Kotlovsko postrojenje provjerava se prema dostupnoj dokumentaciji, natpisnim plocicama i izvedenom stanju.",
+      "Pregled obuhvaca gorionik, upravljanje, signalizaciju, mjerenje tlaka, temperaturu i sigurnosne blokade.",
+    ],
+    [
+      "Ventilacija kotlovnice mora osigurati dovoljan dovod zraka za izgaranje i siguran rad postrojenja.",
+      "Provjerava se stanje ventilacijskih otvora, cistoca, oznacenost i mogucnost neometanog strujanja zraka.",
+    ],
+    [
+      "Zakljucna ocjena donosi se na temelju pregleda svih dijelova kotlovnice, plinske instalacije, sigurnosnih elemenata i dokumentacije.",
+      "Ako su svi uvjeti zadovoljeni, zapisnik potvrduje ispravnost pregledanog stanja na dan pregleda.",
+    ],
+  ],
+  NPI: [
+    [
+      "Ispitivanje nepropusnosti i ispravnosti plinske instalacije obuhvaca podatke o instalaciji, plinomjeru, trosilima i volumenu ispitivanog dijela instalacije.",
+      "Prije tlacne probe pregledava se izvedeno stanje, dostupnost zapornih elemenata, oznake, stanje spojeva i dokumentacija.",
+    ],
+    [
+      "Volumen instalacije izracunava se prema promjerima, duljinama i koeficijentima pojedinih dionica cjevovoda.",
+      "Izracunati volumen koristi se kod odabira ispitnog postupka i ocjene stabilnosti tlaka tijekom probe.",
+    ],
+    [
+      "Tlacna proba provodi se zadanim ispitnim tlakom i ocitanjima u vremenskim intervalima.",
+      "Vrijednosti tlaka upisuju se u tablicu, a rezultat zadovoljava ako nema nedopustenog pada tlaka.",
+    ],
+    [
+      "Pregled trosila obuhvaca vrstu trosila, nazivnu snagu, prikljucak, stanje dimovoda i uvjete za siguran rad.",
+      "Za svako trosilo evidentira se dostupnost, ispravnost prikljucka i eventualna napomena.",
+    ],
+    [
+      "Provjerava se ventilacija prostora, mogucnost zatvaranja dovoda plina, oznake, pristup instalaciji i dokumentacija o odrzavanju.",
+      "U zapisnik se upisuju odstupanja koja mogu utjecati na sigurnost rada instalacije.",
+    ],
+    [
+      "Zakljucna ocjena temelji se na pregledu, tlacnoj probi, stanju instalacije i primjenjivim propisima.",
+      "Instalacija zadovoljava kada su pregledani elementi ispravni i kada ispitivanje nepropusnosti zadovolji propisane kriterije.",
+    ],
+  ],
+  UNP: [
+    [
+      "Ispitivanje UNP instalacije obuhvaca spremnik, cjevovod, zaporne elemente, regulator, trosila i sigurnosne elemente instalacije.",
+      "Pregledom se utvrduje izvedeno stanje, dostupnost opreme, oznake, zastita od mehanickih ostecenja i dokumentacija.",
+    ],
+    [
+      "Volumen UNP instalacije izracunava se prema dionicama cjevovoda i koristi se za provedbu i ocjenu tlacne probe.",
+      "U tablicu se upisuju promjeri, duljine, koeficijenti i ukupni volumen ispitivanog dijela.",
+    ],
+    [
+      "Tlacna proba UNP instalacije provodi se s propisanim ispitnim tlakom i ocitanjem vrijednosti tlaka u zadanim vremenskim intervalima.",
+      "Rezultat je zadovoljavajuci ako nema nedopustenog pada tlaka i ako su spojevi vizualno ispravni.",
+    ],
+    [
+      "Zakljucna ocjena temelji se na pregledu spremnika, instalacije, zapornih elemenata, regulatora, tlacne probe i dostupne dokumentacije.",
+      "U slucaju uocenih odstupanja u zapisnik se unosi cinjenicno stanje i potrebne preporuke.",
+    ],
+  ],
+  PE: [
+    ["Plan evakuacije sadrzi osnovne podatke o lokaciji, namjeni objekta, broju osoba, organizaciji evakuacije i zbornom mjestu.", "Podaci se uskladuju s izvedenim stanjem, dostupnom dokumentacijom i stvarnim nacinom koristenja prostora."],
+    ["Opis lokacije obuhvaca gradevinu, okolni prostor, pristupe, ulaze, izlaze, smjerove evakuacije i posebnosti prostora.", "U planu se navode prostori koji mogu utjecati na tijek evakuacije i spasavanja."],
+    ["Evakuacijski putevi moraju biti prohodni, oznaceni i uskladeni s projektiranim rjesenjem.", "Posebno se opisuje kretanje osoba od radnih prostora do sigurnog mjesta okupljanja."],
+    ["Zborno mjesto odreduje se na sigurnoj udaljenosti od objekta i mora biti dostupno osobama koje se evakuiraju.", "U planu se navodi lokacija zbornog mjesta i nacin provjere prisutnosti osoba."],
+    ["Osobe zaduzene za evakuaciju i spasavanje moraju biti upoznate sa zadacima, smjerovima evakuacije i postupkom obavjescivanja.", "U planu se navode odgovorne osobe i njihove osnovne obveze."],
+    ["Sustavi zastite od pozara, dojava, rasvjeta, hidrantska mreza i druga oprema opisuju se prema izvedenom stanju.", "Navode se elementi koji utjecu na sigurno napustanje prostora."],
+    ["Postupanje u slucaju izvanrednog dogadaja obuhvaca dojavu, alarmiranje, evakuaciju, gasenje pocetnog pozara i prihvat interventnih sluzbi.", "Opis mora biti jasan i primjenjiv u stvarnim uvjetima."],
+    ["Za osobe smanjene pokretljivosti ili posebne korisnike prostora navode se dodatne mjere pomoci i odgovorne osobe.", "Ako takvih osoba nema, u planu se navodi da posebne mjere nisu potrebne."],
+    ["Prilozi plana ukljucuju skice evakuacijskih puteva, raspored opreme, zborno mjesto i bitne oznake prostora.", "Prilozi se koriste za brzu orijentaciju korisnika i odgovornih osoba."],
+    ["Plan se provjerava kroz vjezbu evakuacije i spasavanja, promjene u prostoru i promjene organizacije rada.", "Nakon promjena plan se mora uskladiti s novim stanjem."],
+    ["Upute za korisnike prostora moraju biti kratke, jasne i dostupne osobama koje borave u objektu.", "Preporucuje se upoznavanje zaposlenika s planom i provedba periodickih vjezbi."],
+    ["Zakljucak plana temelji se na dostupnoj dokumentaciji, obilasku lokacije i utvrdenom stanju prostora.", "Plan se koristi kao podloga za organizaciju evakuacije i spasavanja na predmetnoj lokaciji."],
+  ],
+});
+
+function drawAdditionalServiceCriteriaPage(pdfDoc, model, fonts) {
+  const serviceCode = clean(getServiceCode(model)).toUpperCase();
+  const rawPages = EXTRA_SERVICE_CRITERIA_TEXT[serviceCode];
+  if (!Array.isArray(rawPages) || !rawPages.length) {
+    return null;
+  }
+  const pages = Array.isArray(rawPages[0]) ? rawPages : [rawPages];
+  let lastPage = null;
+  pages.forEach((lines, index) => {
+    let { page, y } = createContinuationPage(pdfDoc, model, fonts);
+    y = drawSectionTitle(page, 7 + index, index === 0 ? "POSTUPAK I KRITERIJI ISPITIVANJA" : "KRITERIJI OCJENE I ZNACENJE REZULTATA", y, fonts);
+    drawPlainList(page, lines.join("\n\n"), y, fonts, {
+      fontSize: 8.1,
+      lineHeight: 10.6,
+      maxLines: 34,
+      bottomY: BOTTOM_Y + 8,
+    });
+    lastPage = page;
+  });
+  return lastPage;
 }
 
 function drawCell(page, {
@@ -1692,6 +1894,7 @@ function normalizePdfMeasurementTables(model = {}, legacyRows = []) {
       includeInReport: withLegacyRows.includeInReport !== false,
       formulaOnly: withLegacyRows.formulaOnly === true,
       pageOrientation: getPdfMeasurementOrientation(withLegacyRows),
+      pdfRowsPerPage: Number(withLegacyRows.pdfRowsPerPage || withLegacyRows.rowsPerPage || 0) || 0,
       legend: Array.isArray(withLegacyRows.legend)
         ? withLegacyRows.legend.map((entry) => clean(entry)).filter(Boolean)
         : undefined,
@@ -3350,6 +3553,9 @@ function drawMeasurementTablePage(pdfDoc, model, table, fonts, rows, pageIndex =
 }
 
 function drawMeasurementTablePages(pdfDoc, model, rows, fonts) {
+  if (SKIP_MEASUREMENT_TABLE_PAGE_CODES.has(clean(getServiceCode(model)).toUpperCase())) {
+    return 0;
+  }
   const tables = normalizePdfMeasurementTables(model, rows).filter((table) => table.includeInReport !== false);
   let pageCount = 0;
   tables.forEach((table) => {
@@ -3363,6 +3569,7 @@ function drawMeasurementTablePages(pdfDoc, model, rows, fonts) {
     const tableBudget = Math.max(80, metrics.topY - 106 - metrics.bottomY);
     const headerRows = allRows.filter((row) => sheet.headerRows.includes(row.rowIndex));
     const bodyRows = allRows.filter((row) => !sheet.headerRows.includes(row.rowIndex));
+    const explicitRowsPerPage = Math.max(0, Math.floor(Number(table.pdfRowsPerPage || table.rowsPerPage || 0)));
     const repeatedHeaderHeight = headerHeight + headerRows.reduce((sum, row) => (
       sum + estimatePdfMeasurementDataRowHeight(sheet, row, columns, widths, fonts, dense)
     ), 0);
@@ -3380,6 +3587,9 @@ function drawMeasurementTablePages(pdfDoc, model, rows, fonts) {
       while (cursor < bodyRows.length) {
         const row = bodyRows[cursor];
         const rowHeight = estimatePdfMeasurementDataRowHeight(sheet, row, columns, widths, fonts, dense);
+        if (explicitRowsPerPage > 0 && pageBodyRows.length >= explicitRowsPerPage) {
+          break;
+        }
         if (pageBodyRows.length && usedHeight + rowHeight > maxBodyHeight) {
           break;
         }
@@ -3604,6 +3814,90 @@ function drawCertificatePage(pdfDoc, model, fonts, signatureImage = null) {
       signatureImage,
     });
   }
+  return page;
+}
+
+const SKIP_SEPARATE_PERFORMERS_PAGE_CODES = new Set(["HMUV", "PZ", "SO", "SP"]);
+const SKIP_SEPARATE_FINAL_PAGE_CODES = new Set(["EOTP", "EXOV", "EXSE", "NNZD", "SZOMV", "VES"]);
+const SKIP_MEASUREMENT_TABLE_PAGE_CODES = new Set(["NNZD"]);
+
+function drawInspectionPerformersPage(pdfDoc, model, fonts) {
+  const serviceCode = clean(getServiceCode(model)).toUpperCase();
+  if (SKIP_SEPARATE_PERFORMERS_PAGE_CODES.has(serviceCode)) {
+    return null;
+  }
+  if (!isCertificateCapableReport(model) || !shouldIssueCertificate(model)) {
+    return null;
+  }
+  const inspectors = cleanMultiline(
+    model.inspectors
+      || model.IZVRSITELJI
+      || model.WORK_ORDER_EXECUTORS
+      || "",
+  );
+  const responsible = cleanMultiline(model.responsiblePerson || "");
+  const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  let y = drawSimpleHeader(page, model, fonts);
+  y -= 8;
+  y = drawSectionTitle(page, 8, "PREGLED I ISPITIVANJE OBAVILI", y, fonts);
+  y = drawTextBlock(page, "Pregled i ispitivanje provedeno je u opsegu navedenom u zapisniku, prema dostupnoj dokumentaciji i izvedenom stanju sustava.", {
+    x: MARGIN_X + 2,
+    y,
+    width: PAGE_WIDTH - (MARGIN_X * 2) - 4,
+    font: fonts.regular,
+    size: 8.8,
+    lineHeight: 11.5,
+    maxLines: 4,
+  });
+  y -= 12;
+  y = drawKeyValueTable(page, [
+    ["Pregled i ispitivanje obavili:", inspectors || responsible || "-"],
+    ["Dokaze iz Zapisnika ocijenio:", responsible || inspectors || "-"],
+  ], y, fonts, {
+    keyWidth: 175,
+    fontSize: 8.6,
+    lineHeight: 11.4,
+    minRowHeight: 34,
+  });
+  y -= 26;
+  const columnWidth = (PAGE_WIDTH - (MARGIN_X * 2) - 24) / 2;
+  drawTextLine(page, "Pregled i ispitivanje obavili:", {
+    x: MARGIN_X,
+    y,
+    width: columnWidth,
+    align: "center",
+    font: fonts.regular,
+    size: 8,
+  });
+  drawTextBlock(page, inspectors || "-", {
+    x: MARGIN_X,
+    y: y - 15,
+    width: columnWidth,
+    align: "center",
+    font: fonts.bold,
+    size: 8,
+    lineHeight: 10.5,
+    maxLines: 4,
+  });
+  const rightX = MARGIN_X + columnWidth + 24;
+  drawTextLine(page, "Dokaze iz Zapisnika ocijenio:", {
+    x: rightX,
+    y,
+    width: columnWidth,
+    align: "center",
+    font: fonts.regular,
+    size: 8,
+  });
+  drawTextBlock(page, responsible || "-", {
+    x: rightX,
+    y: y - 15,
+    width: columnWidth,
+    align: "center",
+    font: fonts.bold,
+    size: 8,
+    lineHeight: 10.5,
+    maxLines: 4,
+  });
   return page;
 }
 
@@ -3974,9 +4268,14 @@ async function appendDocumentationSprRecord(pdfDoc, model = {}, rows = [], fonts
     drawCertificatePage(pdfDoc, model, fonts, signatureImage);
   }
   await drawOpeningPages(pdfDoc, model, safeRows, fonts, headerImage);
+  drawEizAllowedValuesPage(pdfDoc, model, fonts);
+  drawAdditionalServiceCriteriaPage(pdfDoc, model, fonts);
   drawChecklistPages(pdfDoc, model, fonts);
   drawMeasurementTablePages(pdfDoc, model, safeRows, fonts);
-  drawPageFour(pdfDoc, model, fonts, signatureImage);
+  drawInspectionPerformersPage(pdfDoc, model, fonts);
+  if (!SKIP_SEPARATE_FINAL_PAGE_CODES.has(clean(getServiceCode(model)).toUpperCase())) {
+    drawPageFour(pdfDoc, model, fonts, signatureImage);
+  }
   await appendAttachments(pdfDoc, model, fonts);
   const pageCount = pdfDoc.getPageCount() - startPageIndex;
   stampFooters(pdfDoc, model, fonts, { startPageIndex, pageCount });
@@ -4362,6 +4661,475 @@ function drawBatchHandoverPageV2(pdfDoc, entries, fonts, handover = {}, signatur
     size: 7.2,
   });
   return { page, signatureFieldCount };
+}
+
+function normalizeHandoverProtocolRows(protocol = {}) {
+  return (Array.isArray(protocol?.rows) ? protocol.rows : [])
+    .map((row, index) => {
+      const item = row && typeof row === "object" ? row : {};
+      return {
+        id: clean(item.id || `handover-row-${index + 1}`),
+        service: clean(item.service || item.USLUGA || item.NAZIV || item.name || item.title),
+        objectName: clean(item.objectName || item.OBJEKT || item.USLUGA_OBJEKT),
+        documentNumber: clean(item.documentNumber || item.BROJ_DOKUMENTA || item.recordNumber),
+        quantity: clean(item.quantity || item.KOLICINA || item.measurementsCount || "1") || "1",
+        note: clean(item.note || item.NAPOMENA || item.NAPOMENA_USLUGE),
+      };
+    })
+    .filter((row) => row.service || row.documentNumber || row.quantity || row.note);
+}
+
+function resolveNativeHandoverContext(protocol = {}) {
+  const workOrderNumber = clean(protocol.workOrderNumber || protocol.RN_BROJ || protocol.BROJ_RADNOG_NALOGA);
+  const issuedDate = formatDocumentDate(protocol.issuedDate || protocol.DATUM_IZDAVANJA);
+  return {
+    title: clean(protocol.title) || "PRIMOPREDAJNI ZAPISNIK",
+    subtitle: clean(protocol.subtitle) || "O OBAVLJENIM USLUGAMA IZ PODRUCJA ZASTITE NA RADU I ZASTITE OD POZARA",
+    workOrderNumber,
+    customerName: clean(protocol.customerName || protocol.NARUCITELJ_NAZIV),
+    customerAddress: clean(protocol.customerAddress || protocol.NARUCITELJ_SJEDISTE),
+    customerOib: clean(protocol.customerOib || protocol.NARUCITELJ_OIB),
+    executorName: clean(protocol.executorName || protocol.IZVRSITELJ_NAZIV || "ADRIA GRUPA d.o.o."),
+    executorAddress: clean(protocol.executorAddress || protocol.IZVRSITELJ_SJEDISTE || "Heinzelova 53a, 10000 Zagreb"),
+    executorOib: clean(protocol.executorOib || protocol.IZVRSITELJ_OIB),
+    location: clean(protocol.location || protocol.LOKACIJA_ISPITIVANJA || protocol.LOKACIJA),
+    objectName: clean(protocol.objectName || protocol.OBJEKT),
+    contractType: clean(protocol.contractType || protocol.VRSTA_UGOVORA),
+    issuedPlace: clean(protocol.issuedPlace || protocol.MJESTO_IZDAVANJA || "Zagrebu"),
+    issuedDate,
+    completedBy: clean(protocol.completedBy || protocol.ZAVRSIO_RADNI_NALOG),
+    preparedBy: clean(protocol.preparedBy || protocol.executorVerifierName || protocol.IZRADIO_ZAPISNIK),
+    customerSignatureLabel: clean(protocol.customerSignatureLabel || protocol.OVJERIO_NARUCITELJ || "Ovjerio narucitelj:"),
+    executorSignatureLabel: clean(protocol.executorSignatureLabel || protocol.OVJERIO_IZVRSITELJ || "Ovjerio izvrsitelj:"),
+    rows: normalizeHandoverProtocolRows(protocol),
+  };
+}
+
+function drawNativeHandoverHeader(page, context, fonts) {
+  const x = 52;
+  const width = PAGE_WIDTH - 104;
+  const top = 792;
+  page.drawCircle({
+    x: x + 16,
+    y: top - 21,
+    size: 15,
+    borderColor: BLUE,
+    borderWidth: 1.6,
+  });
+  drawTextLine(page, "AG", {
+    x: x + 2,
+    y: top - 13,
+    width: 28,
+    align: "center",
+    font: fonts.bold,
+    size: 11,
+    color: BLUE,
+  });
+  drawTextLine(page, "ADRIA GRUPA", {
+    x: x + 40,
+    y: top - 7,
+    font: fonts.bold,
+    size: 13.2,
+    color: BLUE,
+  });
+  drawTextLine(page, "FACILITY MANAGEMENT", {
+    x: x + 42,
+    y: top - 23,
+    font: fonts.regular,
+    size: 6.6,
+    color: BLUE,
+  });
+  drawTextLine(page, "Sektor: ZASTITNI SUSTAVI", {
+    x: x + 244,
+    y: top - 9,
+    width: 190,
+    align: "center",
+    font: fonts.bold,
+    size: 8.3,
+    color: BLUE,
+  });
+  drawTextLine(page, "Zastita na radu - Zastita od pozara - Zastita okolisa", {
+    x: x + 218,
+    y: top - 24,
+    width: 248,
+    align: "center",
+    font: fonts.bold,
+    size: 7.4,
+    color: BLUE,
+  });
+  drawTextLine(page, context.workOrderNumber || "", {
+    x: x + width - 82,
+    y: top - 6,
+    width: 82,
+    align: "right",
+    font: fonts.regular,
+    size: 8,
+    color: MUTED,
+  });
+  page.drawLine({
+    start: { x, y: top - 42 },
+    end: { x: x + width, y: top - 42 },
+    thickness: 1.6,
+    color: BLUE,
+  });
+  drawTextLine(page, "ADRIA GRUPA d.o.o., Heinzelova 53a, 10000 Zagreb, tel: 01 2359 942, fax: 01 2359 908", {
+    x,
+    y: top - 58,
+    width,
+    align: "center",
+    font: fonts.regular,
+    size: 7.2,
+    color: BLUE,
+  });
+  drawTextLine(page, "e-mail: zastitni.sustavi@adria-grupa.hr, web: www.adria-grupa.hr, MB: 1759906, OIB: 06637660960", {
+    x,
+    y: top - 72,
+    width,
+    align: "center",
+    font: fonts.regular,
+    size: 7.2,
+    color: BLUE,
+  });
+  page.drawLine({
+    start: { x, y: top - 86 },
+    end: { x: x + width, y: top - 86 },
+    thickness: 1.6,
+    color: BLUE,
+  });
+  return top - 106;
+}
+
+function drawNativeHandoverPartyBox(page, context, fonts, y) {
+  const x = 52;
+  const width = PAGE_WIDTH - 104;
+  const half = width / 2;
+  const headerHeight = 18;
+  const bodyHeight = 68;
+  drawCell(page, {
+    x,
+    y,
+    width: half,
+    height: headerHeight,
+    text: "Narucitelj usluga:",
+    fonts,
+    fontSize: 8.2,
+    bold: true,
+  });
+  drawCell(page, {
+    x: x + half,
+    y,
+    width: half,
+    height: headerHeight,
+    text: "Izvrsitelj usluga:",
+    fonts,
+    fontSize: 8.2,
+    bold: true,
+  });
+  const customer = [
+    context.customerName,
+    context.customerAddress,
+    context.customerOib ? `OIB: ${context.customerOib}` : "",
+  ].filter(Boolean).join("; ");
+  const executor = [
+    context.executorName,
+    context.executorAddress,
+    context.executorOib ? `OIB: ${context.executorOib}` : "",
+  ].filter(Boolean).join("; ");
+  drawCell(page, {
+    x,
+    y: y - headerHeight,
+    width: half,
+    height: bodyHeight,
+    text: customer || "-",
+    fonts,
+    fontSize: 7.9,
+    bold: true,
+  });
+  drawCell(page, {
+    x: x + half,
+    y: y - headerHeight,
+    width: half,
+    height: bodyHeight,
+    text: executor || "-",
+    fonts,
+    fontSize: 7.9,
+    bold: true,
+  });
+  return y - headerHeight - bodyHeight;
+}
+
+function drawNativeHandoverIntro(page, context, fonts) {
+  let y = drawNativeHandoverHeader(page, context, fonts);
+  drawTextLine(page, context.title, {
+    x: 52,
+    y,
+    width: PAGE_WIDTH - 104,
+    align: "center",
+    font: fonts.bold,
+    size: 17.2,
+  });
+  y -= 26;
+  drawTextLine(page, context.subtitle, {
+    x: 52,
+    y,
+    width: PAGE_WIDTH - 104,
+    align: "center",
+    font: fonts.bold,
+    size: 9,
+  });
+  y -= 28;
+  drawTextLine(page, context.workOrderNumber || "-", {
+    x: 52,
+    y,
+    width: PAGE_WIDTH - 104,
+    align: "center",
+    font: fonts.bold,
+    size: 15,
+  });
+  drawTextLine(page, "Broj radnog naloga", {
+    x: 52,
+    y: y - 15,
+    width: PAGE_WIDTH - 104,
+    align: "center",
+    font: fonts.regular,
+    size: 7.6,
+  });
+  y -= 34;
+  y = drawNativeHandoverPartyBox(page, context, fonts, y);
+  y -= 16;
+  drawTextLine(page, "Lokacija ispitivanja:", {
+    x: 60,
+    y,
+    font: fonts.bold,
+    size: 8.3,
+  });
+  drawTextLine(page, [context.location, context.objectName].filter(Boolean).join("; ") || "-", {
+    x: 164,
+    y,
+    width: PAGE_WIDTH - 224,
+    font: fonts.bold,
+    size: 8.1,
+  });
+  y -= 24;
+  drawTextLine(page, "Vrsta ugovora:", {
+    x: 82,
+    y,
+    font: fonts.bold,
+    size: 8.3,
+  });
+  drawTextLine(page, context.contractType || "-", {
+    x: 164,
+    y,
+    width: PAGE_WIDTH - 224,
+    font: fonts.regular,
+    size: 8.1,
+  });
+  y -= 24;
+  drawTextLine(page, "PRILOG:", {
+    x: 54,
+    y,
+    font: fonts.bold,
+    size: 8.4,
+  });
+  drawTextLine(page, "Popis obavljenih usluga", {
+    x: 94,
+    y,
+    font: fonts.bold,
+    size: 8.4,
+  });
+  return y - 8;
+}
+
+function buildNativeHandoverServiceText(row = {}) {
+  const service = clean(row.service);
+  const objectName = clean(row.objectName);
+  if (service && objectName) {
+    return `${service}\n(${objectName})`;
+  }
+  return service || objectName || "-";
+}
+
+function drawNativeHandoverTableHeader(page, y, fonts) {
+  const x = 52;
+  const widths = [174, 108, 58, 152];
+  const labels = ["Usluga", "Broj dokumenta", "Broj mjernih\nmjesta", "Napomena"];
+  let cellX = x;
+  labels.forEach((label, index) => {
+    drawCell(page, {
+      x: cellX,
+      y,
+      width: widths[index],
+      height: 26,
+      text: label,
+      fonts,
+      fontSize: 7.2,
+      bold: true,
+      fill: TABLE_GRAY,
+    });
+    cellX += widths[index];
+  });
+  return { x, widths, y: y - 26 };
+}
+
+function drawNativeHandoverRows(page, rows, y, fonts, {
+  rowHeight = 42,
+  includeHeader = true,
+} = {}) {
+  const x = 52;
+  const widths = [174, 108, 58, 152];
+  let cursorY = y;
+  if (includeHeader) {
+    const header = drawNativeHandoverTableHeader(page, cursorY, fonts);
+    cursorY = header.y;
+  }
+  rows.forEach((row) => {
+    let cellX = x;
+    [
+      buildNativeHandoverServiceText(row),
+      row.documentNumber || "-",
+      row.quantity || "-",
+      row.note || "-",
+    ].forEach((value, index) => {
+      drawCell(page, {
+        x: cellX,
+        y: cursorY,
+        width: widths[index],
+        height: rowHeight,
+        text: value,
+        fonts,
+        fontSize: index === 3 ? 6.8 : 7.2,
+        align: "center",
+      });
+      cellX += widths[index];
+    });
+    cursorY -= rowHeight;
+  });
+  return cursorY;
+}
+
+function drawNativeHandoverFooter(page, pageNumber, pageCount, context, fonts) {
+  drawTextLine(page, `${pageNumber}/${pageCount}`, {
+    x: 38,
+    y: 28,
+    font: fonts.regular,
+    size: 10,
+  });
+  const stamp = [context.issuedDate, context.issuedPlace].filter(Boolean).join(" ");
+  drawTextLine(page, stamp, {
+    x: PAGE_WIDTH - 172,
+    y: 28,
+    width: 132,
+    align: "right",
+    font: fonts.regular,
+    size: 8,
+    color: LIGHT_GRAY,
+  });
+}
+
+function drawNativeHandoverSignatures(page, context, fonts) {
+  const y = 184;
+  drawTextLine(page, context.customerSignatureLabel || "Ovjerio narucitelj:", {
+    x: 58,
+    y,
+    font: fonts.bold,
+    size: 8.2,
+  });
+  drawTextLine(page, context.executorSignatureLabel || "Ovjerio izvrsitelj:", {
+    x: PAGE_WIDTH - 226,
+    y,
+    font: fonts.bold,
+    size: 8.2,
+  });
+  page.drawLine({
+    start: { x: 58, y: 112 },
+    end: { x: 242, y: 112 },
+    thickness: 0.75,
+    color: DARK,
+  });
+  page.drawLine({
+    start: { x: PAGE_WIDTH - 226, y: 112 },
+    end: { x: PAGE_WIDTH - 42, y: 112 },
+    thickness: 0.75,
+    color: DARK,
+  });
+  drawTextLine(page, context.preparedBy || context.completedBy || "", {
+    x: PAGE_WIDTH - 226,
+    y: 96,
+    width: 184,
+    align: "center",
+    font: fonts.bold,
+    size: 7.6,
+  });
+  const dateText = context.issuedDate ? `U ${context.issuedPlace || "Zagrebu"}, ${context.issuedDate}` : "";
+  drawTextLine(page, dateText, {
+    x: 58,
+    y: 78,
+    font: fonts.regular,
+    size: 8,
+  });
+}
+
+export async function generateDocumentationHandoverPdfBlob({
+  protocol = {},
+  fileName = "",
+} = {}) {
+  const context = resolveNativeHandoverContext(protocol);
+  const pdfDoc = await createSprPdfDocument(context.workOrderNumber || "Primopredajni zapisnik");
+  const fonts = await createDocumentationSprFonts(pdfDoc);
+  const rows = context.rows.length ? context.rows : [{
+    service: "Usluga",
+    documentNumber: context.workOrderNumber,
+    quantity: "1",
+    note: "-",
+  }];
+  const chunks = [];
+  const firstRows = rows.slice(0, 10);
+  chunks.push({ rows: firstRows, firstPage: true });
+  let offset = firstRows.length;
+  while (offset < rows.length) {
+    const remaining = rows.length - offset;
+    const isLastLikely = remaining <= 14;
+    const count = isLastLikely ? remaining : 16;
+    chunks.push({ rows: rows.slice(offset, offset + count), firstPage: false });
+    offset += count;
+  }
+  if (chunks.length < 3 && rows.length > 10) {
+    chunks.push({ rows: [], firstPage: false });
+  }
+  const pageCount = chunks.length;
+  chunks.forEach((chunk, pageIndex) => {
+    const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    const isFirst = pageIndex === 0;
+    const isLast = pageIndex === chunks.length - 1;
+    if (isFirst) {
+      page.drawLine({
+        start: { x: 36, y: 70 },
+        end: { x: 36, y: 588 },
+        thickness: 2.4,
+        color: BLUE,
+      });
+    }
+    const tableY = isFirst
+      ? drawNativeHandoverIntro(page, context, fonts)
+      : drawNativeHandoverHeader(page, context, fonts) - 8;
+    drawNativeHandoverRows(page, chunk.rows, tableY, fonts, {
+      rowHeight: isFirst ? 34 : (isLast ? 38 : 36),
+      includeHeader: isFirst,
+    });
+    if (isLast) {
+      drawNativeHandoverSignatures(page, context, fonts);
+    }
+    drawNativeHandoverFooter(page, pageIndex + 1, pageCount, context, fonts);
+  });
+  const bytes = await pdfDoc.save({ useObjectStreams: false });
+  const blob = new Blob([bytes], { type: "application/pdf" });
+  return {
+    blob,
+    bytes,
+    fileName: safeFileName(fileName || `${context.workOrderNumber || "RN"}-PrimopredajniZapisnik.pdf`),
+    pageCount: pdfDoc.getPageCount(),
+    signatureFieldCount: 0,
+  };
 }
 
 function createSprPdfDocument(title = "Zapisnik") {
