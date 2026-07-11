@@ -3923,13 +3923,15 @@ private fun JSONArray?.toWorkOrderDocumentationFields(): List<WorkOrderDocumenta
     return buildList {
         for (index in 0 until length()) {
             val item = optJSONObject(index) ?: continue
+            val resolvedType = item.firstClean("fieldType", "actualFieldType")
+                .ifBlank { item.firstClean("type").ifBlank { "text" } }
             add(
                 WorkOrderDocumentationField(
                     id = item.firstClean("id"),
                     key = item.firstClean("key"),
                     tokenKey = item.firstClean("tokenKey"),
                     label = item.firstClean("label").ifBlank { "Polje" },
-                    type = item.firstClean("type").ifBlank { "text" },
+                    type = resolvedType,
                     required = item.optBoolean("required", false),
                     helpText = item.firstClean("helpText"),
                     defaultValue = item.firstClean("defaultValue"),

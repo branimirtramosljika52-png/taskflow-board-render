@@ -46878,7 +46878,7 @@ private fun isDocumentationRecommendationsTemplateField(
     }
 
 private fun isDocumentationRichAiField(field: WorkOrderDocumentationField): Boolean =
-    field.type.lowercase(Locale.getDefault()) in setOf("richtext", "longtext", "textarea")
+    field.type.lowercase(Locale.getDefault()) in setOf("richtext", "longtext", "textarea", "system_description")
 
 private fun documentationSatisfactoryValueIsPositive(value: String): Boolean {
     val lookup = normalizeTemplateSectionLookup(value)
@@ -47515,7 +47515,7 @@ private fun TemplateFieldInput(
                     }
                 }
             }
-            "richtext" -> DocumentationMobileRichTextField(
+            "richtext", "system_description" -> DocumentationMobileRichTextField(
                 label = label,
                 value = value,
                 onChange = onChange,
