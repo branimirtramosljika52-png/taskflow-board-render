@@ -119,7 +119,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.420.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.421.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -28911,8 +28911,14 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
   let mergedDefaults = null;
 
   services.forEach((service, serviceIndex) => {
+    const linkedTemplateIds = Array.from(new Set(
+      getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot)
+        .map((templateId) => String(templateId || "").trim())
+        .filter(Boolean)
+        .filter((templateId) => isActiveMobileDocumentTemplate(templateById.get(String(templateId)))),
+    ));
     const nativeTemplate = buildMobileNativeDocumentationTemplate(service, serviceIndex, workOrder, scopedSnapshot);
-    if (nativeTemplate) {
+    if (nativeTemplate && linkedTemplateIds.length === 0) {
       const latestRecord = findLatestMobileDocumentRecordForTemplate(nativeTemplate, workOrder, scopedSnapshot);
       const latestMeasurementRecord = findLatestMobileDocumentRecordForTemplate(
         nativeTemplate,
@@ -28944,7 +28950,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
       }
       return;
     }
-    getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot).forEach((templateId) => {
+    linkedTemplateIds.forEach((templateId) => {
       const template = templateById.get(String(templateId));
       if (!isActiveMobileDocumentTemplate(template)) {
         return;
