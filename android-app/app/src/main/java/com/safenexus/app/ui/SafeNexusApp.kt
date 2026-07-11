@@ -44785,6 +44785,7 @@ private fun DocumentationAiUploadChoice(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TemplateBlockSectionCard(
     template: WorkOrderDocumentationTemplate,
@@ -44794,6 +44795,8 @@ private fun TemplateBlockSectionCard(
     onChange: (WorkOrderDocumentationField, String) -> Unit,
 ) {
     var expanded by remember(template.id, section.id) { mutableStateOf(isBasicTemplateSection(section)) }
+    var quickEditField by remember(template.id, section.id) { mutableStateOf<WorkOrderDocumentationField?>(null) }
+    var quickEditValue by remember(template.id, section.id) { mutableStateOf("") }
     val includeBasics = isBasicTemplateSection(section)
     val includeEquipment = false
     val includeLegal = isLegalTemplateSection(section)
@@ -44810,11 +44813,80 @@ private fun TemplateBlockSectionCard(
         detailBlocks.isNotEmpty() ||
         section.header?.summary?.isNotBlank() == true ||
         section.header?.helpText?.isNotBlank() == true
+    val quickEditableField = detailBlocks.firstNotNullOfOrNull { block ->
+        val field = findTemplateFieldForBlock(template, block) ?: return@firstNotNullOfOrNull null
+        if (shouldHideSzomvConditionalChecklistField(template, field, values)) return@firstNotNullOfOrNull null
+        val type = field.type.lowercase(Locale.getDefault())
+        if (type == "spr_voice" || type == "toggle" || type == "checkbox") null else field
+    }
+    if (quickEditField != null) {
+        val field = quickEditField
+        if (field != null) {
+            AlertDialog(
+                onDismissRequest = { quickEditField = null },
+                title = {
+                    Text(
+                        field.label.ifBlank { section.title },
+                        fontWeight = FontWeight.Black,
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .heightIn(max = 520.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            "Uredi vrijednost ovog polja. Promjena se sprema u zapisnik i ide u iduće periodično ispitivanje nakon izrade dokumentacije.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.62f),
+                        )
+                        TemplateFieldInput(
+                            field = field,
+                            value = quickEditValue,
+                            enabled = standardControls.enabled,
+                            onChange = { quickEditValue = it },
+                            voiceContext = listOf(template.serviceCode, template.title, section.title, field.helpText).joinToString(" "),
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            onChange(field, quickEditValue)
+                            expanded = true
+                            quickEditField = null
+                        },
+                        enabled = standardControls.enabled,
+                    ) {
+                        Text("Spremi", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { quickEditField = null }) {
+                        Text("Odustani")
+                    }
+                },
+            )
+        }
+    }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .clickable(enabled = canExpand) { expanded = !expanded },
+            .combinedClickable(
+                enabled = canExpand,
+                onClick = { expanded = !expanded },
+                onLongClick = {
+                    if (standardControls.enabled && quickEditableField != null) {
+                        quickEditField = quickEditableField
+                        quickEditValue = values[templateFieldStateKey(template, quickEditableField)].orEmpty()
+                    } else {
+                        expanded = true
+                    }
+                },
+            ),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
     ) {

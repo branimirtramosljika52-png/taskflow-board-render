@@ -22,9 +22,14 @@ function normalizeCode(value = "") {
 }
 
 const DOCUMENTATION_NATIVE_CERTIFICATE_SERVICE_CODE_SET = new Set(DOCUMENTATION_NATIVE_CERTIFICATE_SERVICE_CODES);
+const DOCUMENTATION_NATIVE_SINGLE_SYSTEM_DESCRIPTION_SERVICE_CODE_SET = new Set(DOCUMENTATION_NATIVE_CERTIFICATE_SERVICE_CODES);
 
 export function isDocumentationNativeCertificateService(serviceCode = "") {
   return DOCUMENTATION_NATIVE_CERTIFICATE_SERVICE_CODE_SET.has(normalizeCode(serviceCode));
+}
+
+export function isDocumentationNativeSingleSystemDescriptionService(serviceCode = "") {
+  return DOCUMENTATION_NATIVE_SINGLE_SYSTEM_DESCRIPTION_SERVICE_CODE_SET.has(normalizeCode(serviceCode));
 }
 
 export function buildDocumentationNativeCertificateNumber(recordNumber = "") {

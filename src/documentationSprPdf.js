@@ -5,6 +5,7 @@ import {
   createDocumentationMeasurementTablesForService,
   buildDocumentationNativeCertificateNumber,
   getDocumentationNativeReportPreset,
+  isDocumentationNativeSingleSystemDescriptionService,
 } from "./documentationNativePresets.js";
 import {
   evaluateMeasurementFormula,
@@ -817,6 +818,10 @@ function getPdfTechnicalSectionTitle(model = {}) {
   return getServiceCode(model) === "EIZ" ? "TEHNIČKI PODACI SUSTAVA" : "TEHNIČKI PODACI";
 }
 
+function usesSingleSystemDescription(model = {}) {
+  return isDocumentationNativeSingleSystemDescriptionService(getServiceCode(model));
+}
+
 function getPdfTechnicalDataEntries(value = "") {
   return splitTextLines(value)
     .map((line) => {
@@ -988,7 +993,7 @@ async function drawRichTextBlocks(pdfDoc, page, model, value, y, fonts) {
 
 function drawPageOne(pdfDoc, model, rows, fonts, headerImage) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-  const hasTechnicalData = splitTextLines(model.technicalData).length > 0;
+  const hasTechnicalData = !usesSingleSystemDescription(model) && splitTextLines(model.technicalData).length > 0;
   const lineTop = PAGE_HEIGHT - 92;
   page.drawRectangle({
     x: 18,
@@ -1047,7 +1052,8 @@ function drawPageOne(pdfDoc, model, rows, fonts, headerImage) {
 
 function drawPageTwo(pdfDoc, model, fonts) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-  const sectionOffset = splitTextLines(model.technicalData).length > 0 ? 1 : 0;
+  const showResultsText = !usesSingleSystemDescription(model);
+  const sectionOffset = !usesSingleSystemDescription(model) && splitTextLines(model.technicalData).length > 0 ? 1 : 0;
   const systemDescription = cleanMultiline(model.systemDescription);
   let y = drawSimpleHeader(page, model, fonts);
   y = drawSectionTitle(page, 4 + sectionOffset, "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA", y, fonts);
@@ -1066,17 +1072,19 @@ function drawPageTwo(pdfDoc, model, fonts) {
     });
     y -= 8;
   }
-  y = drawSectionTitle(page, 5 + sectionOffset + (systemDescription ? 1 : 0), "REZULTATI ISPITIVANJA", y, fonts);
-  y = drawTextBlock(page, cleanMultiline(model.resultsText), {
-    x: MARGIN_X + 2,
-    y,
-    width: PAGE_WIDTH - (MARGIN_X * 2) - 4,
-    font: fonts.regular,
-    size: 8.7,
-    lineHeight: 11.6,
-    maxLines: 34,
-  });
-  y -= 8;
+  if (showResultsText) {
+    y = drawSectionTitle(page, 5 + sectionOffset + (systemDescription ? 1 : 0), "REZULTATI ISPITIVANJA", y, fonts);
+    y = drawTextBlock(page, cleanMultiline(model.resultsText), {
+      x: MARGIN_X + 2,
+      y,
+      width: PAGE_WIDTH - (MARGIN_X * 2) - 4,
+      font: fonts.regular,
+      size: 8.7,
+      lineHeight: 11.6,
+      maxLines: 34,
+    });
+    y -= 8;
+  }
   page.drawRectangle({
     x: MARGIN_X,
     y: y - 18,
@@ -1116,6 +1124,7 @@ function drawPageTwo(pdfDoc, model, fonts) {
 async function drawOpeningPages(pdfDoc, model, rows, fonts, headerImage) {
   let { page, y, sectionOffset } = drawPageOne(pdfDoc, model, rows, fonts, headerImage);
   const systemDescription = String(model.systemDescription || "").trim();
+  const showResultsText = !usesSingleSystemDescription(model);
   const ensureSpace = (neededHeight = 72) => {
     if (y - neededHeight >= BOTTOM_Y) {
       return;
@@ -1138,11 +1147,13 @@ async function drawOpeningPages(pdfDoc, model, rows, fonts, headerImage) {
     y = richSystem.y - 6;
   }
 
-  ensureSpace(96);
-  y = drawSectionTitle(page, 5 + sectionOffset + (systemDescription ? 1 : 0), "REZULTATI ISPITIVANJA", y, fonts);
-  const richResult = await drawRichTextBlocks(pdfDoc, page, model, model.resultsText, y, fonts);
-  page = richResult.page;
-  y = richResult.y - 6;
+  if (showResultsText) {
+    ensureSpace(96);
+    y = drawSectionTitle(page, 5 + sectionOffset + (systemDescription ? 1 : 0), "REZULTATI ISPITIVANJA", y, fonts);
+    const richResult = await drawRichTextBlocks(pdfDoc, page, model, model.resultsText, y, fonts);
+    page = richResult.page;
+    y = richResult.y - 6;
+  }
 
   const noteLines = [clean(model.eiNote), clean(model.eiminNote)].filter(Boolean);
   if (noteLines.length) {
@@ -2844,7 +2855,8 @@ export function buildDocumentationNativeHtml({
   }
   const serviceCode = clean(getServiceCode(model)).toUpperCase() || "ZAPISNIK";
   const title = clean(model.reportTitle || getReportServiceTitle(model));
-  const hasTechnicalData = splitTextLines(model.technicalData).length > 0;
+  const singleSystemDescription = usesSingleSystemDescription(model);
+  const hasTechnicalData = !singleSystemDescription && splitTextLines(model.technicalData).length > 0;
   const metaRows = [
     ["Narucitelj", `${clean(model.companyName)}; ${clean(model.companyAddress)}; OIB: ${clean(model.companyOib)}`],
     ["Korisnik prostora", model.spaceUser],
@@ -2984,10 +2996,12 @@ export function buildDocumentationNativeHtml({
         <div class="text-box">${formatNativeRichTextHtml(model.systemDescription)}</div>
       </section>
     ` : ""}
-    <section class="sn-ex-section">
-      <div class="section-label">${hasTechnicalData ? "7" : "6"}. Rezultati ispitivanja</div>
-      <div class="text-box">${formatNativeRichTextHtml(model.resultsText)}</div>
-    </section>
+    ${singleSystemDescription ? "" : `
+      <section class="sn-ex-section">
+        <div class="section-label">${hasTechnicalData ? "7" : "6"}. Rezultati ispitivanja</div>
+        <div class="text-box">${formatNativeRichTextHtml(model.resultsText)}</div>
+      </section>
+    `}
 
     ${renderNativeHtmlChecklists(model)}
     ${renderNativeHtmlMeasurementTables(model, rows)}

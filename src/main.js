@@ -145,6 +145,7 @@ import {
   buildDocumentationNativeCertificateNumber,
   getDocumentationNativeReportPreset,
   getDocumentationNativeTemplateSeedPresets,
+  isDocumentationNativeSingleSystemDescriptionService,
 } from "./documentationNativePresets.js";
 import {
   DEFAULT_MEASUREMENT_COLUMNS,
@@ -59216,7 +59217,9 @@ function normalizeDocumentationSprBoolean(value, defaultValue = false) {
 function normalizeDocumentationSprModel(value) {
   const fallback = createDefaultDocumentationSprModel();
   const source = value && typeof value === "object" ? value : {};
-  const serviceDefaults = createDocumentationReportModelDefaults(getDocumentationSprServiceCode({ ...fallback, ...source }));
+  const normalizedServiceCode = getDocumentationSprServiceCode({ ...fallback, ...source });
+  const serviceDefaults = createDocumentationReportModelDefaults(normalizedServiceCode);
+  const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(serviceDefaults.serviceCode || normalizedServiceCode);
   const defaultTechnicalData = formatDocumentationTechnicalDataFields(serviceDefaults.technicalDataFields || []);
   const inspectorUserIds = normalizeDocumentationSprIdList(source.inspectorUserIds);
   const responsiblePersonUserId = String(source.responsiblePersonUserId || "").trim();
@@ -59224,6 +59227,8 @@ function normalizeDocumentationSprModel(value) {
   const sourceRecordNumber = String(source.recordNumber || fallback.recordNumber || "").trim();
   const certificateNumber = String(source.certificateNumber || source.BROJ_UVJERENJA || "").trim()
     || (hasCertificate ? buildDocumentationNativeCertificateNumber(sourceRecordNumber) : "");
+  const sourceSystemDescription = String(source.systemDescription || source.SYSTEM_DESCRIPTION || source.OPIS_SUSTAVA || "").trim();
+  const sourceTechnicalData = String(source.technicalData || source.TEHNICKI_PODACI || source.TECHNICAL_DATA || source.DOCUMENTATION_TECHNICAL_DATA || "").trim();
   return {
     ...fallback,
     ...Object.fromEntries(Object.entries(source).filter(([key]) => key !== "gridlineModel")),
@@ -59243,8 +59248,8 @@ function normalizeDocumentationSprModel(value) {
     certificateLead: source.certificateLead || serviceDefaults.certificateLead || fallback.certificateLead || "",
     certificateResultText: source.certificateResultText || serviceDefaults.certificateResultText || fallback.certificateResultText || "",
     certificateFactualNote: String(source.certificateFactualNote || source.NAPOMENA_BEZ_UVJERENJA || "").trim(),
-    systemDescription: source.systemDescription || source.SYSTEM_DESCRIPTION || source.OPIS_SUSTAVA || serviceDefaults.systemDescription || fallback.systemDescription || "",
-    resultsText: source.resultsText || source.OPIS_ISPITIVANJA || source.REZULTATI_ISPITIVANJA || serviceDefaults.resultsText || fallback.resultsText,
+    systemDescription: sourceSystemDescription || (singleSystemDescription ? sourceTechnicalData : "") || serviceDefaults.systemDescription || fallback.systemDescription || "",
+    resultsText: singleSystemDescription ? "" : (source.resultsText || source.OPIS_ISPITIVANJA || source.REZULTATI_ISPITIVANJA || serviceDefaults.resultsText || fallback.resultsText),
     assessmentLabel: source.assessmentLabel || serviceDefaults.assessmentLabel || fallback.assessmentLabel,
     conclusionLead: source.conclusionLead || serviceDefaults.conclusionLead || fallback.conclusionLead,
     validitySentence: source.validitySentence || serviceDefaults.validitySentence || fallback.validitySentence,
@@ -59269,7 +59274,7 @@ function normalizeDocumentationSprModel(value) {
     collapsedSections: normalizeDocumentationSprCollapsedSections(source.collapsedSections),
     aiSources: normalizeDocumentationSprAiSources(source.aiSources),
     attachments: normalizeDocumentationSprAttachments(source.attachments),
-    technicalData: String(source.technicalData || defaultTechnicalData || fallback.technicalData || "").trim(),
+    technicalData: singleSystemDescription ? "" : String(source.technicalData || defaultTechnicalData || fallback.technicalData || "").trim(),
     checklists: normalizeDocumentationSprChecklists(source.checklists, { ...fallback, ...source }),
     measurementAssessments: normalizeDocumentationSprMeasurementAssessments(source.measurementAssessments, { ...fallback, ...source }),
     measurementTables: normalizeDocumentationSprMeasurementTables(source.measurementTables, { ...fallback, ...source }),
@@ -59701,6 +59706,7 @@ function normalizeDocumentationSprTemplateEntry(entry = null, index = 0) {
 function buildDocumentationNativeTemplateModel(preset = {}) {
   const base = createDefaultDocumentationSprModel();
   const reportDefaults = createDocumentationReportModelDefaults(preset.serviceCode || base.serviceCode || "SPR");
+  const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(reportDefaults.serviceCode || preset.serviceCode);
   return {
     ...base,
     templateCode: preset.name || base.templateCode,
@@ -59710,8 +59716,8 @@ function buildDocumentationNativeTemplateModel(preset = {}) {
     coverSubtitle: preset.coverSubtitle || reportDefaults.coverSubtitle,
     measurementTableTitle: preset.measurementTableTitle || reportDefaults.measurementTableTitle,
     systemDescription: preset.systemDescription || reportDefaults.systemDescription || "",
-    resultsText: preset.resultsText || reportDefaults.resultsText,
-    technicalData: formatDocumentationTechnicalDataFields(preset.technicalDataFields || reportDefaults.technicalDataFields),
+    resultsText: singleSystemDescription ? "" : (preset.resultsText || reportDefaults.resultsText),
+    technicalData: singleSystemDescription ? "" : formatDocumentationTechnicalDataFields(preset.technicalDataFields || reportDefaults.technicalDataFields),
     projectDocumentation: preset.projectDocumentation || reportDefaults.projectDocumentation || base.projectDocumentation,
     eiNote: preset.eiNote || reportDefaults.eiNote,
     eiminNote: preset.eiminNote || reportDefaults.eiminNote,
@@ -59760,6 +59766,7 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
   }
   const nativeModel = buildDocumentationNativeTemplateModel(preset);
   const currentModel = normalizeDocumentationSprModel(entry.model);
+  const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(preset.serviceCode || nativeModel.serviceCode || currentModel.serviceCode);
   const seedCreatedAt = "2026-01-01T00:00:00.000Z";
   const isBuiltInSeed = normalizeLooseName(entry.id) === normalizeLooseName(preset.id);
   const hasUserEdits = Boolean(String(entry.updatedAt || "").trim())
@@ -59796,9 +59803,9 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
       reportTitle: currentModel.reportTitle || nativeModel.reportTitle,
       coverSubtitle: currentModel.coverSubtitle || nativeModel.coverSubtitle,
       measurementTableTitle: currentModel.measurementTableTitle || nativeModel.measurementTableTitle,
-      systemDescription: currentModel.systemDescription || nativeModel.systemDescription,
-      resultsText: currentModel.resultsText || nativeModel.resultsText,
-      technicalData: currentModel.technicalData || nativeModel.technicalData,
+      systemDescription: currentModel.systemDescription || (singleSystemDescription ? currentModel.technicalData : "") || nativeModel.systemDescription,
+      resultsText: singleSystemDescription ? "" : (currentModel.resultsText || nativeModel.resultsText),
+      technicalData: singleSystemDescription ? "" : (currentModel.technicalData || nativeModel.technicalData),
       eiNote: currentModel.eiNote || nativeModel.eiNote,
       eiminNote: currentModel.eiminNote || nativeModel.eiminNote,
       assessmentLabel: currentModel.assessmentLabel || nativeModel.assessmentLabel,
@@ -61304,6 +61311,7 @@ function applyDocumentationSprPreviousRecordToModel(model = {}, entry = {}, reco
   const previousGridlineModel = buildDocumentationSprGridlineModelFromPreviousSheet(previousSheet);
   const previousMeasurementTables = getDocumentationSprPreviousRecordMeasurementTables(record, next);
   const previousAttachments = getDocumentationSprPreviousRecordAttachments(record);
+  const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(getDocumentationSprServiceCode(next));
   if (previousMeasurementTables.length > 0) {
     next.measurementTables = previousMeasurementTables;
   }
@@ -61316,16 +61324,17 @@ function applyDocumentationSprPreviousRecordToModel(model = {}, entry = {}, reco
   next.projectDocumentation = fieldText(["KORISTENA_DOKUMENTACIJA", "PROJECT_DOCUMENTATION", "TEHNICKA_DOKUMENTACIJA"])
     || next.projectDocumentation
     || `Prethodni zapisnik ${previousLabel}`;
-  next.technicalData = fieldText(["TECHNICAL_DATA", "TEHNICKI_PODACI", "TEHNICKI_PODACI_SUSTAVA", "DOCUMENTATION_TECHNICAL_DATA"])
-    || next.technicalData;
+  const previousTechnicalData = fieldText(["TECHNICAL_DATA", "TEHNICKI_PODACI", "TEHNICKI_PODACI_SUSTAVA", "DOCUMENTATION_TECHNICAL_DATA"]);
+  next.technicalData = singleSystemDescription ? "" : (previousTechnicalData || next.technicalData);
   next.systemDescription = fieldText([
     "DOCUMENTATION_SPR_SYSTEM_DESCRIPTION",
     "SYSTEM_DESCRIPTION",
     "OPIS_SUSTAVA",
     "OPIS_SUSTAVA_HTML",
   ])
+    || (singleSystemDescription ? previousTechnicalData : "")
     || next.systemDescription;
-  next.resultsText = fieldText([
+  next.resultsText = singleSystemDescription ? "" : (fieldText([
     "DOCUMENTATION_SPR_RESULTS_TEXT",
     "SPR_RESULTS_TEXT",
     "RESULTS_TEXT",
@@ -61333,7 +61342,7 @@ function applyDocumentationSprPreviousRecordToModel(model = {}, entry = {}, reco
     "OPIS_ISPITIVANJA",
     "REZULTATI_ISPITIVANJA",
   ])
-    || next.resultsText;
+    || next.resultsText);
   next.resultStatus = fieldText(["DOCUMENTATION_SPR_RESULT_STATUS", "SPR_RESULT_STATUS", "RESULT_STATUS", "ZAKLJUCNA_OCJENA", "OCJENA", "ZADOVOLJAVA"])
     || next.resultStatus;
   next.defects = fieldText(["DOCUMENTATION_SPR_DEFECTS", "SPR_DEFECTS", "DEFECTS", "NEDOSTACI"])
@@ -63476,6 +63485,11 @@ function renderDocumentationSprTechnicalSection() {
   if (!(documentationSprTechnicalSection instanceof HTMLElement) || !documentationSprModel) {
     return;
   }
+  if (isDocumentationNativeSingleSystemDescriptionService(getDocumentationSprServiceCode(documentationSprModel))) {
+    documentationSprTechnicalSection.hidden = true;
+    documentationSprTechnicalFields?.replaceChildren();
+    return;
+  }
   const definitions = getDocumentationSprTechnicalFieldDefinitions(documentationSprModel);
   const hasDefinitions = definitions.length > 0;
   const hasText = Boolean(String(documentationSprModel.technicalData || "").trim());
@@ -63610,13 +63624,14 @@ function syncDocumentationSprSectionTags() {
   const resultText = richTextHtmlToPlainText(resultHtml);
   const resultImageCount = (resultHtml.match(/<img\b/gi) || []).length;
   const measurementPointCount = getDocumentationSprMeasurementPointCount();
+  const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(getDocumentationSprServiceCode(documentationSprModel));
 
   setDocumentationSprSectionTags(documentationWorkbenchModule.querySelector(".documentation-spr-section-basic"), [
     { label: "Tvrtka", value: documentationSprModel.companyName, tone: "blue", maxLength: 30 },
     { label: "Datum", value: documentationSprModel.inspectionDate, tone: "green" },
     { label: "Vrijedi", value: documentationSprModel.validUntil, tone: "amber" },
   ]);
-  setDocumentationSprSectionTags(documentationSprTechnicalSection, technicalEntries.slice(0, 4).map((entry, index) => ({
+  setDocumentationSprSectionTags(documentationSprTechnicalSection, singleSystemDescription ? [] : technicalEntries.slice(0, 4).map((entry, index) => ({
     label: entry.label,
     value: entry.value,
     tone: index % 2 ? "slate" : "blue",
@@ -63635,7 +63650,7 @@ function syncDocumentationSprSectionTags() {
     { label: "Opis", value: systemText ? "unesen" : "", tone: "blue" },
     { label: "Slike", value: systemImageCount ? String(systemImageCount) : "", tone: "green" },
   ]);
-  setDocumentationSprSectionTags(documentationWorkbenchModule.querySelector("#documentation-spr-results-section"), [
+  setDocumentationSprSectionTags(documentationWorkbenchModule.querySelector("#documentation-spr-results-section"), singleSystemDescription ? [] : [
     { label: "Opis", value: resultText ? "unesen" : "", tone: "blue" },
     { label: "Slike", value: resultImageCount ? String(resultImageCount) : "", tone: "green" },
   ]);
@@ -64487,6 +64502,7 @@ function renderDocumentationSprNativeEditors() {
   renderDocumentationSprTechnicalSection();
   const nativeMode = isDocumentationSprNativeMeasurementMode(documentationSprModel);
   const serviceCode = getDocumentationSprServiceCode(documentationSprModel);
+  const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(serviceCode);
   const hasMeasurementTables = normalizeDocumentationSprMeasurementTables(
     documentationSprModel.measurementTables,
     documentationSprModel,
@@ -64497,6 +64513,9 @@ function renderDocumentationSprNativeEditors() {
   renderDocumentationSprChecklistsEditor();
   renderDocumentationSprNativeMeasurementsEditor();
   renderDocumentationSprAssessmentsEditor();
+  if (documentationSprResultsSection instanceof HTMLElement) {
+    documentationSprResultsSection.hidden = singleSystemDescription;
+  }
   updateDocumentationSprSectionNumbers();
 }
 
@@ -65362,6 +65381,9 @@ function getDocumentationSprValiditySentence(model = documentationSprModel) {
 }
 
 function getDocumentationSprTechnicalData(model = documentationSprModel) {
+  if (isDocumentationNativeSingleSystemDescriptionService(getDocumentationSprServiceCode(model))) {
+    return "";
+  }
   return String(model?.technicalData || "").trim();
 }
 
@@ -65406,14 +65428,15 @@ function renderDocumentationSprPageOne(model, pageNumber = 1, totalPages = 4) {
 function renderDocumentationSprPageTwo(model, pageNumber = 2, totalPages = 4) {
   const sectionOffset = getDocumentationSprSectionOffset(model);
   const systemDescription = String(model.systemDescription || "").trim();
+  const showResultsText = !isDocumentationNativeSingleSystemDescriptionService(getDocumentationSprServiceCode(model));
   return `
     <section class="documentation-spr-paper">
       ${renderDocumentationSprSimpleHeader(model)}
       ${renderDocumentationSprSectionTitle(4 + sectionOffset, "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA")}
       <div class="documentation-spr-paper-list">${renderDocumentationSprLineList(model.projectDocumentation)}</div>
       ${systemDescription ? `${renderDocumentationSprSectionTitle(5 + sectionOffset, "OPIS SUSTAVA")}<div class="documentation-spr-paper-text">${renderDocumentationSprRichTextBlock(systemDescription)}</div>` : ""}
-      ${renderDocumentationSprSectionTitle(5 + sectionOffset + (systemDescription ? 1 : 0), "REZULTATI ISPITIVANJA")}
-      <div class="documentation-spr-paper-text">${renderDocumentationSprRichTextBlock(model.resultsText)}</div>
+      ${showResultsText ? `${renderDocumentationSprSectionTitle(5 + sectionOffset + (systemDescription ? 1 : 0), "REZULTATI ISPITIVANJA")}
+      <div class="documentation-spr-paper-text">${renderDocumentationSprRichTextBlock(model.resultsText)}</div>` : ""}
       ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
     </section>
   `;
@@ -67051,6 +67074,7 @@ function getDocumentationSprNativeTemplateIdForServer(model = {}) {
 function buildDocumentationSprServerNativePdfEntry(exportEntry = {}) {
   const model = applyDocumentationSprGlobalHeaderToModel(exportEntry.model || documentationSprModel || {});
   const serviceCode = getDocumentationSprServiceCode(model);
+  const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(serviceCode);
   const nativeTemplateId = getDocumentationSprNativeTemplateIdForServer(model);
   const fieldSheets = buildDocumentationSprMeasurementSheetsForRecord(model);
   const fieldValues = buildDocumentationSprRecordFieldValues(model);
@@ -67083,8 +67107,8 @@ function buildDocumentationSprServerNativePdfEntry(exportEntry = {}) {
       ...fieldValues,
       BROJ_ZAPISNIKA: model.recordNumber || "",
       DOCUMENT_NUMBER: model.recordNumber || "",
-      TEHNICKI_PODACI: model.technicalData || "",
-      TECHNICAL_DATA: model.technicalData || "",
+      TEHNICKI_PODACI: singleSystemDescription ? "" : (model.technicalData || ""),
+      TECHNICAL_DATA: singleSystemDescription ? "" : (model.technicalData || ""),
       PRIMIJENJENI_PROPISI: model.regulations || "",
       REGULATIONS: model.regulations || "",
       MJERNA_OPREMA: model.equipment || "",
@@ -67106,11 +67130,11 @@ function buildDocumentationSprServerNativePdfEntry(exportEntry = {}) {
       defects: model.defects || "",
       recommendations: model.recommendations || "",
       projectDocumentation: model.projectDocumentation || "",
-      technicalData: model.technicalData || "",
+      technicalData: singleSystemDescription ? "" : (model.technicalData || ""),
       equipment: model.equipment || "",
       regulations: model.regulations || "",
       systemDescription: model.systemDescription || "",
-      resultsText: model.resultsText || "",
+      resultsText: singleSystemDescription ? "" : (model.resultsText || ""),
       headerImageDataUrl: model.headerImageDataUrl || "",
       headerImageName: model.headerImageName || "",
       fieldValues,
@@ -67203,6 +67227,7 @@ function buildDocumentationSprMeasurementSheetsForRecord(model = {}) {
 
 function buildDocumentationSprRecordFieldValues(model = {}) {
   const normalized = normalizeDocumentationSprModel(model);
+  const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(getDocumentationSprServiceCode(normalized));
   const attachments = normalizeDocumentationSprAttachments(normalized.attachments);
   const inspectionDate = normalizeDateInputValue(normalized.inspectionDate);
   const issuedDate = normalizeDateInputValue(normalized.issueDate);
@@ -67253,13 +67278,13 @@ function buildDocumentationSprRecordFieldValues(model = {}) {
     DOCUMENTATION_SPR_SYSTEM_DESCRIPTION: normalized.systemDescription || "",
     SYSTEM_DESCRIPTION: normalized.systemDescription || "",
     OPIS_SUSTAVA: normalized.systemDescription || "",
-    DOCUMENTATION_SPR_RESULTS_TEXT: normalized.resultsText || "",
-    SPR_RESULTS_TEXT: normalized.resultsText || "",
-    OPIS_ISPITIVANJA: normalized.resultsText || "",
-    REZULTATI_ISPITIVANJA: normalized.resultsText || "",
-    TECHNICAL_DATA: normalized.technicalData || "",
-    TEHNICKI_PODACI: normalized.technicalData || "",
-    DOCUMENTATION_TECHNICAL_DATA: normalized.technicalData || "",
+    DOCUMENTATION_SPR_RESULTS_TEXT: singleSystemDescription ? "" : (normalized.resultsText || ""),
+    SPR_RESULTS_TEXT: singleSystemDescription ? "" : (normalized.resultsText || ""),
+    OPIS_ISPITIVANJA: singleSystemDescription ? "" : (normalized.resultsText || ""),
+    REZULTATI_ISPITIVANJA: singleSystemDescription ? "" : (normalized.resultsText || ""),
+    TECHNICAL_DATA: singleSystemDescription ? "" : (normalized.technicalData || ""),
+    TEHNICKI_PODACI: singleSystemDescription ? "" : (normalized.technicalData || ""),
+    DOCUMENTATION_TECHNICAL_DATA: singleSystemDescription ? "" : (normalized.technicalData || ""),
     DOCUMENTATION_SPR_RESULT_STATUS: normalized.resultStatus || "",
     SPR_RESULT_STATUS: normalized.resultStatus || "",
     ZAKLJUCNA_OCJENA: normalized.resultStatus || "",

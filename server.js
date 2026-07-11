@@ -109,6 +109,7 @@ import {
   createDocumentationReportModelDefaults,
   buildDocumentationNativeCertificateNumber,
   getDocumentationNativeTemplateSeedPresets,
+  isDocumentationNativeSingleSystemDescriptionService,
 } from "./src/documentationNativePresets.js";
 
 const port = Number(process.env.PORT || 3000);
@@ -117,7 +118,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.414.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.415.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -28158,7 +28159,8 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
   const measurementTables = createDocumentationMeasurementTablesForService(preset.serviceCode);
   const formulaSheets = createDocumentationFormulaSheetsForService(preset.serviceCode);
   const reportDefaults = createDocumentationReportModelDefaults(preset.serviceCode);
-  const technicalDataFields = Array.isArray(reportDefaults.technicalDataFields)
+  const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(preset.serviceCode);
+  const technicalDataFields = !singleSystemDescription && Array.isArray(reportDefaults.technicalDataFields)
     ? reportDefaults.technicalDataFields
     : [];
   const checklists = Array.isArray(reportDefaults.checklists) ? reportDefaults.checklists : [];
@@ -28166,8 +28168,8 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     ? reportDefaults.measurementAssessments
     : [];
   const includeProjectDocumentation = true;
-  const includeSystemDescription = normalizeInputValue(reportDefaults.systemDescription).length > 0;
-  const includeResultsText = normalizeInputValue(reportDefaults.resultsText).length > 0;
+  const includeSystemDescription = singleSystemDescription || normalizeInputValue(reportDefaults.systemDescription).length > 0;
+  const includeResultsText = !singleSystemDescription && normalizeInputValue(reportDefaults.resultsText).length > 0;
   const serviceWithCode = {
     ...service,
     serviceCode: preset.serviceCode,
@@ -28776,8 +28778,8 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     reportTitle: preset.reportTitle,
     coverSubtitle: preset.coverSubtitle,
     measurementTableTitle: preset.measurementTableTitle,
-    systemDescription: preset.systemDescription || "",
-    resultsText: preset.resultsText || "",
+    systemDescription: reportDefaults.systemDescription || preset.systemDescription || "",
+    resultsText: singleSystemDescription ? "" : (reportDefaults.resultsText || preset.resultsText || ""),
     eiNote: preset.eiNote || "",
     eiminNote: preset.eiminNote || "",
     assessmentLabel: preset.assessmentLabel || "",
@@ -33413,6 +33415,7 @@ function buildMobileDocumentationSprModel({
   const signatureOib = getMobileSprSignatureOib(common, scopedSnapshot, signatureArea);
   const serviceCode = normalizeInputValue(entry.serviceCode || template.serviceCode || placeholders.SIFRA_USLUGE || "SPR");
   const reportDefaults = createDocumentationReportModelDefaults(serviceCode);
+  const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(serviceCode);
   const headerImage = resolveMobileDocumentationHeaderImage({
     entry,
     template,
@@ -33468,6 +33471,10 @@ function buildMobileDocumentationSprModel({
     || placeholders.CERTIFICATE_FACTUAL_NOTE
     || placeholders.NAPOMENA_BEZ_UVJERENJA,
   );
+  const resolvedSystemDescription = getMobileDocumentationTemplateFieldValues(common, template, ["systemDescription", "DOCUMENTATION_SPR_SYSTEM_DESCRIPTION", "SYSTEM_DESCRIPTION", "OPIS_SUSTAVA"])
+    || getMobileSprFirstValue(placeholders, ["DOCUMENTATION_SPR_SYSTEM_DESCRIPTION", "SYSTEM_DESCRIPTION", "OPIS_SUSTAVA", "OPIS_SUSTAVA_HTML"])
+    || (singleSystemDescription ? explicitTechnicalData : "")
+    || normalizeInputValue(template.systemDescription || reportDefaults.systemDescription);
 
   return {
     templateCode: normalizeInputValue(
@@ -33526,13 +33533,15 @@ function buildMobileDocumentationSprModel({
       || template.projectDocumentation
       || reportDefaults.projectDocumentation
     ),
-    technicalData: normalizeInputValue(serviceCode).toUpperCase() === "STROJEVI"
+    technicalData: singleSystemDescription
+      ? ""
+      : normalizeInputValue(serviceCode).toUpperCase() === "STROJEVI"
       ? (buildMobileStrojeviTechnicalDataText(common) || explicitTechnicalData || buildMobileDocumentationTechnicalDataText(template, reportDefaults, common, placeholders))
       : (explicitTechnicalData || buildMobileDocumentationTechnicalDataText(template, reportDefaults, common, placeholders)),
-    systemDescription: getMobileDocumentationTemplateFieldValues(common, template, ["systemDescription", "DOCUMENTATION_SPR_SYSTEM_DESCRIPTION", "SYSTEM_DESCRIPTION", "OPIS_SUSTAVA"])
-      || getMobileSprFirstValue(placeholders, ["DOCUMENTATION_SPR_SYSTEM_DESCRIPTION", "SYSTEM_DESCRIPTION", "OPIS_SUSTAVA", "OPIS_SUSTAVA_HTML"])
-      || normalizeInputValue(template.systemDescription || reportDefaults.systemDescription),
-    resultsText: getMobileDocumentationTemplateFieldValues(common, template, ["resultsText", "REZULTATI_TEKST", "RESULTS_TEXT", "OPIS_ISPITIVANJA", "REZULTATI_ISPITIVANJA"])
+    systemDescription: resolvedSystemDescription,
+    resultsText: singleSystemDescription
+      ? ""
+      : getMobileDocumentationTemplateFieldValues(common, template, ["resultsText", "REZULTATI_TEKST", "RESULTS_TEXT", "OPIS_ISPITIVANJA", "REZULTATI_ISPITIVANJA"])
       || getMobileSprFirstValue(placeholders, ["OPIS_ISPITIVANJA", "REZULTATI_TEKST", "RESULTS_TEXT", "REZULTATI_ISPITIVANJA"])
       || normalizeInputValue(template.resultsText || reportDefaults.resultsText),
     eiNote: normalizeInputValue(template.eiNote || reportDefaults.eiNote),
