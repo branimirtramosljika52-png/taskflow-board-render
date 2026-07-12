@@ -118,7 +118,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.425.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.426.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -26556,6 +26556,50 @@ function getMobileDocumentRecordObjectScore(record = {}, workOrder = {}) {
   return !recordObjectId && isMobileNoObjectRecordLabel(recordObjectName) ? 60 : 0;
 }
 
+function getMobileWorkOrderLocationLookupName(workOrder = {}, scopedSnapshot = {}) {
+  const directName = normalizeInputValue(
+    workOrder?.locationName
+    || workOrder?.clientLocationName
+    || workOrder?.siteName
+    || workOrder?.location?.name,
+  );
+  if (directName) {
+    return normalizeMobileTemplateLookupKey(directName);
+  }
+  const locationId = normalizeInputValue(workOrder?.locationId);
+  if (!locationId) {
+    return "";
+  }
+  const location = (Array.isArray(scopedSnapshot?.locations) ? scopedSnapshot.locations : [])
+    .find((item) => normalizeInputValue(item?.id) === locationId);
+  return normalizeMobileTemplateLookupKey(location?.name || location?.title || location?.displayName);
+}
+
+function mobileDocumentRecordMatchesWorkOrderLocation(record = {}, workOrder = {}, scopedSnapshot = {}) {
+  const locationId = normalizeInputValue(workOrder?.locationId);
+  const recordLocationId = normalizeInputValue(record?.locationId);
+  if (locationId && recordLocationId) {
+    return recordLocationId === locationId;
+  }
+
+  const workOrderLocationName = getMobileWorkOrderLocationLookupName(workOrder, scopedSnapshot);
+  const recordLocationName = normalizeMobileTemplateLookupKey(
+    record?.locationName
+    || record?.clientLocationName
+    || record?.siteName
+    || record?.location?.name,
+  );
+  if (workOrderLocationName && recordLocationName) {
+    return workOrderLocationName === recordLocationName;
+  }
+
+  if (!recordLocationId && locationId) {
+    return getMobileDocumentRecordObjectScore(record, workOrder) >= 80;
+  }
+
+  return !locationId && !recordLocationId;
+}
+
 function getMobileDocumentRecordSortKey(record = {}) {
   return String(record?.updatedAt || record?.inspectionDate || record?.issuedDate || record?.createdAt || "");
 }
@@ -26569,10 +26613,6 @@ function hasMobileDocumentRecordMeaningfulFieldSheets(record = {}) {
 
 function findLatestMobileDocumentRecordForTemplate(template = {}, workOrder = {}, scopedSnapshot = {}, options = {}) {
   const companyId = normalizeInputValue(workOrder?.companyId);
-  const locationId = normalizeInputValue(workOrder?.locationId);
-  if (!locationId) {
-    return null;
-  }
   const records = Array.isArray(scopedSnapshot.documentRecords) ? scopedSnapshot.documentRecords : [];
   const requireMeaningfulFieldSheets = options?.requireMeaningfulFieldSheets === true;
   return records
@@ -26588,7 +26628,7 @@ function findLatestMobileDocumentRecordForTemplate(template = {}, workOrder = {}
         && candidate.objectScore > 0
         && mobileDocumentRecordMatchesTemplateService(record, template)
         && (!companyId || normalizeInputValue(record?.companyId) === companyId)
-        && normalizeInputValue(record?.locationId) === locationId
+        && mobileDocumentRecordMatchesWorkOrderLocation(record, workOrder, scopedSnapshot)
         && (!requireMeaningfulFieldSheets || hasMobileDocumentRecordMeaningfulFieldSheets(record));
     })
     .sort((left, right) => (
@@ -29122,7 +29162,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
     const nativeTemplate = buildMobileNativeDocumentationTemplate(service, serviceIndex, workOrder, scopedSnapshot);
     const nativeCode = getMobileTemplateNativeDocumentationServiceCode(nativeTemplate);
     const linkedHasNativeCode = nativeCode && linkedTemplates.some((template) => (
-      getMobileTemplateNativeDocumentationServiceCode(template) === nativeCode
+      parseMobileNativeDocumentationTemplateId(template?.id)?.serviceCode === nativeCode
     ));
     if (nativeTemplate && !linkedHasNativeCode) {
       appendTemplate(nativeTemplate);

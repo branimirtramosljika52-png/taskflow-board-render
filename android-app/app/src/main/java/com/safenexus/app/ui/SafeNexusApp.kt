@@ -42777,7 +42777,7 @@ private fun DocumentationSprMobileWorkspace(
 ) {
     val menuEntries = remember(templates) {
         templates.flatMap { template ->
-            buildTemplateBlockSections(template.fieldBlocks)
+            buildMobileDocumentationTemplateBlockSections(template)
                 .filter { section ->
                     !isDocumentationSignatureTemplateSection(section) &&
                         !isDocumentationAttachmentTemplateSection(section)
@@ -42807,7 +42807,7 @@ private fun DocumentationSprMobileWorkspace(
         }
     }
 
-    val standardChapterCount = if (menuEntries.isEmpty()) 2 else 0
+    val standardChapterCount = 2
     val displayedChapterCount = menuEntries.size + standardChapterCount
     val standardChapterInsertPosition = remember(menuEntries, standardChapterCount) {
         if (standardChapterCount <= 0) {
@@ -44144,6 +44144,87 @@ private fun buildTemplateBlockSections(blocks: List<WorkOrderDocumentationTempla
 
     return sections
 }
+
+private data class TemplateFieldFallbackSectionSpec(
+    val id: String,
+    val title: String,
+)
+
+private fun buildMobileDocumentationTemplateBlockSections(template: WorkOrderDocumentationTemplate): List<TemplateBlockSection> {
+    val explicitSections = buildTemplateBlockSections(template.fieldBlocks)
+    if (explicitSections.isNotEmpty() || template.fields.isEmpty()) {
+        return explicitSections
+    }
+
+    val groupedFields = linkedMapOf<TemplateFieldFallbackSectionSpec, MutableList<WorkOrderDocumentationField>>()
+    template.fields.forEach { field ->
+        val spec = mobileDocumentationFallbackSectionForField(field)
+        groupedFields.getOrPut(spec) { mutableListOf() }.add(field)
+    }
+
+    return groupedFields.entries.mapIndexed { index, (section, fields) ->
+        TemplateBlockSection(
+            id = "${index + 1}::fallback-${section.id}",
+            title = section.title,
+            subtitle = "Polja iz predloška",
+            header = null,
+            blocks = fields.mapIndexed { fieldIndex, field ->
+                WorkOrderDocumentationTemplateBlock(
+                    id = field.id.ifBlank { field.key.ifBlank { field.tokenKey.ifBlank { "${section.id}-${fieldIndex + 1}" } } },
+                    key = field.key,
+                    tokenKey = field.tokenKey,
+                    label = field.label,
+                    type = field.type.ifBlank { "text" },
+                    typeLabel = documentationTemplateFieldTypeLabel(field.type),
+                    group = section.title,
+                    required = field.required,
+                    editable = true,
+                    helpText = field.helpText,
+                    summary = field.defaultValue,
+                    options = field.options,
+                    signatureArea = field.signatureArea,
+                    signatureRole = field.signatureRole,
+                    signatureMultiple = field.signatureMultiple,
+                    signatureMetaFields = field.signatureMetaFields,
+                )
+            },
+        )
+    }
+}
+
+private fun mobileDocumentationFallbackSectionForField(field: WorkOrderDocumentationField): TemplateFieldFallbackSectionSpec {
+    val lookup = normalizeTemplateSectionLookup(
+        listOf(field.id, field.key, field.tokenKey, field.label, field.type).joinToString(" "),
+    )
+    return when {
+        field.type.equals("spr_voice", ignoreCase = true) || lookup.contains("diktat") ->
+            TemplateFieldFallbackSectionSpec("voice", "Diktat i NexAI upis")
+        lookup.contains("uvjeren") || lookup.contains("certificate") ->
+            TemplateFieldFallbackSectionSpec("certificate", "Uvjerenje")
+        lookup.contains("dokumentacij") || lookup.contains("documentation") ->
+            TemplateFieldFallbackSectionSpec("technical-documentation", "Tehnička dokumentacija")
+        lookup.contains("opis sustava") || lookup.contains("system description") || lookup.contains("technical data") ->
+            TemplateFieldFallbackSectionSpec("system-description", "Opis sustava")
+        lookup.contains("rezultat") || lookup.contains("results") ->
+            TemplateFieldFallbackSectionSpec("results", "Rezultati ispitivanja")
+        lookup.contains("nedostat") || lookup.contains("defect") || lookup.contains("preporuk") || lookup.contains("recommend") ->
+            TemplateFieldFallbackSectionSpec("notes", "Nedostaci i preporuke")
+        lookup.contains("zakljuc") || lookup.contains("ocjena") || lookup.contains("zadovoljava") || lookup.contains("result status") ->
+            TemplateFieldFallbackSectionSpec("conclusion", "Zaključak i ocjena")
+        else ->
+            TemplateFieldFallbackSectionSpec("basics", "Osnovni podaci")
+    }
+}
+
+private fun documentationTemplateFieldTypeLabel(type: String): String =
+    when (type.trim().lowercase(Locale.getDefault())) {
+        "date" -> "Datum"
+        "dropdown", "select" -> "Odabir"
+        "toggle", "checkbox", "boolean" -> "Da/Ne"
+        "textarea", "longtext", "richtext" -> "Tekst"
+        "spr_voice" -> "Diktat"
+        else -> "Polje"
+    }
 
 private val documentationAiModelTierOptions = listOf(
     "fast" to "Brzi",
