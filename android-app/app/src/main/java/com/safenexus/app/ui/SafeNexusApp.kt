@@ -42779,8 +42779,7 @@ private fun DocumentationSprMobileWorkspace(
         templates.flatMap { template ->
             buildTemplateBlockSections(template.fieldBlocks)
                 .filter { section ->
-                    (isBasicTemplateSection(section) || !isSharedDocumentationTemplateSection(section)) &&
-                        !isDocumentationSignatureTemplateSection(section) &&
+                    !isDocumentationSignatureTemplateSection(section) &&
                         !isDocumentationAttachmentTemplateSection(section)
                 }
                 .map { section -> template to section }
@@ -42808,9 +42807,12 @@ private fun DocumentationSprMobileWorkspace(
         }
     }
 
-    val standardChapterCount = 2
+    val standardChapterCount = if (menuEntries.isEmpty()) 2 else 0
     val displayedChapterCount = menuEntries.size + standardChapterCount
-    val standardChapterInsertPosition = remember(menuEntries) {
+    val standardChapterInsertPosition = remember(menuEntries, standardChapterCount) {
+        if (standardChapterCount <= 0) {
+            return@remember -1
+        }
         val basicIndex = menuEntries.indexOfFirst { isBasicTemplateSection(it.section) }
         if (basicIndex >= 0) basicIndex + 1 else 0
     }
@@ -42896,7 +42898,7 @@ private fun DocumentationSprMobileWorkspace(
                     var chapterIndex = 0
                     if (menuEntries.isNotEmpty()) {
                         menuEntries.forEachIndexed { entryPosition, entry ->
-                            if (entryPosition == standardChapterInsertPosition) {
+                            if (standardChapterInsertPosition >= 0 && entryPosition == standardChapterInsertPosition) {
                                 DocumentationSprStandardResourceChapterPanel(
                                     key = "spr_measurement_equipment",
                                     index = chapterIndex,
@@ -42969,7 +42971,7 @@ private fun DocumentationSprMobileWorkspace(
                             )
                             chapterIndex += 1
                         }
-                        if (standardChapterInsertPosition >= menuEntries.size) {
+                        if (standardChapterInsertPosition >= 0 && standardChapterInsertPosition >= menuEntries.size) {
                             DocumentationSprStandardResourceChapterPanel(
                                 key = "spr_measurement_equipment",
                                 index = chapterIndex,
@@ -43559,7 +43561,6 @@ private fun DocumentationSprTemplateSectionPanel(
     val visibleBlocks = remember(entry.section, isResultsTextSection, isAssessmentSection) {
         entry.section.blocks.filterNot { block ->
             isDocumentationAttachmentUploadBlock(block) ||
-                block.type.equals("equipment_list", ignoreCase = true) ||
                 (block.type.equals("measurement_table", ignoreCase = true) && (isResultsTextSection || isAssessmentSection))
         }
     }
@@ -43692,7 +43693,7 @@ private fun DocumentationSprTemplateSectionPanel(
                             return@forEach
                         }
                         when (block.type.lowercase(Locale.getDefault())) {
-                            "equipment_list" -> Unit
+                            "equipment_list" -> TemplateEquipmentControls(standardControls)
                             "legal_list" -> TemplateLegalControls(standardControls)
                             "measurement_table" -> {
                                 val blockTables = getMeasurementTablesForBlock(entry.template, block)
@@ -44871,7 +44872,7 @@ private fun TemplateBlockSectionCard(
     var quickEditField by remember(template.id, section.id) { mutableStateOf<WorkOrderDocumentationField?>(null) }
     var quickEditValue by remember(template.id, section.id) { mutableStateOf("") }
     val includeBasics = isBasicTemplateSection(section)
-    val includeEquipment = false
+    val includeEquipment = isEquipmentTemplateSection(section)
     val includeLegal = isLegalTemplateSection(section)
     val includeMeasurements = isMeasurementTemplateSection(section)
     val handledTypes = setOf("equipment_list", "legal_list", "measurement_table")
