@@ -118,7 +118,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.432.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.433.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -1099,7 +1099,7 @@ const GENERATED_DOCUMENT_TEMPLATE_DOCX_CATEGORY = "Zapisnik DOCX";
 const GENERATED_PEOPLE_TRAINING_CERTIFICATE_CATEGORY = "Automatsko uvjerenje";
 const GENERATED_PEOPLE_TRAINING_CERTIFICATE_SOURCE = "people-training-certificate";
 const DOCUMENTATION_NATIVE_SERVICE_VALIDITY_MONTHS = Object.freeze({
-  PR: "12",
+  SRR: "12",
   SPR: "12",
   SZOMV: "12",
   TZIN: "12",
@@ -1229,7 +1229,7 @@ const STANDARD_SERVICE_CATALOG_ITEMS = Object.freeze([
   }),
   Object.freeze({
     name: "Panik rasvjeta",
-    serviceCode: "PR",
+    serviceCode: "SRR",
     serviceType: "inspection",
     validityMonths: "12",
     note: "Native zapisnik iz modula Izrada dokumentacije.",
@@ -7882,7 +7882,7 @@ function getOpenAiDocumentationServiceCode(body = {}) {
     if (lookup.includes("szomv") || (lookup.includes("vizual") && lookup.includes("munj"))) return "SZOMV";
     if (lookup.includes("szom") || lookup.includes("zastitaodmunje") || lookup.includes("djelovanjamunje")) return "SZOM";
     if (lookup.includes("eiz") || lookup.includes("elektricn")) return "EIZ";
-    if (lookup === "pr" || lookup === "spr" || lookup === "panik" || lookup.includes("sigurnosnarasvjet") || lookup.includes("protupanic") || lookup.includes("panikrasvjet")) return "PR";
+    if (lookup === "srr" || lookup === "spr" || lookup === "panik" || lookup.includes("sigurnosnarasvjet") || lookup.includes("protupanic") || lookup.includes("panikrasvjet")) return "SRR";
     return "";
   };
   const directParts = [
@@ -7966,11 +7966,11 @@ function buildOpenAiDocumentationServiceInstructions(body = {}) {
   const base = serviceCode
     ? [`Trenutni zapisnik je ${serviceCode}. Koristi podatke samo za tu istu uslugu; ako upload sadrzi druge zapisnike, ne prepisuj njihove tablice u ovaj zapisnik.`]
     : ["Ako mozes prepoznati sifru usluge iz templatea ili konteksta, koristi samo podatke iste usluge i ne mijesaj tablice iz drugih zapisnika."];
-  if (serviceCode === "PR") {
+  if (serviceCode === "SRR") {
     base.push(
-      "Za PR trazi naslov 'ISPITNI IZVJESTAJ / ISPITIVANJE SIGURNOSNE PROTUPANICNE RASVJETE', 'IL - PR' ili stari 'IL - SPR'. To je tablica sigurnosne/protupanicne rasvjete, ne TZIN i ne EIZ.",
-      "PR tablica ima kolone: Redni broj, Mjesto ispitivanja, Broj panel lampi, Izmjerena razina osvjetljenja [lux], Potrebna razina osvjetljenja [lux], Zadovoljava. Stari zapisnici mogu koristiti kratice Ei [lux] i Eimin [lux]. Primjer retka: Prodajni prostor | 2 | >2 | 1 | DA.",
-      "Obavezno vrati measurementSuggestions za pr-results kada vidis retke tablice. Sacuvaj vrijednosti kao >2, 1, 0,5, DA/NE bez pretvaranja i bez brisanja znaka >.",
+      "Za SRR trazi naslov 'ISPITNI IZVJESTAJ / ISPITIVANJE SIGURNOSNE PROTUPANICNE RASVJETE', 'IL - SRR' ili stari 'IL - SPR'. To je tablica sigurnosne/protupanicne rasvjete, ne Procjena rizika, ne TZIN i ne EIZ.",
+      "SRR tablica ima kolone: Redni broj, Mjesto ispitivanja, Broj panel lampi, Izmjerena razina osvjetljenja [lux], Potrebna razina osvjetljenja [lux], Zadovoljava. Stari zapisnici mogu koristiti kratice Ei [lux] i Eimin [lux]. Primjer retka: Prodajni prostor | 2 | >2 | 1 | DA.",
+      "Obavezno vrati measurementSuggestions za srr-results kada vidis retke tablice. Sacuvaj vrijednosti kao >2, 1, 0,5, DA/NE bez pretvaranja i bez brisanja znaka >.",
       "Legenda iznad tablice (Ei = izmjereno osvjetljenje, Eimin = minimalno osvjetljenje) sluzi za razumijevanje kolona, ali nije redak mjerenja.",
     );
   }
@@ -10271,7 +10271,7 @@ function buildOpenAiExseParserMeasurementRows(target = {}, parsedRows = [], sour
 
 function getOpenAiParserProfilesForService(serviceCode = "") {
   const normalized = normalizeInputValue(serviceCode).toUpperCase();
-  if (normalized === "PR" || normalized === "SPR") return ["SPR"];
+  if (normalized === "SRR" || normalized === "SPR") return ["SPR"];
   if (normalized === "TZIN") return ["TZIN"];
   if (normalized === "SZOM") return ["SZOM"];
   if (normalized === "EXSE") return ["EXSE_EARTHING", "EXSE_STATIC"];
@@ -15555,9 +15555,10 @@ function getGenericDocumentationSprRecordSheet(fieldSheets = {}) {
     ? fieldSheets
     : {};
   const preferredKeys = [
-    "PR_GRIDLINE_MODEL",
+    "SRR_GRIDLINE_MODEL",
     "DOCUMENTATION_SPR_GRIDLINE_MODEL",
     "SPR_GRIDLINE_MODEL",
+    "PR_GRIDLINE_MODEL",
     "GRIDLINE_MODEL",
     "TABLICA_MJERENJA",
     "MJERENJA",
@@ -18145,7 +18146,7 @@ async function ensureStandardServiceCatalogItemsForRequest(user, request) {
     const updated = await domainRepository.updateServiceCatalogItem(item.id, {
       organizationId,
       status: "inactive",
-      note: normalizeInputValue(item.note) || "Neaktivno: zamijenjeno uslugom PR - Panik rasvjeta.",
+      note: normalizeInputValue(item.note) || "Neaktivno: zamijenjeno uslugom SRR - Panik rasvjeta.",
     });
     if (updated) {
       updatedCount += 1;
@@ -26213,7 +26214,7 @@ const MOBILE_NATIVE_MEASUREMENT_SERVICE_CODES = new Set(
 function normalizeMobileNativeMeasurementServiceCode(value = "") {
   const code = normalizeInputValue(value).toUpperCase();
   if (code === "SPR" || code === "PANIK") {
-    return MOBILE_NATIVE_MEASUREMENT_SERVICE_CODES.has("PR") ? "PR" : "";
+    return MOBILE_NATIVE_MEASUREMENT_SERVICE_CODES.has("SRR") ? "SRR" : "";
   }
   return MOBILE_NATIVE_MEASUREMENT_SERVICE_CODES.has(code) ? code : "";
 }
@@ -26468,8 +26469,8 @@ function inferMobileNativeDocumentationServiceCode(value = "") {
   ) {
     return "SZOM";
   }
-  if (/\bspr\b/u.test(lookup) || /\bpr\b/u.test(lookup) || lookup.includes("panik rasvjet") || lookup.includes("sigurnosna rasvjet")) {
-    return "PR";
+  if (/\bsrr\b/u.test(lookup) || /\bspr\b/u.test(lookup) || lookup.includes("panik rasvjet") || lookup.includes("sigurnosna rasvjet")) {
+    return "SRR";
   }
   if (/\bsvz\b/u.test(lookup) || (lookup.includes("dojav") && lookup.includes("pozar")) || lookup.includes("vatrodojav")) {
     return "SVZ";
@@ -27662,7 +27663,7 @@ function normalizeMobileQualificationKeyList(value = []) {
 function getMobileQualificationAreaLabel(signatureArea = "elektro") {
   const key = normalizeMobileQualificationAreaKey(signatureArea);
   if (key === "spr") {
-    return "PR - Panik rasvjeta";
+    return "SRR - Panik rasvjeta";
   }
   if (key === "tzin") {
     return "TZIN - Tipkalo za isklop napona";
@@ -27705,7 +27706,7 @@ function getMobileServiceQualificationKeys(service = {}, scopedSnapshot = {}) {
   if (/\b(tzin|tipkalo)\b/.test(text) || text.includes("isklop napona")) {
     keys.add("tzin");
   }
-  if (/\b(spr|panik)\b/.test(text) || text.includes("panik rasvjet") || text.includes("panic")) {
+  if (/\b(srr|spr|panik)\b/.test(text) || text.includes("panik rasvjet") || text.includes("panic")) {
     keys.add("spr");
   }
   if (/\bro\b/.test(text) || text.includes("radna oprema") || text.includes("radne opreme")) {
@@ -28012,9 +28013,9 @@ function buildMobileRulebookOptions(scopedSnapshot = {}) {
 
 const MOBILE_NATIVE_DOCUMENTATION_PRESETS_LEGACY = Object.freeze([
   Object.freeze({
-    serviceCode: "PR",
+    serviceCode: "SRR",
     serviceName: "Panik rasvjeta",
-    title: "PR v1.0.0",
+    title: "SRR v1.0.0",
     documentType: "Panik rasvjeta",
     reportTitle: "ISPITIVANJE SIGURNOSNE PROTUPANIČNE RASVJETE",
     coverSubtitle: "O ISPITIVANJU PROTUPANIČNE (SIGURNOSNE) RASVJETE",
@@ -28269,7 +28270,7 @@ const MOBILE_NATIVE_DOCUMENTATION_SEMANTIC_MATCHERS = Object.freeze([
     ),
   },
   {
-    code: "PR",
+    code: "SRR",
     matches: (text) => (
       text.includes("panik rasvjet")
       || text.includes("sigurnosna rasvjet")
@@ -28565,7 +28566,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     },
   ));
   const measurementVoiceFields = [
-    ...(preset.serviceCode === "PR"
+    ...(preset.serviceCode === "SRR"
       ? [
         buildMobileNativeDocumentationField("sprVoiceTranscript", "Diktat mjernih mjesta", "spr_voice", {
         defaultValue: "",
@@ -28740,7 +28741,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       }),
       measurementFieldBlocks[index],
     ];
-    if (preset.serviceCode === "PR" && index === 0) {
+    if (preset.serviceCode === "SRR" && index === 0) {
       sectionBlocks.push(buildMobileNativeDocumentationBlock("sprVoiceTranscript", "Diktat mjernih mjesta", "spr_voice", {
         group: title,
         editable: true,
@@ -30092,14 +30093,14 @@ function getMobileSprRowsFromSheet(sheet = null) {
 const MOBILE_SPR_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
   "sprVoiceTranscript",
   "SPR_VOICE_TRANSCRIPT",
-  "PR_VOICE_TRANSCRIPT",
+  "SRR_VOICE_TRANSCRIPT",
   "spr voice transcript",
-  "pr voice transcript",
+  "srr voice transcript",
   "Diktat mjernih mjesta",
-  "Diktat PR mjernih mjesta",
+  "Diktat SRR mjernih mjesta",
   "Diktat SPR mjernih mjesta",
   "Diktat mjesta i broj panel lampi",
-  "Glasovni unos PR",
+  "Glasovni unos SRR",
   "Glasovni unos SPR",
 ]);
 
@@ -32015,7 +32016,7 @@ async function buildMobileSprVoiceStructuredRows(body = {}, user = null) {
       dryRun: false,
       context: {
         transcript,
-        serviceCode: normalizeInputValue(body.serviceCode) || "PR",
+        serviceCode: normalizeInputValue(body.serviceCode) || "SRR",
         templateTitle: normalizeInputValue(body.templateTitle),
         measurementTable: body.measurementTable && typeof body.measurementTable === "object" ? body.measurementTable : {},
         columns: Array.isArray(body.columns) ? body.columns : [],
@@ -33361,7 +33362,7 @@ function buildMobileStrojeviManualMeasurementTable(baseTable = {}, common = {}) 
   };
 }
 
-function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, common = {}, serviceCode = "PR") {
+function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, common = {}, serviceCode = "SRR") {
   const baseTables = Array.isArray(template.measurementTables) && template.measurementTables.length > 0
     ? template.measurementTables
     : createDocumentationMeasurementTablesForService(serviceCode);
@@ -33400,7 +33401,7 @@ function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, co
     };
   });
   const normalizedServiceCode = normalizeInputValue(serviceCode).toUpperCase();
-  if (normalizedServiceCode === "PR") {
+  if (normalizedServiceCode === "SRR") {
     return applyMobileSprVoiceTranscriptToMeasurementTables(tables, common, template);
   }
   if (normalizedServiceCode === "TZIN") {
@@ -33777,7 +33778,7 @@ function buildMobileDocumentationSprModel({
   const responsiblePerson = getMobileSprPersonText(common, scopedSnapshot, signatureArea, "authorize")
     || getMobileSprFirstValue(placeholders, ["ODGOVORNA_OSOBA", "RESPONSIBLE_PERSON", "POTPISNIK"]);
   const signatureOib = getMobileSprSignatureOib(common, scopedSnapshot, signatureArea);
-  const serviceCode = normalizeInputValue(entry.serviceCode || template.serviceCode || placeholders.SIFRA_USLUGE || "PR");
+  const serviceCode = normalizeInputValue(entry.serviceCode || template.serviceCode || placeholders.SIFRA_USLUGE || "SRR");
   const reportDefaults = createDocumentationReportModelDefaults(serviceCode);
   const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(serviceCode);
   const headerImage = resolveMobileDocumentationHeaderImage({
@@ -33959,7 +33960,7 @@ function buildMobileDocumentationSprSignatureGroup(model = {}, scopedSnapshot = 
     return null;
   }
   const responsibleUser = findMobileScopedUserById(scopedSnapshot, model.responsiblePersonUserId);
-  const fieldCode = normalizeInputValue(model.serviceCode || "PR") || "PR";
+  const fieldCode = normalizeInputValue(model.serviceCode || "SRR") || "SRR";
   const fieldName = buildSignatureFieldName(fieldCode, oib);
   return {
     __docxBlockType: "signature_group",

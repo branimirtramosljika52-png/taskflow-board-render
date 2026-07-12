@@ -36279,7 +36279,7 @@ function getSettingsDocumentTemplateAiEntryBlockLabel(entry = {}) {
   const fieldLabel = String(entry.fieldLabel || "").trim();
   const service = String(entry.service || "").trim().toUpperCase();
   const identity = `${fieldLabel} ${entry.templateTitle || ""} ${entry.columnLabel || ""}`.toLowerCase();
-  if (["PR", "SPR", "PANIK"].some((code) => service.split(/\s+/g).includes(code)) && /(sigurnosn|protupani|panic|panik|rasvjet)/i.test(identity)) {
+  if (["SRR", "SPR", "PANIK"].some((code) => service.split(/\s+/g).includes(code)) && /(sigurnosn|protupani|panic|panik|rasvjet)/i.test(identity)) {
     return "Panik rasvjeta";
   }
   if (entry.kind === "column" && fieldLabel) {
@@ -38410,7 +38410,9 @@ function getSignatureRoleFallbackLabel(role = "") {
   const normalized = String(role || "").trim().toUpperCase();
   if (normalized.includes("DIREKTOR")) return "Direktor";
   if (normalized.includes("KLIJENT")) return "Odgovorna osoba";
-  if (normalized.includes("ZNR") || normalized.includes("PR") || normalized.includes("SPR")) return "Ispitivač PR";
+  if (normalized.includes("SRR") || normalized.includes("SPR")) return "Ispitivač SRR";
+  if (normalized.includes("ZNR")) return "Stručnjak ZNR";
+  if (normalized === "PR" || normalized.includes("PROCJENA RIZIKA")) return "Izradio procjenu rizika";
   if (normalized.includes("OCIJEN")) return "Ocijenio zapisnik";
   return normalized || "Potpisnik";
 }
@@ -59759,7 +59761,7 @@ function normalizeDocumentationSprTemplateEntry(entry = null, index = 0) {
 
 function buildDocumentationNativeTemplateModel(preset = {}) {
   const base = createDefaultDocumentationSprModel();
-  const reportDefaults = createDocumentationReportModelDefaults(preset.serviceCode || base.serviceCode || "PR");
+  const reportDefaults = createDocumentationReportModelDefaults(preset.serviceCode || base.serviceCode || "SRR");
   const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(reportDefaults.serviceCode || preset.serviceCode);
   return {
     ...base,
@@ -59783,7 +59785,7 @@ function buildDocumentationNativeTemplateModel(preset = {}) {
     measurementTables: reportDefaults.measurementTables,
     formulaSheets: reportDefaults.formulaSheets || [],
     gridlineModel: buildDocumentationSprGridlineModelFromRows(createDocumentationGridlineRowsForService(reportDefaults.serviceCode)),
-    recordNumber: `25-1287-${preset.serviceCode || "PR"}`,
+    recordNumber: `25-1287-${preset.serviceCode || "SRR"}`,
   };
 }
 
@@ -59818,9 +59820,9 @@ function isDocumentationNativeSeedLikeEntry(entry = {}, preset = {}) {
   return Boolean(code && (
     entryCodes.includes(code)
     || haystack.includes(code)
-    || (code === "pr" && haystack.includes("spr"))
-    || (code === "pr" && haystack.includes("panik"))
-    || (code === "pr" && haystack.includes("rasvjet"))
+    || (code === "srr" && haystack.includes("spr"))
+    || (code === "srr" && haystack.includes("panik"))
+    || (code === "srr" && haystack.includes("rasvjet"))
     || (presetId && haystack.includes(presetId))
     || (presetName && haystack.includes(presetName))
   ));
@@ -59838,7 +59840,7 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
   const seedCreatedAt = "2026-01-01T00:00:00.000Z";
   const isBuiltInSeed = normalizeLooseName(entry.id) === normalizeLooseName(preset.id);
   const rawEntryCode = String(entry.serviceBinding?.serviceCode || entry.model?.serviceCode || entry.serviceCode || "").trim().toUpperCase();
-  const isLegacySprSeed = preset.serviceCode === "PR" && (
+  const isLegacySprSeed = preset.serviceCode === "SRR" && (
     normalizeLooseName(entry.id).includes("spr")
     || normalizeLooseName(entry.name).includes("spr")
     || rawEntryCode === "SPR"
@@ -61209,7 +61211,7 @@ function getDocumentationSprPreviousRecordExplicitCodes(record = {}) {
     }
   });
   if (titleText.includes("panik") || titleText.includes("sigurnosna rasvjeta") || titleText.includes("protupanic")) {
-    codes.add("PR");
+    codes.add("SRR");
   }
   if (titleText.includes("tipkalo") || titleText.includes("isklop")) {
     codes.add("TZIN");
@@ -61241,10 +61243,10 @@ function scoreDocumentationSprPreviousRecord(entry = {}, record = {}) {
   if (serviceName && sourceText.includes(serviceName)) {
     score += 50;
   }
-  if (serviceCode === "pr" && documentationSprTextHasCodeToken(sourceText, "spr")) {
+  if (serviceCode === "srr" && documentationSprTextHasCodeToken(sourceText, "spr")) {
     score += 35;
   }
-  if (serviceCode === "pr" && (sourceText.includes("panik") || sourceText.includes("sigurnosna rasvjeta") || sourceText.includes("protupanic"))) {
+  if (serviceCode === "srr" && (sourceText.includes("panik") || sourceText.includes("sigurnosna rasvjeta") || sourceText.includes("protupanic"))) {
     score += 35;
   }
   if (score > 0 && record?.fieldSheets && Object.keys(record.fieldSheets).length > 0) {
@@ -61292,9 +61294,10 @@ function getDocumentationSprPreviousRecordFieldValue(record = {}, keys = []) {
 
 function getDocumentationSprPreviousRecordSheet(record = {}, table = null) {
   const directGridline = getDocumentationSprPreviousRecordFieldValue(record, [
-    "PR_GRIDLINE_MODEL",
+    "SRR_GRIDLINE_MODEL",
     "DOCUMENTATION_SPR_GRIDLINE_MODEL",
     "SPR_GRIDLINE_MODEL",
+    "PR_GRIDLINE_MODEL",
     "GRIDLINE_MODEL",
   ]);
   const defaultSheet = table?.sheet || null;
@@ -61916,7 +61919,7 @@ function getDocumentationSprSignatureAreaForService(service = {}) {
   if (serviceCode === "TZIN" || serviceText.includes("tipkalo") || serviceText.includes("isklop")) {
     return "tzin";
   }
-  if (serviceCode === "PR" || serviceText.includes("panik") || serviceText.includes("rasvjet")) {
+  if (serviceCode === "SRR" || serviceText.includes("panik") || serviceText.includes("rasvjet")) {
     return "spr";
   }
   return "";
@@ -67131,7 +67134,7 @@ function buildDocumentationSprSignatureMetadata(model = {}) {
     fieldName,
     label: name,
     name,
-    roleLabel: "Ispitivač PR",
+    roleLabel: "Ispitivač SRR",
     signerTitle: String(responsibleUser?.title || "").trim(),
     signerOrganization: organization,
     signerUserId: String(responsibleUser?.id || model.responsiblePersonUserId || "").trim(),
@@ -67142,7 +67145,7 @@ function buildDocumentationSprSignatureMetadata(model = {}) {
     width: null,
     height: null,
     anchorText: "",
-    role: "PR",
+    role: "SRR",
     oib,
     status: "available",
     standard: "SIGN_SPR_{OIB}",
@@ -67346,7 +67349,7 @@ function buildDocumentationSprMeasurementSheetsForRecord(model = {}) {
   });
   const primarySheet = buildDocumentationSprMeasurementSheetForRecord(model);
   return {
-    PR_GRIDLINE_MODEL: primarySheet,
+    SRR_GRIDLINE_MODEL: primarySheet,
     DOCUMENTATION_SPR_GRIDLINE_MODEL: primarySheet,
     SPR_GRIDLINE_MODEL: primarySheet,
     GRIDLINE_MODEL: primarySheet,
@@ -70131,8 +70134,8 @@ const USER_DOCUMENT_CATEGORY_OPTIONS = [
 const BUILTIN_QUALIFICATION_EXAM_DEFINITIONS = Object.freeze([
   Object.freeze({
     key: "spr",
-    title: "PR - Panik rasvjeta",
-    label: "PR - Panik rasvjeta",
+    title: "SRR - Panik rasvjeta",
+    label: "SRR - Panik rasvjeta",
     defaultExam: true,
     builtIn: true,
   }),
@@ -74275,7 +74278,7 @@ function getDocumentTemplateAiWizardDefinitions() {
     },
     { name: "sourcePriority", label: "Prioritet izvora", kind: "textarea", rows: 3, full: true, placeholder: "previous_report\nolder_previous_report\nuploaded_file\ntemplate" },
     { name: "displayOrder", label: "Redoslijed", kind: "number" },
-    { name: "group", label: "Blok / grupa", placeholder: "PR · Korištena dokumentacija" },
+    { name: "group", label: "Blok / grupa", placeholder: "SRR · Korištena dokumentacija" },
     { name: "validationRules", label: "Pravila provjere", kind: "textarea", rows: 3, full: true, placeholder: "Ako nije vidljivo u izvoru, ne smije biti označeno kao sigurno." },
   ];
 }
@@ -77636,10 +77639,10 @@ function normalizeDocumentTemplateSignatureServiceCode(value = "") {
   ].sort((left, right) => right.length - left.length);
   const knownMatch = known.find((code) => new RegExp(`\\b${code}\\b`, "i").test(direct));
   if (knownMatch) {
-    return ["PANIK", "SPR"].includes(knownMatch) ? "PR" : knownMatch;
+    return ["PANIK", "SPR"].includes(knownMatch) ? "SRR" : knownMatch;
   }
   if (/SIGURNOSNA\s+PANIK|PANIK\s+RASVJET/i.test(text)) {
-    return "PR";
+    return "SRR";
   }
   const compact = direct.replace(/\s+/g, "");
   return compact.length > 0 && compact.length <= 10 ? compact : "";
@@ -77650,7 +77653,7 @@ const DOCUMENT_TEMPLATE_RUNTIME_REQUIRED_SERVICE_CODES = new Set([
   "NO",
   "EIZ",
   "EMM",
-  "PR",
+  "SRR",
   "SPR",
   "SZOM",
   "SZOMV",
@@ -145556,7 +145559,7 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
   if (recommendations.length === 0 && workEquipmentCards.length === 0 && physicalFactorsCards.length === 0 && chemicalFactorsCards.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
-    empty.textContent = "Za odabrane RN-ove još nema povezanih templatea. Poveži ih na usluzi pa će se ovdje pojaviti po tipu zapisnika (PR, TZIN, RO...).";
+    empty.textContent = "Za odabrane RN-ove još nema povezanih templatea. Poveži ih na usluzi pa će se ovdje pojaviti po tipu zapisnika (SRR, TZIN, RO...).";
     workOrderDocumentWizardTemplateList.replaceChildren(empty);
     renderWorkOrderDocumentWizardTemplateDock([]);
     return;

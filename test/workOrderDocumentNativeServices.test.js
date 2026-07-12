@@ -42,17 +42,19 @@ test("documentation service codes normalize to the requested zapisnici tab label
   assert.equal(normalizeDocumentTemplateRuntimeServiceCode("NNZDPETROL"), "NNZD");
   assert.equal(normalizeDocumentTemplateRuntimeServiceCode("HMUV"), "HM");
   assert.equal(normalizeDocumentTemplateRuntimeServiceCode("VES"), "VS");
-  assert.equal(normalizeDocumentTemplateRuntimeServiceCode("SPR"), "PR");
-  assert.equal(normalizeDocumentTemplateRuntimeServiceCode("PANIK"), "PR");
-  assert.notEqual(normalizeDocumentTemplateRuntimeServiceCode("Pregled hidrantske mreze"), "PR");
+  assert.equal(normalizeDocumentTemplateRuntimeServiceCode("SRR"), "SRR");
+  assert.equal(normalizeDocumentTemplateRuntimeServiceCode("SPR"), "SRR");
+  assert.equal(normalizeDocumentTemplateRuntimeServiceCode("PANIK"), "SRR");
+  assert.equal(normalizeDocumentTemplateRuntimeServiceCode("PR"), "PR");
+  assert.notEqual(normalizeDocumentTemplateRuntimeServiceCode("Pregled hidrantske mreze"), "SRR");
 });
 
 test("documentation service code comparator follows the requested zapisnici tab order", () => {
-  const codes = ["EXSE", "PR", "ROK", "STROJEVI", "ROF", "RADNAOPREMA", "EXEI", "NNZDPETROL"];
+  const codes = ["EXSE", "SRR", "ROK", "STROJEVI", "ROF", "RADNAOPREMA", "EXEI", "NNZDPETROL"];
   assert.deepEqual(codes.sort(compareDocumentTemplateRuntimeServiceCodes), [
     "RADNAOPREMA",
     "STROJEVI",
-    "PR",
+    "SRR",
     "ROF",
     "ROK",
     "EXEI",
@@ -68,8 +70,8 @@ test("documentation timeline labels keep ROF and ROK out of the RO tab", () => {
   assert.equal(getDocumentTemplateRuntimeTimelineLabel({ templateTitle: "Predlozak ROK kemijski cimbenici" }), "KC");
 });
 
-test("PR gridline template uses lighting columns with formula defaults and SPR legacy alias", () => {
-  const [table] = createDocumentationMeasurementTablesForService("PR");
+test("SRR gridline template uses lighting columns with formula defaults and SPR legacy alias", () => {
+  const [table] = createDocumentationMeasurementTablesForService("SRR");
   const [legacyTable] = createDocumentationMeasurementTablesForService("SPR");
 
   assert.deepEqual(table.sheet.columns.map((column) => column.label), [
@@ -81,8 +83,8 @@ test("PR gridline template uses lighting columns with formula defaults and SPR l
     "Zadovoljava",
   ]);
 
-  assert.equal(table.id, "pr-results");
-  assert.equal(legacyTable.id, "pr-results");
+  assert.equal(table.id, "srr-results");
+  assert.equal(legacyTable.id, "srr-results");
   assert.equal(table.sheet.rows.length, 12);
   assert.deepEqual(table.sheet.rows[0].cells, {
     c1: '=IF(B1="","",ROW())',

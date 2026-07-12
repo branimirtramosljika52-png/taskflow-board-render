@@ -14,7 +14,7 @@ const DOCUMENTATION_NATIVE_TAB_ORDER = Object.freeze([
   "NO",
   "EIZ",
   "EMM",
-  "PR",
+  "SRR",
   "SZOM",
   "SZOMV",
   "TZIN",
@@ -103,8 +103,8 @@ export function normalizeDocumentTemplateRuntimeServiceCode(value = "") {
   if (["TIPKALO"].includes(token)) {
     return "TZIN";
   }
-  if (["SPR", "PANIK"].includes(token)) {
-    return "PR";
+  if (["SRR", "SPR", "PANIK"].includes(token)) {
+    return "SRR";
   }
   if (isWorkOrderDocumentPhysicalFactorsText(value)) {
     return "FC";

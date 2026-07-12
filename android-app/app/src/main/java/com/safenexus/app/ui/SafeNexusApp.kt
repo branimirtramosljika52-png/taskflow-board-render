@@ -2713,7 +2713,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
         if (workOrder.id.isBlank()) {
-            onFailure("RN nema ispravan ID za PR diktat.")
+            onFailure("RN nema ispravan ID za SRR diktat.")
             return
         }
         viewModelScope.launch {
@@ -2727,7 +2727,7 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             )
                 .onSuccess(onSuccess)
                 .onFailure { error ->
-                    onFailure(error.message ?: "NexAI trenutno nije dostupan za PR diktat.")
+                    onFailure(error.message ?: "NexAI trenutno nije dostupan za SRR diktat.")
                 }
         }
     }
@@ -30821,7 +30821,7 @@ private const val DOCUMENTATION_EXTRA_FLOW_PREFIX = "__extra__"
 private const val DOCUMENTATION_COMMON_ATTACHMENT_KEY = "__common_attachments__"
 
 private val DOCUMENTATION_NATIVE_SERVICE_CODES = setOf(
-    "PR",
+    "SRR",
     "TZIN",
     "SZOM",
     "SZOMV",
@@ -30869,7 +30869,7 @@ private val DOCUMENTATION_FLOW_TAB_ORDER = listOf(
     "NO",
     "EIZ",
     "EMM",
-    "PR",
+    "SRR",
     "SZOM",
     "SZOMV",
     "TZIN",
@@ -31056,7 +31056,7 @@ private fun isDocumentationSprText(value: String): Boolean {
     ) {
         return true
     }
-    return normalized == "pr" ||
+    return normalized == "srr" ||
         normalized == "spr" ||
         normalized == "tzin" ||
         normalized == "eiz" ||
@@ -31064,7 +31064,7 @@ private fun isDocumentationSprText(value: String): Boolean {
         normalized == "szomv" ||
         normalized == "svz" ||
         normalized == "ves" ||
-        normalized.startsWith("pr ") ||
+        normalized.startsWith("srr ") ||
         normalized.startsWith("spr ") ||
         normalized.startsWith("tzin ") ||
         normalized.startsWith("eiz ") ||
@@ -31152,15 +31152,15 @@ private fun documentationNativeServiceCodeForText(value: String): String {
         normalized == "radnaoprema" ||
             normalized.contains("ispitivanje radne opreme") ||
             normalized.contains("pregled radne opreme") -> "RADNAOPREMA"
-        normalized == "pr" ||
+        normalized == "srr" ||
             normalized == "spr" ||
-            normalized.startsWith("pr ") ||
+            normalized.startsWith("srr ") ||
             normalized.startsWith("spr ") ||
             normalized.contains("sigurnosna panik") ||
             (normalized.contains("sigurnosn") && normalized.contains("rasvjet")) ||
             normalized.contains("panik rasvjet") ||
             normalized.contains("panic lighting") ||
-            normalized.contains("emergency lighting") -> "PR"
+            normalized.contains("emergency lighting") -> "SRR"
         normalized == "tzin" ||
             normalized.startsWith("tzin ") ||
             normalized.contains("tipkalo") ||
@@ -31285,7 +31285,7 @@ private fun normalizeDocumentationFlowTabCode(code: String): String {
         "VES" -> "VS"
         "NNZDPETROL" -> "NNZD"
         "HMU", "HMV", "HMUV" -> "HM"
-        "SPR", "PANIK" -> "PR"
+        "SPR", "PANIK" -> "SRR"
         else -> normalized
     }
 }
@@ -31457,7 +31457,7 @@ private fun inferDocumentationSignatureAreas(
         .lowercase(Locale.getDefault())
     return when {
         Regex("\\b(tzin|tipkalo)\\b").containsMatchIn(text) || text.contains("isklop napona") -> listOf("tzin")
-        Regex("\\b(pr|spr|panik)\\b").containsMatchIn(text) || text.contains("panik rasvjet") -> listOf("spr")
+        Regex("\\b(srr|spr|panik)\\b").containsMatchIn(text) || text.contains("panik rasvjet") -> listOf("spr")
         Regex("\\b(no|strojevi)\\b").containsMatchIn(text) || text.contains("nadzor opreme") || text.contains("nadzor strojeva") -> listOf("strojevi", "radna_oprema")
         Regex("\\bro\\b").containsMatchIn(text) || text.contains("radna oprema") || text.contains("radne opreme") -> listOf("radna_oprema")
         Regex("\\bfc\\b").containsMatchIn(text) || text.contains("radni okoli") || text.contains("fizikalni") -> listOf("radni_okolis")
@@ -31471,7 +31471,7 @@ private fun List<WorkOrderDocumentationSignatureAreaOptions>.areaOptions(key: St
         ?: WorkOrderDocumentationSignatureAreaOptions(
             key = normalizedKey,
             label = when (normalizedKey) {
-                "spr" -> "PR - Panik rasvjeta"
+                "spr" -> "SRR - Panik rasvjeta"
                 "tipkalo", "tzin" -> "Tipkalo za isklop napona"
                 "elektro" -> "Elektro usluga"
                 "radna_oprema", "ro" -> "Radna oprema"
@@ -33581,7 +33581,7 @@ private fun WorkOrderDocumentationWizardDialog(
             testingLocation.trim().isNotBlank()
         fun serviceTabComplete(tab: DocumentationFlowTab): Boolean {
             if (tab.serviceItem == null) return false
-            val sprSourcesComplete = if (nativeCodeForTab(tab) == "PR") {
+            val sprSourcesComplete = if (nativeCodeForTab(tab) == "SRR") {
                 selectedEquipmentIds.isNotEmpty() && selectedLegalFrameworkIds.isNotEmpty()
             } else {
                 true
@@ -37414,7 +37414,7 @@ private fun applySprVoiceTranscriptToMeasurementSheets(
     val isEiz = template.serviceCode.equals("EIZ", ignoreCase = true)
     val isExei = template.serviceCode.equals("EXEI", ignoreCase = true)
     val isExse = template.serviceCode.equals("EXSE", ignoreCase = true)
-    val isPanicLighting = template.serviceCode.equals("PR", ignoreCase = true) ||
+    val isPanicLighting = template.serviceCode.equals("SRR", ignoreCase = true) ||
         template.serviceCode.equals("SPR", ignoreCase = true)
     val isZudsVoice = isEiz && isEizZudsVoiceField(field)
     val isExeiZudsVoice = isExei && isExeiZudsVoiceField(field)
@@ -37460,7 +37460,7 @@ private fun applySprVoiceAiRowsToMeasurementSheets(
     val isEiz = template.serviceCode.equals("EIZ", ignoreCase = true)
     val isExei = template.serviceCode.equals("EXEI", ignoreCase = true)
     val isExse = template.serviceCode.equals("EXSE", ignoreCase = true)
-    val isPanicLighting = template.serviceCode.equals("PR", ignoreCase = true) ||
+    val isPanicLighting = template.serviceCode.equals("SRR", ignoreCase = true) ||
         template.serviceCode.equals("SPR", ignoreCase = true)
     if (!isEiz && !isExei && !isExse && !isPanicLighting) return sheets
     val isZudsVoice = isEiz && isEizZudsVoiceField(field)
@@ -38480,7 +38480,7 @@ private fun WorkOrderDocumentationTemplate.resolveAiMeasurementTable(
     suggestion: WorkOrderDocumentationAiMeasurementSuggestion,
 ): WorkOrderMeasurementTable? {
     measurementTables.firstOrNull { it.matchesAiMeasurementSuggestion(suggestion) }?.let { return it }
-    if (serviceCode.equals("PR", ignoreCase = true) || serviceCode.equals("SPR", ignoreCase = true)) {
+    if (serviceCode.equals("SRR", ignoreCase = true) || serviceCode.equals("SPR", ignoreCase = true)) {
         measurementTables.firstOrNull { it.looksLikeSprMeasurementTable() }?.let { return it }
     }
     if (serviceCode.equals("EIZ", ignoreCase = true)) {
