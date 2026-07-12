@@ -1579,6 +1579,8 @@ function getPdfMeasurementCellRawValue(sheet, rowIndex, columnIndex, stack = new
   stack.add(cellKey);
   try {
     const value = evaluateMeasurementFormula(rawValue, {
+      currentRowIndex: rowIndex,
+      currentColumnIndex: columnIndex,
       resolveCellReference(reference) {
         const targetEntry = resolvePdfMeasurementFormulaEntry(reference, formulaContext, currentEntry);
         const targetSheet = targetEntry?.sheet || currentSheet;

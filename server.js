@@ -118,7 +118,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.430.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.431.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -7968,7 +7968,7 @@ function buildOpenAiDocumentationServiceInstructions(body = {}) {
   if (serviceCode === "SPR") {
     base.push(
       "Za SPR trazi naslov 'ISPITNI IZVJESTAJ / ISPITIVANJE SIGURNOSNE PROTUPANICNE RASVJETE' ili 'IL - SPR'. To je tablica sigurnosne/protupanicne rasvjete, ne TZIN i ne EIZ.",
-      "SPR tablica ima kolone: R.br., Mjesto ispitivanja, Broj lampi, Ei [lux], Eimin [lux], ZADOVOLJAVA DA/NE. Primjer retka: Prodajni prostor | 2 | >2 | 1 | DA.",
+      "SPR tablica ima kolone: Redni broj, Mjesto ispitivanja, Broj panel lampi, Izmjerena razina osvjetljenja [lux], Potrebna razina osvjetljenja [lux], Zadovoljava. Stari zapisnici mogu koristiti kratice Ei [lux] i Eimin [lux]. Primjer retka: Prodajni prostor | 2 | >2 | 1 | DA.",
       "Obavezno vrati measurementSuggestions za spr-results kada vidis retke tablice. Sacuvaj vrijednosti kao >2, 1, 0,5, DA/NE bez pretvaranja i bez brisanja znaka >.",
       "Legenda iznad tablice (Ei = izmjereno osvjetljenje, Eimin = minimalno osvjetljenje) sluzi za razumijevanje kolona, ali nije redak mjerenja.",
     );
@@ -8859,6 +8859,8 @@ function getOpenAiSprMeasurementTarget(columns = [], searchText = "") {
       ]);
       const lampColumn = findOpenAiMeasurementColumn(group.columns, [
         "lampcount",
+        "brojpanellampi",
+        "brojpaniklampi",
         "brojlampi",
         "brojsvjetiljki",
         "svjetiljki",
@@ -8868,12 +8870,14 @@ function getOpenAiSprMeasurementTarget(columns = [], searchText = "") {
       const eiminColumn = findOpenAiMeasurementColumn(group.columns, [
         "eimin",
         "emin",
+        "potrebnarazinaosvjetljenja",
         "minimalnoosvjetljenje",
         "zahtijevanominimalnoosvjetljenje",
         "zahtijevanoosvjetljenje",
       ]);
       const eiColumn = findOpenAiMeasurementColumn(group.columns, [
         "ei",
+        "izmjerenarazinaosvjetljenja",
         "izmjerenoosvjetljenje",
         "izmjereno",
         "lux",
@@ -28470,7 +28474,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       ? [
         buildMobileNativeDocumentationField("sprVoiceTranscript", "Diktat mjernih mjesta", "spr_voice", {
         defaultValue: "",
-        helpText: "Primjer: Prodajni prostor 7 panika, skladiste 6. Puni samo mjesto ispitivanja i broj lampi.",
+        helpText: "Primjer: Prodajni prostor 7 panika, skladiste 6. Puni samo mjesto ispitivanja i broj panel lampi.",
         }),
       ]
       : []),
@@ -28646,8 +28650,8 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         group: title,
         editable: true,
         typeLabel: "Glasovni unos",
-        summary: "Unesi samo mjesto i broj lampi, npr. Prodajni prostor 7 panika.",
-        helpText: "Ako mjesto vec postoji u tablici, mijenja se samo broj lampi. Ako ne postoji, dodaje se novi red.",
+        summary: "Unesi samo mjesto i broj panel lampi, npr. Prodajni prostor 7 panika.",
+        helpText: "Ako mjesto vec postoji u tablici, mijenja se samo broj panel lampi. Ako ne postoji, dodaje se novi red.",
       }));
     }
     if (preset.serviceCode === "TZIN" && index === 0) {
@@ -29961,9 +29965,9 @@ function getMobileSprRowsFromSheet(sheet = null) {
     .map((row, index) => ({
       number: pickMobileSprSheetCell(normalized, index, columns, ["r br", "redni broj", "broj", "rb"], 0) || String(index + 1),
       place: pickMobileSprSheetCell(normalized, index, columns, ["mjesto ispitivanja", "prostorija", "prostor", "lokacija", "opis"], 1),
-      lampCount: pickMobileSprSheetCell(normalized, index, columns, ["broj lampi", "lampi", "svjetiljki", "broj svjetiljki"], 2),
-      ei: pickMobileSprSheetCell(normalized, index, columns, ["ei", "izmjereno", "izmjerena vrijednost"], 3),
-      eimin: pickMobileSprSheetCell(normalized, index, columns, ["eimin", "emin", "minimalno", "zahtijevano"], 4),
+      lampCount: pickMobileSprSheetCell(normalized, index, columns, ["broj panel lampi", "broj panik lampi", "broj lampi", "lampi", "svjetiljki", "broj svjetiljki"], 2),
+      ei: pickMobileSprSheetCell(normalized, index, columns, ["ei", "izmjerena razina osvjetljenja", "izmjereno", "izmjerena vrijednost"], 3),
+      eimin: pickMobileSprSheetCell(normalized, index, columns, ["eimin", "emin", "potrebna razina osvjetljenja", "minimalno", "zahtijevano"], 4),
       pass: pickMobileSprSheetCell(normalized, index, columns, ["zadovoljava", "ocjena", "ispravno", "pass"], 5),
     }))
     .filter((row) => {
@@ -29992,7 +29996,7 @@ const MOBILE_SPR_VOICE_TRANSCRIPT_FIELD_KEYS = Object.freeze([
   "spr voice transcript",
   "Diktat mjernih mjesta",
   "Diktat SPR mjernih mjesta",
-  "Diktat mjesta i broj lampi",
+  "Diktat mjesta i broj panel lampi",
   "Glasovni unos SPR",
 ]);
 
@@ -31915,10 +31919,10 @@ async function buildMobileSprVoiceStructuredRows(body = {}, user = null) {
       },
       settings: {
         language: "hr-HR",
-        task: "Iz diktata izdvoji mjerna mjesta sigurnosne protupanične rasvjete i broj lampi/svjetiljki.",
+        task: "Iz diktata izdvoji mjerna mjesta sigurnosne protupanične rasvjete i broj panel lampi/svjetiljki.",
         rules: [
           "Ako korisnik kaze 'etaza 1. kat', vrati poseban red kind='section', place='Etaza 1. kat', lampCount=''.",
-          "Section/etaza red nema broj lampi i mora se prikazati kao puni red u tablici.",
+          "Section/etaza red nema broj panel lampi i mora se prikazati kao puni red u tablici.",
           "Vrati jedan red za svako mjesto ispitivanja.",
           "Podrži diktat oblika 'prodajni prostor 6 skladište 7 hodnik 2', bez riječi komada.",
           "Ako se mjesto ponovi, zadnja izrečena brojčana vrijednost vrijedi.",
@@ -31930,7 +31934,7 @@ async function buildMobileSprVoiceStructuredRows(body = {}, user = null) {
         rows: [
           {
             place: "naziv mjesta ispitivanja, npr. Prodajni prostor",
-            lampCount: "broj lampi kao string, npr. 7",
+            lampCount: "broj panel lampi kao string, npr. 7",
             kind: "measurement | section",
             confidence: "high | medium | low",
           },
@@ -31985,14 +31989,14 @@ function applyMobileSprVoiceRowsToSheet(sheet = null, voiceRows = [], options = 
     normalized,
     Array.isArray(options.quantityCandidates) && options.quantityCandidates.length
       ? options.quantityCandidates
-      : ["broj lampi", "lampi", "svjetiljki", "broj svjetiljki"],
+      : ["broj panel lampi", "broj panik lampi", "broj lampi", "lampi", "svjetiljki", "broj svjetiljki"],
     Number.isInteger(options.quantityFallbackIndex) ? options.quantityFallbackIndex : 2,
   );
   const defaultColumnSpecs = Array.isArray(options.defaultColumnSpecs)
     ? options.defaultColumnSpecs
     : [
-      { candidates: ["ei", "izmjereno", "izmjerena vrijednost"], fallbackIndex: 3, value: ">2" },
-      { candidates: ["eimin", "emin", "minimalno", "zahtijevano"], fallbackIndex: 4, value: "1" },
+      { candidates: ["ei", "izmjerena razina osvjetljenja", "izmjereno", "izmjerena vrijednost"], fallbackIndex: 3, value: ">2" },
+      { candidates: ["eimin", "emin", "potrebna razina osvjetljenja", "minimalno", "zahtijevano"], fallbackIndex: 4, value: "1" },
       { candidates: ["zadovoljava", "ocjena", "ispravno", "pass"], fallbackIndex: 5, value: "DA" },
     ];
   const defaultColumns = defaultColumnSpecs

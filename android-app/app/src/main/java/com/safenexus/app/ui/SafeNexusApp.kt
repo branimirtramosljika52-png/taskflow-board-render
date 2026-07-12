@@ -11980,7 +11980,7 @@ private fun DocumentationManualPhysicalFactorsBlocks(
             .filter { (_, table) -> table.id == PHYSICAL_FACTORS_BUILT_IN_TABLE_ID || table.sheet.isBuiltInPhysicalFactorsSheet() }
             .forEach { (documentationTemplate, table) ->
                 val stateKey = measurementSheetStateKey(documentationTemplate, table)
-                val currentSheet = measurementSheets[stateKey] ?: table.sheet
+                val currentSheet = measurementSheetForTable(measurementSheets, documentationTemplate, table)
                 val nextSheet = currentSheet.withPhysicalFactorsSyncedSpaces(spaces)
                 if (nextSheet != currentSheet) {
                     onMeasurementSheetChange(stateKey, nextSheet)
@@ -11995,7 +11995,7 @@ private fun DocumentationManualPhysicalFactorsBlocks(
             ?: return
         val (documentationTemplate, table) = measurementTable
         val stateKey = measurementSheetStateKey(documentationTemplate, table)
-        val currentSheet = measurementSheets[stateKey] ?: table.sheet
+        val currentSheet = measurementSheetForTable(measurementSheets, documentationTemplate, table)
         val nextSheet = currentSheet.withPhysicalFactorsSpaceDraftRows(space, originalName)
         if (nextSheet != currentSheet) {
             onMeasurementSheetChange(stateKey, nextSheet)
@@ -12325,7 +12325,7 @@ private fun DocumentationManualPhysicalFactorsBlocks(
                         MeasurementTableEditor(
                             template = template,
                             table = table,
-                            sheet = measurementSheets[stateKey] ?: table.sheet,
+                            sheet = measurementSheetForTable(measurementSheets, template, table),
                             enabled = enabled,
                             spaceOptions = editableSpaces()
                                 .map { space -> space.name.trim() }
@@ -35148,9 +35148,73 @@ private fun normalizedMeasurementSheetMap(values: Map<String, WorkOrderMeasureme
         }
     }
 
+private fun measurementColumnLookup(value: String): String =
+    normalizeSprVoiceLookup(value)
+
+private fun measurementColumnCompactLookup(value: String): String =
+    measurementColumnLookup(value).replace(" ", "")
+
+private fun isGenericMeasurementColumnId(value: String): Boolean {
+    val lookup = measurementColumnCompactLookup(value)
+    return lookup.isBlank() || lookup.matches(Regex("^(?:c\\d+|col\\d+|column\\d+|kolona\\d+|[a-z])$"))
+}
+
+private fun measurementColumnAliasesMatch(expected: String, candidate: String): Boolean {
+    val expectedCompact = measurementColumnCompactLookup(expected)
+    val candidateCompact = measurementColumnCompactLookup(candidate)
+    if (expectedCompact.isBlank() || candidateCompact.isBlank()) return false
+    if (expectedCompact == candidateCompact) return true
+
+    val aliasGroups = listOf(
+        setOf("rednibroj", "rbr", "redbr", "rb", "number"),
+        setOf("mjestoispitivanja", "mjernomjesto", "mjestomjerenja", "lokacija"),
+        setOf("brojpanellampi", "brojpaniklampi", "brojlampi", "brojsvjetiljki", "brojrasvjetnihtijela"),
+        setOf("izmjerenarazinaosvjetljenjalux", "izmjerenoosvjetljenje", "izmjerenaosvjetljenost", "eilux", "ei"),
+        setOf("potrebnarazinaosvjetljenjalux", "minimalnoosvjetljenje", "zahtijevanoosvjetljenje", "eiminlux", "eimin"),
+        setOf("zadovoljava", "zadovoljavadane", "ocjena", "dane", "pass"),
+    )
+    return aliasGroups.any { aliases ->
+        aliases.any { alias -> expectedCompact == alias || expectedCompact.contains(alias) } &&
+            aliases.any { alias -> candidateCompact == alias || candidateCompact.contains(alias) }
+    }
+}
+
+private fun measurementColumnsCompatible(
+    expected: WorkOrderMeasurementColumn,
+    candidate: WorkOrderMeasurementColumn,
+): Boolean {
+    val expectedLabel = listOf(expected.label, expected.placeholder).firstOrNull { it.trim().isNotBlank() }.orEmpty()
+    val candidateLabel = listOf(candidate.label, candidate.placeholder).firstOrNull { it.trim().isNotBlank() }.orEmpty()
+    if (expectedLabel.isNotBlank() && candidateLabel.isNotBlank()) {
+        return measurementColumnAliasesMatch(expectedLabel, candidateLabel)
+    }
+
+    val expectedId = expected.id.trim()
+    val candidateId = candidate.id.trim()
+    return expectedId.isNotBlank() &&
+        candidateId.isNotBlank() &&
+        !isGenericMeasurementColumnId(expectedId) &&
+        !isGenericMeasurementColumnId(candidateId) &&
+        measurementColumnCompactLookup(expectedId) == measurementColumnCompactLookup(candidateId)
+}
+
+private fun measurementSheetsHaveCompatibleColumns(
+    expected: WorkOrderMeasurementSheet,
+    candidate: WorkOrderMeasurementSheet,
+): Boolean {
+    if (expected.columns.isEmpty() || candidate.columns.size < expected.columns.size) return false
+    return expected.columns.indices.all { index ->
+        measurementColumnsCompatible(expected.columns[index], candidate.columns[index])
+    }
+}
+
+private fun WorkOrderMeasurementSheet.isReusableForMeasurementTemplate(expected: WorkOrderMeasurementSheet): Boolean =
+    hasReusableMeasurementRows() && measurementSheetsHaveCompatibleColumns(expected, this)
+
 private fun findSavedMeasurementSheetByKeys(
     sheets: Map<String, WorkOrderMeasurementSheet>,
     candidates: List<String>,
+    expectedSheet: WorkOrderMeasurementSheet,
 ): WorkOrderMeasurementSheet? {
     if (sheets.isEmpty()) return null
     val candidateLookups = candidates
@@ -35166,16 +35230,16 @@ private fun findSavedMeasurementSheetByKeys(
     if (candidateLookups.isEmpty()) return null
 
     for (key in candidates) {
-        sheets[key]?.takeIf { it.hasReusableMeasurementRows() }?.let { return it }
+        sheets[key]?.takeIf { it.isReusableForMeasurementTemplate(expectedSheet) }?.let { return it }
     }
 
     val normalizedSheets = normalizedMeasurementSheetMap(sheets)
     for (lookup in candidateLookups) {
-        normalizedSheets[lookup]?.takeIf { it.hasReusableMeasurementRows() }?.let { return it }
+        normalizedSheets[lookup]?.takeIf { it.isReusableForMeasurementTemplate(expectedSheet) }?.let { return it }
     }
 
     sheets.forEach { (key, sheet) ->
-        if (!sheet.hasReusableMeasurementRows()) return@forEach
+        if (!sheet.isReusableForMeasurementTemplate(expectedSheet)) return@forEach
         val keyLookups = listOf(key, key.substringAfterLast("::"))
             .map(::normalizeTemplateFieldLookup)
             .filter { it.isNotBlank() }
@@ -35352,7 +35416,22 @@ private fun buildServiceValidityPayload(
 private fun measurementSheetStateKey(
     template: WorkOrderDocumentationTemplate,
     table: WorkOrderMeasurementTable,
-): String = "${template.id}::${table.key.ifBlank { table.id.ifBlank { table.tokenKey } }}"
+): String = "${template.id}::${measurementTableStateKeyFragment(table)}"
+
+private fun measurementTableStateKeyFragment(table: WorkOrderMeasurementTable): String {
+    listOf(table.key, table.id, table.tokenKey, table.sourceSheet, table.label)
+        .map { it.trim() }
+        .firstOrNull { it.isNotBlank() }
+        ?.let { return it }
+
+    return table.sheet.columns
+        .joinToString("|") { column ->
+            normalizeSprVoiceLookup(listOf(column.id, column.label, column.placeholder).joinToString(" "))
+                .replace(" ", "-")
+        }
+        .take(120)
+        .ifBlank { "measurement-table" }
+}
 
 private fun isEizZudsVoiceText(value: String): Boolean =
     normalizeSprVoiceLookup(value).let { lookup ->
@@ -36700,7 +36779,7 @@ private fun applyExseVoiceRowsToMeasurementSheets(
         val tableRows = voiceRows.filter { row -> exseVoiceRowKind(row).equals(tableKind, ignoreCase = true) }
         if (tableRows.isEmpty()) return@forEachIndexed
         val key = measurementSheetStateKey(template, table)
-        val sheet = nextSheets[key] ?: table.sheet
+        val sheet = measurementSheetForTable(nextSheets, template, table)
         nextSheets = nextSheets + (key to applyExseVoiceRowsToSheet(sheet, tableRows, tableKind, replaceExisting))
     }
     return nextSheets
@@ -37354,7 +37433,7 @@ private fun applySprVoiceTranscriptToMeasurementSheets(
     }
     if (table == null) return sheets
     val key = measurementSheetStateKey(template, table)
-    val sheet = sheets[key] ?: table.sheet
+    val sheet = measurementSheetForTable(sheets, template, table)
     return sheets + (key to when {
         isExeiZudsVoice -> applyEizZudsVoiceRowsToSheet(sheet, voiceRows, action.replaceExisting)
         isExei -> applyExeiIpkVoiceRowsToSheet(sheet, voiceRows, action.replaceExisting)
@@ -37451,7 +37530,7 @@ private fun applySprVoiceAiRowsToMeasurementSheets(
         val table = if (isExeiZudsVoice) findExeiZudsMeasurementTable(template) else findExeiIpkMeasurementTable(template)
         if (table == null) return sheets
         val key = measurementSheetStateKey(template, table)
-        val sheet = sheets[key] ?: table.sheet
+        val sheet = measurementSheetForTable(sheets, template, table)
         return sheets + (key to if (isExeiZudsVoice) {
             applyEizZudsVoiceRowsToSheet(sheet, exeiRows, replaceExisting)
         } else {
@@ -37500,7 +37579,7 @@ private fun applySprVoiceAiRowsToMeasurementSheets(
     }
     if (table == null) return sheets
     val key = measurementSheetStateKey(template, table)
-    val sheet = sheets[key] ?: table.sheet
+    val sheet = measurementSheetForTable(sheets, template, table)
     return sheets + (key to when {
         isZudsVoice -> applyEizZudsVoiceRowsToSheet(sheet, voiceRows, replaceExisting)
         isEiz -> applyEizIpkVoiceRowsToSheet(sheet, voiceRows, replaceExisting)
@@ -37577,10 +37656,10 @@ private fun resolveSavedMeasurementSheet(
     val candidates = (measurementTableCandidateKeys(table) + measurementSheetStateKey(template, table))
         .distinctBy { it.lowercase(Locale.getDefault()) }
     val templateSheets = defaults.templateFieldSheets[template.id].orEmpty()
-    findSavedMeasurementSheetByKeys(templateSheets, candidates)?.let { return it }
-    findSavedMeasurementSheetByKeys(defaults.fieldSheets, candidates)?.let { return it }
+    findSavedMeasurementSheetByKeys(templateSheets, candidates, table.sheet)?.let { return it }
+    findSavedMeasurementSheetByKeys(defaults.fieldSheets, candidates, table.sheet)?.let { return it }
     defaults.templateFieldSheets.values.forEach { sheets ->
-        findSavedMeasurementSheetByKeys(sheets, candidates)?.let { return it }
+        findSavedMeasurementSheetByKeys(sheets, candidates, table.sheet)?.let { return it }
     }
     return null
 }
@@ -37596,6 +37675,19 @@ private fun defaultMeasurementSheetValues(
             }
         }
     }
+
+private fun measurementSheetForTable(
+    sheets: Map<String, WorkOrderMeasurementSheet>,
+    template: WorkOrderDocumentationTemplate,
+    table: WorkOrderMeasurementTable,
+): WorkOrderMeasurementSheet {
+    val saved = sheets[measurementSheetStateKey(template, table)]
+    return if (saved != null && measurementSheetsHaveCompatibleColumns(table.sheet, saved)) {
+        saved
+    } else {
+        table.sheet
+    }
+}
 
 private const val PHYSICAL_FACTORS_BUILT_IN_TEMPLATE_ID = "mobile-ro-f"
 private const val PHYSICAL_FACTORS_BUILT_IN_TABLE_ID = "mobile-ro-f-3"
@@ -38164,7 +38256,7 @@ private fun buildPhysicalFactorsMeasurementsFromSheets(
 ): List<IsznrFcMeasurementDraft> =
     measurementTemplates.flatMap { template ->
         template.measurementTables.flatMap { table ->
-            val sheet = measurementSheets[measurementSheetStateKey(template, table)] ?: table.sheet
+            val sheet = measurementSheetForTable(measurementSheets, template, table)
             buildPhysicalFactorsMeasurementsFromSheet(template, table, sheet, value.spaces)
         }
     }
@@ -38211,7 +38303,7 @@ private fun buildMeasurementSheetPayload(
 
     templates.forEach { template ->
         template.measurementTables.forEach { table ->
-            val sheet = sheets[measurementSheetStateKey(template, table)] ?: table.sheet
+            val sheet = measurementSheetForTable(sheets, template, table)
             listOf(table.id, table.key, table.tokenKey, table.sourceSheet)
                 .map { it.trim() }
                 .filter { it.isNotBlank() }
@@ -38583,8 +38675,7 @@ private fun buildDocumentationAiGridlinePreviewRows(
                 .firstOrNull { it.isNotBlank() }
                 .orEmpty()
                 .ifBlank { "Gridline tablica" }
-            val stateKey = measurementSheetStateKey(template, table)
-            val sheet = sheets[stateKey] ?: table.sheet
+            val sheet = measurementSheetForTable(sheets, template, table)
             val aiColumns = template.aiMeasurementColumns.filter { it.matchesField(table) }
             val placeColumn = findSprMeasurementColumn(
                 sheet = sheet,
@@ -38752,7 +38843,7 @@ private fun applyDocumentationAiMeasurementSuggestions(
     result.measurementSuggestions.forEach { suggestion ->
         val table = template.resolveAiMeasurementTable(suggestion) ?: return@forEach
         val stateKey = measurementSheetStateKey(template, table)
-        val sheet = nextSheets[stateKey] ?: table.sheet
+        val sheet = measurementSheetForTable(nextSheets, template, table)
         val aiColumns = template.aiMeasurementColumns.filter { it.matchesField(table) }
         val aiRows = suggestion.rows
             .map { row -> buildDocumentationAiMeasurementCells(sheet, aiColumns, row) }
@@ -39672,11 +39763,10 @@ private fun buildMobileMeasurementFormulaContext(
     measurementSheets: Map<String, WorkOrderMeasurementSheet>,
 ): MobileMeasurementFormulaContext {
     val measurementEntries = template.measurementTables.mapIndexedNotNull { index, table ->
-        val stateKey = measurementSheetStateKey(template, table)
         val sheet = if (table.key == currentTable.key && table.id == currentTable.id) {
             currentSheet
         } else {
-            measurementSheets[stateKey] ?: table.sheet
+            measurementSheetForTable(measurementSheets, template, table)
         }
         if (sheet.columns.isEmpty()) {
             null
@@ -40948,7 +41038,7 @@ private fun DocumentationMeasurementLaunchCard(
     }
     val rowCount = remember(measurementTemplates, measurementSheets) {
         tables.sumOf { (template, table) ->
-            (measurementSheets[measurementSheetStateKey(template, table)] ?: table.sheet).rows.size
+            measurementSheetForTable(measurementSheets, template, table).rows.size
         }
     }
     Surface(
@@ -41029,7 +41119,7 @@ private fun DocumentationMeasurementPreviewContent(
                 MeasurementTableEditor(
                     template = template,
                     table = table,
-                    sheet = measurementSheets[stateKey] ?: table.sheet,
+                    sheet = measurementSheetForTable(measurementSheets, template, table),
                     tableIncluded = usageKey in includedMeasurementTableKeys,
                     enabled = enabled,
                     expanded = true,
@@ -42983,7 +43073,7 @@ private fun DocumentationSprMobileWorkspace(
     val rowCount = remember(measurementTemplates, measurementSheets) {
         measurementTemplates.sumOf { template ->
             template.measurementTables.sumOf { table ->
-                val sheet = measurementSheets[measurementSheetStateKey(template, table)] ?: table.sheet
+                val sheet = measurementSheetForTable(measurementSheets, template, table)
                 sheet.rows.size
             }
         }
@@ -43501,7 +43591,7 @@ private fun buildDocumentationSprTemplateSectionSummary(
     }
     if (isMeasurementSection) {
         val measurementTotal = measurementSectionTables.sumOf { table ->
-            val sheet = standardControls.measurementSheets[measurementSheetStateKey(entry.template, table)] ?: table.sheet
+            val sheet = measurementSheetForTable(standardControls.measurementSheets, entry.template, table)
             sheet.sprMeasurementColumnCTotal()
         }
         val chips = measurementTotal
@@ -43894,7 +43984,7 @@ private fun DocumentationSprTemplateSectionPanel(
                                         MeasurementTableEditor(
                                             template = entry.template,
                                             table = table,
-                                            sheet = standardControls.measurementSheets[stateKey] ?: table.sheet,
+                                            sheet = measurementSheetForTable(standardControls.measurementSheets, entry.template, table),
                                             enabled = enabled,
                                             showIncludedToggle = false,
                                             measurementSheets = standardControls.measurementSheets,
@@ -45311,7 +45401,7 @@ private fun TemplateBlockSectionCard(
                             MeasurementTableEditor(
                                 template = template,
                                 table = table,
-                                sheet = standardControls.measurementSheets[stateKey] ?: table.sheet,
+                                sheet = measurementSheetForTable(standardControls.measurementSheets, template, table),
                                 enabled = standardControls.enabled,
                                 measurementSheets = standardControls.measurementSheets,
                                 onOpenFullscreen = standardControls.onOpenMeasurements,

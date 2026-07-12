@@ -49951,7 +49951,48 @@ function createMeasurementRowForAppend() {
     return buildPhysicalFactorsRoF3DataRow(state.measurementSheet.rows.length + 1, state.measurementSheet.columns);
   }
 
-  return createMeasurementRow();
+  return createMeasurementRowFromFormulaSeed(state.measurementSheet.rows.length);
+}
+
+function getMeasurementFormulaSeedRowIndex(targetRowIndex) {
+  const safeTargetIndex = Math.max(0, Math.min(Number(targetRowIndex) || 0, state.measurementSheet.rows.length));
+  for (let index = safeTargetIndex - 1; index >= 0; index -= 1) {
+    const row = state.measurementSheet.rows[index];
+    if (row?.cells && Object.values(row.cells).some((value) => isMeasurementFormula(value))) {
+      return index;
+    }
+  }
+  for (let index = safeTargetIndex; index < state.measurementSheet.rows.length; index += 1) {
+    const row = state.measurementSheet.rows[index];
+    if (row?.cells && Object.values(row.cells).some((value) => isMeasurementFormula(value))) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function createMeasurementRowFromFormulaSeed(targetRowIndex = state.measurementSheet.rows.length) {
+  const sourceRowIndex = getMeasurementFormulaSeedRowIndex(targetRowIndex);
+  if (sourceRowIndex < 0) {
+    return createMeasurementRow();
+  }
+
+  const sourceRow = state.measurementSheet.rows[sourceRowIndex];
+  const rowOffset = targetRowIndex - sourceRowIndex;
+  const partialCells = {};
+  const partialFormats = {};
+
+  state.measurementSheet.columns
+    .filter((column) => !column.computed)
+    .forEach((column) => {
+      const sourceValue = sourceRow?.cells?.[column.id] ?? "";
+      if (isMeasurementFormula(sourceValue)) {
+        partialCells[column.id] = shiftMeasurementFormulaReferences(sourceValue, rowOffset, 0);
+      }
+      partialFormats[column.id] = normalizeMeasurementCellFormat(sourceRow?.formats?.[column.id]);
+    });
+
+  return createMeasurementRow(partialCells, partialFormats);
 }
 
 function appendMeasurementRows(count = MEASUREMENT_ROW_BATCH_SIZE) {
@@ -53612,7 +53653,7 @@ function insertMeasurementRowAt(index) {
   const scrollLeft = measurementSheetGridWrap?.scrollLeft ?? 0;
 
   pushMeasurementSheetHistorySnapshot();
-  state.measurementSheet.rows.splice(insertionIndex, 0, createMeasurementRow());
+  state.measurementSheet.rows.splice(insertionIndex, 0, createMeasurementRowFromFormulaSeed(insertionIndex));
   expandMeasurementMergesForInsertedRow(insertionIndex);
   renderMeasurementSheet();
 
@@ -58595,28 +58636,27 @@ let documentationSprWorkOrderBatch = {
 
 function getDocumentationSprDefaultRows() {
   return [
-    ["R. br.", "Mjesto ispitivanja", "Broj lampi", "Ei", "Eimin", "ZADOVOLJAVA"],
-    ["", "", "", "lux", "lux", "DA/NE"],
-    ["1", "Prodajni prostor - izlaz", "1", ">2", "1", "DA"],
-    ["2", "Prodajni prostor - sredina", "2", ">2", "1", "DA"],
-    ["3", "Prodajni prostor - izlaz osoblje", "1", ">2", "1", "DA"],
-    ["4", "Tehnička soba - izlaz", "1", ">2", "1", "DA"],
-    ["5", "Hodnik ispred komore", "1", ">2", "1", "DA"],
-    ["6", "Kotlovnica", "1", ">2", "1", "DA"],
-    ["7", "Spremišta kod kotlovnice", "2", ">2", "1", "DA"],
-    ["8", "Garderoba i WC osoblje", "2", ">2", "1", "DA"],
-    ["9", "Skladište caffe", "1", ">2", "1", "DA"],
-    ["10", "Caffe bar izlaz", "1", ">2", "1", "DA"],
-    ["11", "Strojarnica autopraone", "1", ">2", "1", "DA"],
-    ["12", "WC invalidi", "1", ">2", "1", "DA"],
-    ["13", "Ulaz sanitarni prostori M, Ž i Invalidi", "1", ">2", "1", "DA"],
+    ["Redni broj", "Mjesto ispitivanja", "Broj panel lampi", "Izmjerena razina osvjetljenja [lux]", "Potrebna razina osvjetljenja [lux]", "Zadovoljava"],
+    ['=IF(B2="";"";ROW()-1)', "Prodajni prostor - izlaz", '=IF(B2="";"";"1")', '=IF(B2="";"";">2")', '=IF(B2="";"";"1")', '=IF(B2="";"";"DA")'],
+    ['=IF(B3="";"";ROW()-1)', "Prodajni prostor - sredina", '=IF(B3="";"";"2")', '=IF(B3="";"";">2")', '=IF(B3="";"";"1")', '=IF(B3="";"";"DA")'],
+    ['=IF(B4="";"";ROW()-1)', "Prodajni prostor - izlaz osoblje", '=IF(B4="";"";"1")', '=IF(B4="";"";">2")', '=IF(B4="";"";"1")', '=IF(B4="";"";"DA")'],
+    ['=IF(B5="";"";ROW()-1)', "Tehnička soba - izlaz", '=IF(B5="";"";"1")', '=IF(B5="";"";">2")', '=IF(B5="";"";"1")', '=IF(B5="";"";"DA")'],
+    ['=IF(B6="";"";ROW()-1)', "Hodnik ispred komore", '=IF(B6="";"";"1")', '=IF(B6="";"";">2")', '=IF(B6="";"";"1")', '=IF(B6="";"";"DA")'],
+    ['=IF(B7="";"";ROW()-1)', "Kotlovnica", '=IF(B7="";"";"1")', '=IF(B7="";"";">2")', '=IF(B7="";"";"1")', '=IF(B7="";"";"DA")'],
+    ['=IF(B8="";"";ROW()-1)', "Spremišta kod kotlovnice", '=IF(B8="";"";"2")', '=IF(B8="";"";">2")', '=IF(B8="";"";"1")', '=IF(B8="";"";"DA")'],
+    ['=IF(B9="";"";ROW()-1)', "Garderoba i WC osoblje", '=IF(B9="";"";"2")', '=IF(B9="";"";">2")', '=IF(B9="";"";"1")', '=IF(B9="";"";"DA")'],
+    ['=IF(B10="";"";ROW()-1)', "Skladište caffe", '=IF(B10="";"";"1")', '=IF(B10="";"";">2")', '=IF(B10="";"";"1")', '=IF(B10="";"";"DA")'],
+    ['=IF(B11="";"";ROW()-1)', "Caffe bar izlaz", '=IF(B11="";"";"1")', '=IF(B11="";"";">2")', '=IF(B11="";"";"1")', '=IF(B11="";"";"DA")'],
+    ['=IF(B12="";"";ROW()-1)', "Strojarnica autopraone", '=IF(B12="";"";"1")', '=IF(B12="";"";">2")', '=IF(B12="";"";"1")', '=IF(B12="";"";"DA")'],
+    ['=IF(B13="";"";ROW()-1)', "WC invalidi", '=IF(B13="";"";"1")', '=IF(B13="";"";">2")', '=IF(B13="";"";"1")', '=IF(B13="";"";"DA")'],
+    ['=IF(B14="";"";ROW()-1)', "Ulaz sanitarni prostori M, Ž i Invalidi", '=IF(B14="";"";"1")', '=IF(B14="";"";">2")', '=IF(B14="";"";"1")', '=IF(B14="";"";"DA")'],
   ];
 }
 
 function getDocumentationSprBlankRows() {
   return [
-    ["R. br.", "Mjesto ispitivanja", "Broj lampi", "Ei", "Eimin", "ZADOVOLJAVA"],
-    ["", "", "", "lux", "lux", "DA/NE"],
+    ["Redni broj", "Mjesto ispitivanja", "Broj panel lampi", "Izmjerena razina osvjetljenja [lux]", "Potrebna razina osvjetljenja [lux]", "Zadovoljava"],
+    ['=IF(B2="";"";ROW()-1)', "", '=IF(B2="";"";"1")', '=IF(B2="";"";">2")', '=IF(B2="";"";"1")', '=IF(B2="";"";"DA")'],
   ];
 }
 

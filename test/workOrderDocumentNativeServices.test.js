@@ -9,6 +9,9 @@ import {
   normalizeDocumentTemplateRuntimeServiceCode,
   shouldShowWorkOrderDocumentIsznrWorkEquipmentSection,
 } from "../src/features/workOrderDocuments/nativeServices.js";
+import {
+  createDocumentationMeasurementTablesForService,
+} from "../src/documentationNativePresets.js";
 
 test("native work equipment detection accepts compact names and RO codes", () => {
   assert.equal(isWorkOrderDocumentWorkEquipmentText("RadnaOprema"), true);
@@ -60,4 +63,31 @@ test("documentation timeline labels keep ROF and ROK out of the RO tab", () => {
   assert.equal(getDocumentTemplateRuntimeTimelineLabel({ serviceCode: "ROK" }), "KC");
   assert.equal(getDocumentTemplateRuntimeTimelineLabel({ templateTitle: "Predlozak ROF mjerenja" }), "FC");
   assert.equal(getDocumentTemplateRuntimeTimelineLabel({ templateTitle: "Predlozak ROK kemijski cimbenici" }), "KC");
+});
+
+test("SPR gridline template uses lighting columns with formula defaults", () => {
+  const [table] = createDocumentationMeasurementTablesForService("SPR");
+
+  assert.deepEqual(table.sheet.columns.map((column) => column.label), [
+    "Redni broj",
+    "Mjesto ispitivanja",
+    "Broj panel lampi",
+    "Izmjerena razina osvjetljenja [lux]",
+    "Potrebna razina osvjetljenja [lux]",
+    "Zadovoljava",
+  ]);
+
+  assert.equal(table.id, "spr-results");
+  assert.equal(table.sheet.rows.length, 12);
+  assert.deepEqual(table.sheet.rows[0].cells, {
+    c1: '=IF(B1="","",ROW())',
+    c2: "Prodajni prostor",
+    c3: '=IF(B1="","","1")',
+    c4: '=IF(B1="","",">2")',
+    c5: '=IF(B1="","","1")',
+    c6: '=IF(B1="","","DA")',
+  });
+  assert.equal(table.sheet.rows[6].cells.c2, "");
+  assert.equal(table.sheet.rows[6].cells.c1, '=IF(B7="","",ROW())');
+  assert.equal(table.sheet.rows[6].cells.c4, '=IF(B7="","",">2")');
 });

@@ -321,13 +321,46 @@ function technicalField(id, label, defaultValue = "") {
 }
 
 const SPR_COLUMNS = [
-  makeColumn("number", "R. br.", 70),
+  makeColumn("number", "Redni broj", 82),
   makeColumn("place", "Mjesto ispitivanja", 240),
-  makeColumn("lampCount", "Broj lampi", 92),
-  makeColumn("ei", "Ei", 84, "lux"),
-  makeColumn("eimin", "Eimin", 84, "lux"),
-  makeColumn("pass", "ZADOVOLJAVA", 120, "DA/NE"),
+  makeColumn("lampCount", "Broj panel lampi", 118),
+  makeColumn("ei", "Izmjerena razina osvjetljenja [lux]", 190),
+  makeColumn("eimin", "Potrebna razina osvjetljenja [lux]", 188),
+  makeColumn("pass", "Zadovoljava", 120, "DA/NE"),
 ];
+
+const SPR_DEFAULT_PLACES = Object.freeze([
+  "Prodajni prostor",
+  "Prostor za pusace",
+  "Sanitarni prostor M",
+  "Sanitarni prostor Z",
+  "Predprostor WC",
+  "Hodnik",
+]);
+
+function makeSprMeasurementRowValues(rowNumber, index) {
+  const place = SPR_DEFAULT_PLACES[index] || "";
+  return {
+    number: `=IF(B${rowNumber}="","",ROW())`,
+    place,
+    lampCount: `=IF(B${rowNumber}="","","1")`,
+    ei: `=IF(B${rowNumber}="","",">2")`,
+    eimin: `=IF(B${rowNumber}="","","1")`,
+    pass: `=IF(B${rowNumber}="","","DA")`,
+  };
+}
+
+function makeSprCistaMeasurementRowValues(rowNumber, index) {
+  const place = SPR_DEFAULT_PLACES[index] || "";
+  return {
+    c1: `=IF(B${rowNumber}="","",ROW())`,
+    c2: place,
+    c3: `=IF(B${rowNumber}="","","1")`,
+    c4: `=IF(B${rowNumber}="","",">2")`,
+    c5: `=IF(B${rowNumber}="","","1")`,
+    c6: `=IF(B${rowNumber}="","","DA")`,
+  };
+}
 
 const TZIN_COLUMNS = [
   makeColumn("number", "R. br.", 70),
@@ -1872,36 +1905,36 @@ const DOCUMENTATION_COLUMN_AI_BY_TABLE = Object.freeze({
     }),
     lampCount: makeColumnAi({
       key: "lampCount",
-      label: "Broj lampi",
+      label: "Broj panel lampi",
       type: "number",
       aiDescription: "Prepiši broj lampi za isto mjerno mjesto. Ako broj nije jasno naveden, predlozi 1.",
-      aiLookFor: ["broj lampi", "broj svjetiljki", "kom", "rasvjetno tijelo"],
+      aiLookFor: ["broj panel lampi", "broj panik lampi", "broj lampi", "broj svjetiljki", "kom", "rasvjetno tijelo"],
       examples: ["1", "2"],
       fallbackValue: "1",
     }),
     ei: makeColumnAi({
       key: "ei",
-      label: "Ei",
+      label: "Izmjerena razina osvjetljenja [lux]",
       type: "text",
       unit: "lux",
       aiDescription: "Prepiši izmjereno osvjetljenje Ei za sigurnosnu rasvjetu. Vrijednost moze biti broj ili izraz poput >2.",
-      aiLookFor: ["Ei", "izmjereno osvjetljenje", "lux"],
+      aiLookFor: ["Ei", "izmjerena razina osvjetljenja", "izmjereno osvjetljenje", "lux"],
       examples: [">2", "3,5", "2.8"],
       validationRules: "Zadrzi decimalni zapis i znak > ako postoji. Ne pretvaraj jedinice.",
     }),
     eimin: makeColumnAi({
       key: "eimin",
-      label: "Eimin",
+      label: "Potrebna razina osvjetljenja [lux]",
       type: "text",
       unit: "lux",
       aiDescription: "Prepiši zahtijevano minimalno osvjetljenje Eimin. Ako nije vidljivo, predlozi 1.",
-      aiLookFor: ["Eimin", "minimalno osvjetljenje", "zahtijevano osvjetljenje", "lux"],
+      aiLookFor: ["Eimin", "potrebna razina osvjetljenja", "minimalno osvjetljenje", "zahtijevano osvjetljenje", "lux"],
       examples: ["1", "0,5"],
       fallbackValue: "1",
     }),
     pass: makeColumnAi({
       key: "pass",
-      label: "ZADOVOLJAVA",
+      label: "Zadovoljava",
       type: "enum",
       aiDescription: "Prepiši DA/NE za ocjenu retka. Ako ocjena nije navedena, zakljuci samo kada su Ei i Eimin jasno usporedivi.",
       aiLookFor: ["zadovoljava", "ocjena", "DA", "NE"],
@@ -3376,15 +3409,16 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       label: "Mjerna mjesta sigurnosne protupanicne rasvjete",
       summary: "Tablica 1. - mjerna mjesta sigurnosne protupanicne rasvjete",
       sourceSheet: "SPR1.2",
-      columns: ["R. br.", "Mjesto ispitivanja", "Broj lampi", "Ei [lux]", "Eimin [lux]", "ZADOVOLJAVA DA/NE"],
-      rows: [
-        ["1", "Prodajni prostor", "5", ">2", "1", "DA"],
-        ["2", "Prostor za pusace", "1", ">2", "1", "DA"],
-        ["3", "Sanitarni prostor M", "1", ">2", "1", "DA"],
-        ["4", "Sanitarni prostor Z", "1", ">2", "1", "DA"],
-        ["5", "Predprostor WC", "1", ">2", "1", "DA"],
-        ["6", "Hodnik", "2", ">2", "1", "DA"],
+      columns: [
+        "Redni broj",
+        "Mjesto ispitivanja",
+        "Broj panel lampi",
+        "Izmjerena razina osvjetljenja [lux]",
+        "Potrebna razina osvjetljenja [lux]",
+        "Zadovoljava",
       ],
+      rowCount: 12,
+      rowBuilder: makeSprCistaMeasurementRowValues,
     },
   ],
   TZIN: [
@@ -4309,8 +4343,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
         label: "Mjerna mjesta sigurnosne rasvjete",
         summary: "Tablica 1. - mjerna mjesta sigurnosne protupanicne rasvjete",
         columns: SPR_COLUMNS,
-        blankRowCount: 12,
-        blankSeed: { lampCount: "1", ei: ">2", eimin: "1", pass: "DA" },
+        rows: formulaRows(SPR_COLUMNS, 12, makeSprMeasurementRowValues),
       }),
     ],
   }),
