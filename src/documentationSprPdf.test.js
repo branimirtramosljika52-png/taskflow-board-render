@@ -6,6 +6,7 @@ import { PDFDict, PDFDocument, PDFName } from "pdf-lib";
 import sharp from "sharp";
 
 import {
+  createDocumentationMeasurementTablesForService,
   createDocumentationReportModelDefaults,
   getDocumentationNativeTemplateSeedPresets,
 } from "./documentationNativePresets.js";
@@ -135,6 +136,61 @@ test("SPR native documentation HTML keeps the uploaded document header", () => {
   assert.match(html, /doc-header is-uploaded/, "SPR renders the uploaded header block");
   assert.match(html, /data:image\/png;base64,aGVhZGVy/, "SPR keeps uploaded header image data");
   assert.doesNotMatch(html, /<div class="brand">SafeNexus<\/div>/, "uploaded SPR header does not fall back to SafeNexus text");
+});
+
+test("SPR native documentation export restores SRR Gridline table when a linked template carries a foreign table", () => {
+  const [srrTable] = createDocumentationMeasurementTablesForService("SRR");
+  const [hydrantTable] = createDocumentationMeasurementTablesForService("HM");
+  const columnId = (needle) => srrTable.sheet.columns.find((column) => (
+    String(column.label || "").toLowerCase().includes(needle)
+  ))?.id || "";
+  const placeColumnId = columnId("mjesto");
+  const lampColumnId = columnId("panel");
+  const measuredColumnId = columnId("izmjerena");
+  const requiredColumnId = columnId("potrebna");
+  const passColumnId = columnId("zadovoljava");
+  const editedSrrSheet = {
+    ...srrTable.sheet,
+    rows: srrTable.sheet.rows.map((row, index) => (
+      index === 0
+        ? {
+          ...row,
+          cells: {
+            ...row.cells,
+            [placeColumnId]: "Test evakuacijski izlaz",
+            [lampColumnId]: "2",
+            [measuredColumnId]: ">2",
+            [requiredColumnId]: "1",
+            [passColumnId]: "DA",
+          },
+        }
+        : row
+    )),
+  };
+  const html = buildDocumentationNativeHtml({
+    model: {
+      ...createDocumentationReportModelDefaults("SRR"),
+      serviceCode: "SRR",
+      recordNumber: "26-672-SRR",
+      workOrderNumber: "26-672",
+      companyName: "Petrol d.o.o.",
+      inspectionPlace: "PM Zagreb Lucko",
+      inspectionObject: "Test objekt",
+      inspectionDate: "2026-07-05",
+      issueDate: "2026-07-05",
+      responsiblePerson: "Test Ispitivac",
+      measurementTables: [{
+        ...hydrantTable,
+        sheet: editedSrrSheet,
+      }],
+    },
+    rows: [],
+  });
+
+  assert.match(html, /Mjerna mjesta sigurnosne/, "SRR export uses the SRR Gridline table label");
+  assert.match(html, /Izmjerena razina osvjetljenja \[lux\]/, "SRR export keeps lux measurement columns");
+  assert.match(html, /Test evakuacijski izlaz/, "SRR export keeps the edited Gridline row");
+  assert.doesNotMatch(html, /Mjerenje hidrantske mreze/, "foreign HM table label is not exported for SRR");
 });
 
 test("SPR native PDF draws an uploaded WebP header on the first page", async () => {

@@ -5,6 +5,7 @@ import {
   createDocumentationMeasurementTablesForService,
   buildDocumentationNativeCertificateNumber,
   getDocumentationNativeReportPreset,
+  getDocumentationNativeTemplateSeedPresets,
   isDocumentationNativeSingleSystemDescriptionService,
 } from "./documentationNativePresets.js";
 import {
@@ -25,6 +26,11 @@ const DARK = rgb(0.05, 0.06, 0.08);
 const MUTED = rgb(0.34, 0.38, 0.44);
 const LIGHT_GRAY = rgb(0.79, 0.80, 0.81);
 const TABLE_GRAY = rgb(0.75, 0.76, 0.77);
+const PDF_NATIVE_MEASUREMENT_SERVICE_CODES = new Set(
+  getDocumentationNativeTemplateSeedPresets()
+    .map((preset) => clean(preset?.serviceCode).toUpperCase())
+    .filter(Boolean),
+);
 
 let fontBytesPromise = null;
 
@@ -1404,6 +1410,113 @@ function normalizePdfMeasurementSheet(sheet = {}) {
   };
 }
 
+function normalizePdfNativeMeasurementServiceCode(value = "") {
+  const code = clean(value).toUpperCase();
+  if (code === "SPR" || code === "PANIK") {
+    return PDF_NATIVE_MEASUREMENT_SERVICE_CODES.has("SRR") ? "SRR" : "";
+  }
+  return PDF_NATIVE_MEASUREMENT_SERVICE_CODES.has(code) ? code : "";
+}
+
+function normalizePdfMeasurementMeaningText(value = "") {
+  return clean(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function getPdfMeasurementColumnSignature(column = {}) {
+  return normalizePdfMeasurementMeaningText(column?.label || column?.placeholder || column?.id);
+}
+
+function pdfMeasurementColumnsCompatible(expected = {}, candidate = {}) {
+  const expectedSignature = getPdfMeasurementColumnSignature(expected);
+  const candidateSignature = getPdfMeasurementColumnSignature(candidate);
+  if (expectedSignature && candidateSignature) {
+    return expectedSignature === candidateSignature;
+  }
+  return false;
+}
+
+function pdfMeasurementSheetsCompatible(expectedSheet = null, candidateSheet = null) {
+  const expected = normalizePdfMeasurementSheet(expectedSheet);
+  const candidate = normalizePdfMeasurementSheet(candidateSheet);
+  if (!expected.columns.length || candidate.columns.length < expected.columns.length) {
+    return false;
+  }
+  return expected.columns.every((column, index) => pdfMeasurementColumnsCompatible(column, candidate.columns[index]));
+}
+
+function getPdfMeasurementTableIdentity(table = {}) {
+  return normalizePdfMeasurementMeaningText([
+    table?.key,
+    table?.id,
+    table?.tokenKey,
+    table?.fieldKey,
+    table?.sourceSheet,
+    table?.label,
+    table?.summary,
+  ].filter(Boolean).join(" "));
+}
+
+function pdfMeasurementTableLooksLikeOtherNativeService(table = {}, serviceCode = "") {
+  const identity = getPdfMeasurementTableIdentity(table);
+  const ownCode = normalizePdfNativeMeasurementServiceCode(serviceCode);
+  if (!identity || !ownCode) {
+    return false;
+  }
+  return [...PDF_NATIVE_MEASUREMENT_SERVICE_CODES].some((code) => {
+    if (code === ownCode) {
+      return false;
+    }
+    const prefix = normalizePdfMeasurementMeaningText(`${code}-`);
+    return prefix && identity.startsWith(prefix);
+  });
+}
+
+function findPdfCompatibleMeasurementTableSource(defaultTable = {}, sourceTables = []) {
+  return (Array.isArray(sourceTables) ? sourceTables : []).find((sourceTable) => (
+    pdfMeasurementSheetsCompatible(defaultTable?.sheet, sourceTable?.sheet)
+  )) || null;
+}
+
+function resolvePdfMeasurementSourceTables(model = {}) {
+  const explicitTables = Array.isArray(model.measurementTables) && model.measurementTables.length > 0
+    ? model.measurementTables
+    : [];
+  const serviceCode = normalizePdfNativeMeasurementServiceCode(getServiceCode(model));
+  const serviceTables = serviceCode ? createDocumentationMeasurementTablesForService(serviceCode) : [];
+  if (!explicitTables.length) {
+    return serviceTables.length ? serviceTables : createDocumentationMeasurementTablesForService(getServiceCode(model));
+  }
+  if (!serviceTables.length) {
+    return explicitTables;
+  }
+
+  const hasCompatibleNativeTable = explicitTables.some((table) => (
+    serviceTables.some((serviceTable) => pdfMeasurementSheetsCompatible(serviceTable?.sheet, table?.sheet))
+  ));
+  const hasOtherNativeTable = explicitTables.some((table) => pdfMeasurementTableLooksLikeOtherNativeService(table, serviceCode));
+  if (hasCompatibleNativeTable && !hasOtherNativeTable) {
+    return explicitTables;
+  }
+
+  return serviceTables.map((serviceTable) => {
+    const compatibleSource = findPdfCompatibleMeasurementTableSource(serviceTable, explicitTables);
+    if (!compatibleSource) {
+      return serviceTable;
+    }
+    return {
+      ...serviceTable,
+      enabled: serviceTable.enabled !== false && compatibleSource.enabled !== false,
+      includeInReport: serviceTable.includeInReport !== false && compatibleSource.includeInReport !== false,
+      sheet: compatibleSource.sheet,
+    };
+  });
+}
+
 function getPdfMeasurementFormulaAliases(table = {}, index = 0) {
   return [
     table.id,
@@ -1672,9 +1785,7 @@ function normalizePdfMeasurementTables(model = {}, legacyRows = []) {
   if (String(getServiceCode(model) || "").trim().toUpperCase() === "EXOV") {
     return [];
   }
-  const sourceTables = Array.isArray(model.measurementTables) && model.measurementTables.length > 0
-    ? model.measurementTables
-    : createDocumentationMeasurementTablesForService(getServiceCode(model));
+  const sourceTables = resolvePdfMeasurementSourceTables(model);
   const normalizedTables = sourceTables
     .filter((table) => table?.enabled !== false)
     .filter((table) => !isPdfFormulaSheetEntry(table))

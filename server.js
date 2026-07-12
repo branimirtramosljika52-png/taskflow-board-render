@@ -33136,16 +33136,31 @@ function isMobileDocumentationMeasurementSheetFilled(sheet = null) {
   return countMobileDocumentationMeaningfulMeasurementRows(sheet) > 0;
 }
 
+function mobileDocumentationMeasurementSheetMatchesTable(table = {}, sheet = null) {
+  const normalizedSheet = normalizeWorkOrderMeasurementSheet(sheet);
+  if (!isMobileDocumentationMeasurementSheetFilled(normalizedSheet)) {
+    return false;
+  }
+  const expectedSheet = normalizeWorkOrderMeasurementSheet(table?.sheet);
+  return !expectedSheet || documentationMeasurementSheetsCompatible(expectedSheet, normalizedSheet);
+}
+
 function getMobileDocumentationMeasurementSheetForTable(table = {}, index = 0, entry = {}, template = {}, common = {}) {
   const templateId = normalizeInputValue(template?.id);
-  const tableKeys = [
+  const baseTableKeys = [
     table.key,
     table.id,
     table.tokenKey,
     table.fieldKey,
+    table.sourceSheet,
+    table.label,
     index === 0 ? "gridline-results" : "",
     index === 0 ? "GRIDLINE_RESULTS" : "",
   ].map(normalizeInputValue).filter(Boolean);
+  const tableKeys = [
+    ...baseTableKeys,
+    ...baseTableKeys.map((key) => (templateId ? `${templateId}::${key}` : "")),
+  ].filter(Boolean);
   const recordSheets = entry?.documentRecord?.fieldSheets && typeof entry.documentRecord.fieldSheets === "object"
     ? entry.documentRecord.fieldSheets
     : {};
@@ -33156,7 +33171,7 @@ function getMobileDocumentationMeasurementSheetForTable(table = {}, index = 0, e
   for (const source of sheetSources) {
     for (const key of tableKeys) {
       const sheet = normalizeWorkOrderMeasurementSheet(source?.[key]);
-      if (isMobileDocumentationMeasurementSheetFilled(sheet)) {
+      if (mobileDocumentationMeasurementSheetMatchesTable(table, sheet)) {
         return sheet;
       }
     }
@@ -33164,7 +33179,7 @@ function getMobileDocumentationMeasurementSheetForTable(table = {}, index = 0, e
   if (index === 0) {
     const fallbackSheet = [...Object.values(templateSheets), ...Object.values(common.fieldSheets || {}), ...Object.values(recordSheets)]
       .map((sheet) => normalizeWorkOrderMeasurementSheet(sheet))
-      .find((sheet) => isMobileDocumentationMeasurementSheetFilled(sheet));
+      .find((sheet) => mobileDocumentationMeasurementSheetMatchesTable(table, sheet));
     if (fallbackSheet) {
       return fallbackSheet;
     }
@@ -33335,10 +33350,32 @@ function buildMobileStrojeviManualMeasurementTable(baseTable = {}, common = {}) 
   };
 }
 
-function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, common = {}, serviceCode = "SRR") {
-  const baseTables = Array.isArray(template.measurementTables) && template.measurementTables.length > 0
+function resolveMobileDocumentationMeasurementBaseTables(template = {}, serviceCode = "SRR") {
+  const templateTables = Array.isArray(template.measurementTables) && template.measurementTables.length > 0
     ? template.measurementTables
-    : createDocumentationMeasurementTablesForService(serviceCode);
+    : [];
+  const nativeServiceCode = normalizeMobileNativeMeasurementServiceCode(serviceCode);
+  const nativeTables = nativeServiceCode ? createDocumentationMeasurementTablesForService(nativeServiceCode) : [];
+  if (!templateTables.length) {
+    return nativeTables.length ? nativeTables : createDocumentationMeasurementTablesForService(serviceCode);
+  }
+  if (!nativeTables.length) {
+    return templateTables;
+  }
+  const hasCompatibleNativeTable = templateTables.some((table) => (
+    nativeTables.some((nativeTable) => documentationMeasurementSheetsCompatible(nativeTable?.sheet, table?.sheet))
+  ));
+  if (!hasCompatibleNativeTable) {
+    return nativeTables;
+  }
+  if (templateTables.some((table) => mobileMeasurementTableLooksLikeOtherNativeService(table, nativeServiceCode))) {
+    return nativeTables;
+  }
+  return templateTables;
+}
+
+function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, common = {}, serviceCode = "SRR") {
+  const baseTables = resolveMobileDocumentationMeasurementBaseTables(template, serviceCode);
   if (normalizeInputValue(serviceCode).toUpperCase() === "STROJEVI") {
     const manualStrojeviTable = buildMobileStrojeviManualMeasurementTable(baseTables[0] || {}, common);
     if (manualStrojeviTable) {
