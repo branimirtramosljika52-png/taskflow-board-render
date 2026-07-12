@@ -118,7 +118,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.427.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.429.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -45670,7 +45670,12 @@ function sendStaticFile(request, response, record, headers = {}) {
 }
 
 async function handleStaticRequest(request, response, url) {
-  const pathname = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
+  const requestedPathname = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
+  const pathname = requestedPathname === "/plan-editor" || requestedPathname === "/plan-editor/"
+    ? "/plan-editor.html"
+    : requestedPathname === "/plan-editor/spike" || requestedPathname === "/plan-editor/spike/"
+    ? "/plan-editor-spike.html"
+    : requestedPathname;
   const filePath = resolve(staticRoot, `.${pathname}`);
   const isSafePath = filePath === staticRoot || filePath.startsWith(`${staticRoot}${sep}`);
 

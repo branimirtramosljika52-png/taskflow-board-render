@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="hr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SafeNexus Plan Editor</title>
+    <link rel="stylesheet" href="/assets/plan-editor.css">
+  </head>
+  <body>
+    <main class="cad-editor-shell">
+      <header class="cad-editor-topbar">
+        <div class="cad-editor-brand">
+          <strong>SafeNexus Plan Editor</strong>
+          <span>Milestone 2 CAD Core</span>
+        </div>
+        <div class="cad-editor-top-actions">
+          <button type="button" id="cad-new">Novi</button>
+          <label class="cad-editor-file">Otvori DXF<input id="cad-open-dxf" type="file" accept=".dxf"></label>
+          <label class="cad-editor-file">Otvori JSON<input id="cad-open-json" type="file" accept=".json,application/json"></label>
+          <button type="button" id="cad-save">Spremi</button>
+          <button type="button" id="cad-pdf">PDF</button>
+          <button type="button" id="cad-undo">Undo</button>
+          <button type="button" id="cad-redo">Redo</button>
+        </div>
+      </header>
+
+      <section class="cad-editor-layout">
+        <aside class="cad-editor-toolbar" aria-label="CAD tools">
+          <button type="button" data-tool="select" class="is-active">Select</button>
+          <button type="button" data-tool="pan">Pan</button>
+          <button type="button" data-tool="line">Line</button>
+          <button type="button" data-tool="polyline">Polyline</button>
+          <button type="button" data-tool="circle">Circle</button>
+          <button type="button" data-tool="arc">Arc</button>
+          <button type="button" data-tool="text">Text</button>
+          <button type="button" data-tool="move">Move</button>
+          <button type="button" data-tool="copy">Copy</button>
+          <button type="button" data-tool="delete">Delete</button>
+        </aside>
+
+        <section class="cad-editor-canvas-panel">
+          <div class="cad-editor-mobile-note">CAD uredivanje je najbolje na desktopu ili tabletu. Osnovno otvaranje i pregled rade i na mobitelu.</div>
+          <svg id="cad-canvas" class="cad-editor-canvas" tabindex="0" role="application" aria-label="SafeNexus CAD editor"></svg>
+        </section>
+
+        <aside class="cad-editor-sidepanel">
+          <section>
+            <h2>Layers</h2>
+            <div id="cad-layers" class="cad-editor-layers"></div>
+          </section>
+          <section>
+            <h2>Properties</h2>
+            <div id="cad-properties" class="cad-editor-properties"></div>
+          </section>
+        </aside>
+      </section>
+
+      <footer class="cad-editor-statusbar">
+        <span id="cad-status-command">Select</span>
+        <span id="cad-status-coords">X 0 / Y 0</span>
+        <span id="cad-status-zoom">Zoom 100%</span>
+        <label><input id="cad-snap-enabled" type="checkbox" checked> Snap</label>
+        <label><input id="cad-snap-endpoint" type="checkbox" checked> Endpoint</label>
+        <label><input id="cad-snap-midpoint" type="checkbox" checked> Midpoint</label>
+        <label><input id="cad-snap-center" type="checkbox" checked> Center</label>
+        <label><input id="cad-snap-intersection" type="checkbox" checked> Intersection</label>
+        <label><input id="cad-snap-nearest" type="checkbox" checked> Nearest</label>
+        <label><input id="cad-grid-enabled" type="checkbox" checked> Grid</label>
+        <label><input id="cad-grid-snap" type="checkbox" checked> Grid snap</label>
+        <label><input id="cad-ortho" type="checkbox"> Ortho</label>
+        <span id="cad-status-snap">Snap: -</span>
+        <span id="cad-save-status">Saved</span>
+      </footer>
+    </main>
+
+    <script type="module" src="/assets/plan-editor.js"></script>
+  </body>
+</html>

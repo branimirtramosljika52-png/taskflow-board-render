@@ -1,0 +1,228 @@
+:root {
+  --cad-bg: #f5f7fb;
+  --cad-panel: #ffffff;
+  --cad-ink: #182033;
+  --cad-muted: #647087;
+  --cad-border: #d9e2ef;
+  --cad-blue: #2167d9;
+  --cad-orange: #f08a24;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--cad-bg);
+  color: var(--cad-ink);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button, input { font: inherit; }
+
+.cad-editor-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+.cad-editor-topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--cad-border);
+  background: var(--cad-panel);
+}
+
+.cad-editor-brand {
+  display: grid;
+  gap: 2px;
+}
+
+.cad-editor-brand strong { font-size: 18px; }
+.cad-editor-brand span { color: var(--cad-muted); font-size: 12px; }
+
+.cad-editor-top-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cad-editor-top-actions button,
+.cad-editor-toolbar button,
+.cad-editor-file {
+  min-height: 34px;
+  border: 1px solid #c9d5e8;
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: #fff;
+  color: var(--cad-ink);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cad-editor-file input { display: none; }
+
+.cad-editor-toolbar button.is-active,
+.cad-editor-top-actions button:hover,
+.cad-editor-toolbar button:hover {
+  border-color: #1d5fca;
+  background: #eaf2ff;
+  color: #164a9f;
+}
+
+.cad-editor-layout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr) 300px;
+  gap: 10px;
+  padding: 10px;
+}
+
+.cad-editor-toolbar,
+.cad-editor-sidepanel,
+.cad-editor-canvas-panel {
+  border: 1px solid var(--cad-border);
+  border-radius: 8px;
+  background: var(--cad-panel);
+}
+
+.cad-editor-toolbar {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 8px;
+}
+
+.cad-editor-sidepanel {
+  min-width: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.cad-editor-sidepanel h2 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #34425c;
+}
+
+.cad-editor-canvas-panel {
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.cad-editor-canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 560px;
+  display: block;
+  background: #fbfdff;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.cad-editor-bg { fill: #fbfdff; }
+.cad-editor-grid-minor { stroke: #dfe7f3; stroke-width: .7; }
+.cad-editor-entity { cursor: pointer; }
+.cad-editor-entity.is-selected { stroke: var(--cad-orange); stroke-width: 2.5; }
+.cad-editor-grip { fill: #fff; stroke: var(--cad-orange); stroke-width: 1.7; vector-effect: non-scaling-stroke; cursor: grab; }
+.cad-editor-snap { fill: none; stroke: #12a26c; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.cad-editor-preview { stroke: #12a26c; stroke-width: 1.5; stroke-dasharray: 5 5; fill: none; vector-effect: non-scaling-stroke; }
+.cad-editor-window { fill: rgba(33, 103, 217, .08); stroke: #2167d9; stroke-width: 1; }
+.cad-editor-crossing { fill: rgba(240, 138, 36, .08); stroke: #f08a24; stroke-width: 1; stroke-dasharray: 6 4; }
+
+.cad-editor-layers,
+.cad-editor-properties {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.cad-editor-layer,
+.cad-layer-row {
+  display: grid;
+  grid-template-columns: 18px 14px minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  border: 1px solid #e3e9f3;
+  border-radius: 8px;
+  padding: 7px;
+  background: #fbfcff;
+}
+
+.cad-editor-layer-swatch,
+.cad-layer-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.cad-editor-prop-row,
+.cad-property-row {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.cad-editor-prop-row input,
+.cad-property-row input {
+  min-width: 0;
+  border: 1px solid var(--cad-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.cad-editor-statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  min-height: 38px;
+  padding: 7px 12px;
+  border-top: 1px solid var(--cad-border);
+  background: var(--cad-panel);
+  color: #33415c;
+  font-size: 13px;
+}
+
+.cad-editor-statusbar label {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  font-weight: 700;
+}
+
+.cad-editor-mobile-note {
+  display: none;
+  padding: 8px 10px;
+  color: #795100;
+  background: #fff7df;
+  border-bottom: 1px solid #f4df9c;
+  font-size: 13px;
+}
+
+@media (max-width: 880px) {
+  .cad-editor-layout {
+    grid-template-columns: 1fr;
+  }
+  .cad-editor-toolbar {
+    display: flex;
+    overflow-x: auto;
+  }
+  .cad-editor-sidepanel {
+    max-height: 300px;
+  }
+  .cad-editor-mobile-note {
+    display: block;
+  }
+  .cad-editor-canvas {
+    min-height: 460px;
+  }
+}

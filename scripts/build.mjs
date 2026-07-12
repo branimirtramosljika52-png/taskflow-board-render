@@ -20,6 +20,8 @@ const relativeBrowserImportPattern = /(?:import|export)\s+(?:[^"'`]*?\s+from\s+)
 const gzipAsync = promisify(gzip);
 const brotliCompressAsync = promisify(brotliCompress);
 const compressibleExtensions = new Set([".css", ".html", ".js", ".json", ".svg", ".webmanifest"]);
+const includeCadSpike = process.env.SAFE_NEXUS_BUILD_CAD_SPIKE === "true";
+const includeLegacyGplCad = process.env.SAFE_NEXUS_BUILD_LEGACY_GPL_CAD === "true";
 
 async function copyBrowserModule(modulePath, copiedModules = new Set()) {
   const absoluteModulePath = resolve(modulePath);
@@ -138,6 +140,7 @@ async function copyMobileAssets() {
   if (!copiedCurrent) {
     throw new Error(`Missing mobile APK asset: ${currentApkName}`);
   }
+  await cp(resolve(sourceDir, currentApkName), resolve(targetDir, "SafeNexus.apk"));
 }
 
 async function buildOzoPanelBundle() {
@@ -184,6 +187,48 @@ async function buildDocumentationSprPdfBundle() {
   });
 }
 
+async function buildPlanEditorSpikeBundle() {
+  await esbuild.build({
+    entryPoints: [resolve(rootDir, "src", "modules", "plan-editor", "ui", "spikeApp.js")],
+    outfile: resolve(distDir, "assets", "plan-editor-spike.js"),
+    bundle: true,
+    format: "esm",
+    target: "es2020",
+    minify: true,
+    sourcemap: false,
+    define: {
+      "process.env.NODE_ENV": "\"production\"",
+    },
+    plugins: [{
+      name: "mlightcad-three-example-resolver",
+      setup(build) {
+        build.onResolve({ filter: /^three\/examples\/jsm\/controls\/OrbitControls$/ }, () => ({
+          path: resolve(rootDir, "node_modules", "three", "examples", "jsm", "controls", "OrbitControls.js"),
+        }));
+        build.onResolve({ filter: /^three\/examples\/jsm\/libs\/stats\.module$/ }, () => ({
+          path: resolve(rootDir, "node_modules", "three", "examples", "jsm", "libs", "stats.module.js"),
+        }));
+      },
+    }],
+  });
+}
+
+async function buildPlanEditorBundle() {
+  await esbuild.build({
+    entryPoints: [resolve(rootDir, "src", "modules", "plan-editor", "ui", "editorApp.js")],
+    outfile: resolve(distDir, "assets", "plan-editor.js"),
+    bundle: true,
+    format: "esm",
+    target: "es2020",
+    minify: true,
+    sourcemap: false,
+    define: {
+      "process.env.NODE_ENV": "\"production\"",
+      "process.env.CAD_DWG_IMPORT_ENABLED": "\"false\"",
+    },
+  });
+}
+
 async function buildMainBrowserBundle() {
   await esbuild.build({
     entryPoints: [resolve(rootDir, "src", "main.js")],
@@ -203,6 +248,48 @@ async function copyBrowserPdfFonts() {
   await mkdir(targetDir, { recursive: true });
   await cp(resolve(sourceDir, "DejaVuSans.ttf"), resolve(targetDir, "DejaVuSans.ttf"));
   await cp(resolve(sourceDir, "DejaVuSans-Bold.ttf"), resolve(targetDir, "DejaVuSans-Bold.ttf"));
+}
+
+async function copyPlanEditorSpikeAssets() {
+  await cp(
+    resolve(rootDir, "src", "modules", "plan-editor", "ui", "spike.css"),
+    resolve(distDir, "assets", "plan-editor-spike.css"),
+  );
+
+  const workerSourceDir = resolve(rootDir, "node_modules", "@mlightcad", "cad-simple-viewer", "dist");
+  const workerTargetDir = resolve(distDir, "assets", "mlightcad", "workers");
+  await mkdir(workerTargetDir, { recursive: true });
+  await cp(resolve(workerSourceDir, "dxf-parser-worker.js"), resolve(workerTargetDir, "dxf-parser-worker.js"));
+  await cp(resolve(workerSourceDir, "libredwg-parser-worker.js"), resolve(workerTargetDir, "libredwg-parser-worker.js"));
+  await cp(resolve(workerSourceDir, "mtext-renderer-worker.js"), resolve(workerTargetDir, "mtext-renderer-worker.js"));
+}
+
+async function writeDisabledPlanEditorSpikePage() {
+  await writeFile(
+    resolve(distDir, "plan-editor-spike.html"),
+    `<!doctype html>
+<html lang="hr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SafeNexus CAD spike</title>
+    <style>
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: system-ui, sans-serif; color: #18243a; background: #f5f8fc; }
+      main { max-width: 560px; padding: 28px; border: 1px solid #d8e2f1; border-radius: 10px; background: white; box-shadow: 0 18px 48px rgba(19, 35, 64, 0.12); }
+      h1 { margin: 0 0 10px; font-size: 20px; }
+      p { margin: 0; line-height: 1.5; color: #4a5b73; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Spike ruta je development-only</h1>
+      <p>Produkcijski build ne isporucuje GPL DWG/DXF parser komponente. Za lokalnu provjeru spikea pokreni build s SAFE_NEXUS_BUILD_CAD_SPIKE=true.</p>
+    </main>
+  </body>
+</html>
+`,
+    "utf8",
+  );
 }
 
 async function buildOzoTailwindCss() {
@@ -241,6 +328,12 @@ await cp(resolve(rootDir, "index.html"), resolve(distDir, "index.html"));
 await cp(resolve(rootDir, "gridline.html"), resolve(distDir, "gridline.html"));
 await cp(resolve(rootDir, "gridline.js"), resolve(distDir, "gridline.js"));
 await cp(resolve(rootDir, "learning-test.html"), resolve(distDir, "learning-test.html"));
+await cp(resolve(rootDir, "plan-editor.html"), resolve(distDir, "plan-editor.html"));
+if (includeCadSpike) {
+  await cp(resolve(rootDir, "plan-editor-spike.html"), resolve(distDir, "plan-editor-spike.html"));
+} else {
+  await writeDisabledPlanEditorSpikePage();
+}
 await cp(resolve(rootDir, "request-access.html"), resolve(distDir, "request-access.html"));
 await cp(resolve(rootDir, "site.webmanifest"), resolve(distDir, "site.webmanifest"));
 await cp(resolve(rootDir, "styles.css"), resolve(distDir, "styles.css"));
@@ -250,6 +343,13 @@ await cp(resolve(rootDir, "assets", "safenexus-logo.png"), resolve(distDir, "ass
 await cp(resolve(rootDir, "assets", "safenexus-mark.png"), resolve(distDir, "assets", "safenexus-mark.png"));
 await copyBrowserPdfFonts();
 await copyMobileAssets();
+await cp(
+  resolve(rootDir, "src", "modules", "plan-editor", "ui", "editor.css"),
+  resolve(distDir, "assets", "plan-editor.css"),
+);
+if (includeCadSpike) {
+  await copyPlanEditorSpikeAssets();
+}
 await copyOptionalDirectory(resolve(rootDir, "assets", "exports"), resolve(distDir, "assets", "exports"));
 await copyOptionalDirectory(resolve(rootDir, "assets", "ozo"), resolve(distDir, "assets", "ozo"));
 await cp(resolve(rootDir, "node_modules", "three", "build", "three.module.js"), resolve(distDir, "assets", "vendor", "three.module.js"));
@@ -271,9 +371,11 @@ await writeFile(
   rbushSource.replace("from 'quickselect';", `from '/assets/vendor/quickselect.js?v=${vendorVersion}';`),
   "utf8",
 );
-await cp(resolve(rootDir, "node_modules", "@cadview", "dwg", "dist", "index.js"), resolve(distDir, "assets", "vendor", "cadview-dwg.js"));
-await cp(resolve(rootDir, "node_modules", "@cadview", "dwg", "dist", "libredwg.js"), resolve(distDir, "assets", "vendor", "libredwg.js"));
-await cp(resolve(rootDir, "node_modules", "@cadview", "dwg", "dist", "libredwg.wasm"), resolve(distDir, "assets", "vendor", "libredwg.wasm"));
+if (includeLegacyGplCad) {
+  await cp(resolve(rootDir, "node_modules", "@cadview", "dwg", "dist", "index.js"), resolve(distDir, "assets", "vendor", "cadview-dwg.js"));
+  await cp(resolve(rootDir, "node_modules", "@cadview", "dwg", "dist", "libredwg.js"), resolve(distDir, "assets", "vendor", "libredwg.js"));
+  await cp(resolve(rootDir, "node_modules", "@cadview", "dwg", "dist", "libredwg.wasm"), resolve(distDir, "assets", "vendor", "libredwg.wasm"));
+}
 await cp(resolve(rootDir, "node_modules", "quickselect", "index.js"), resolve(distDir, "assets", "vendor", "quickselect.js"));
 const copiedBrowserModules = new Set();
 for (const entryModulePath of browserEntryModules) {
@@ -283,6 +385,10 @@ for (const entryModulePath of browserEntryModules) {
 await buildOzoPanelBundle();
 await buildWorkEquipmentRoPanelBundle();
 await buildDocumentationSprPdfBundle();
+await buildPlanEditorBundle();
+if (includeCadSpike) {
+  await buildPlanEditorSpikeBundle();
+}
 await buildMainBrowserBundle();
 await buildOzoTailwindCss();
 await compressDistAssets();

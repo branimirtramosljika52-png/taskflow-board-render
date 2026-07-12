@@ -100507,7 +100507,6 @@ function renderDocumentTemplateRuntimeFieldRows() {
 
     const createBlankRow = (initial = {}, index = 0) => createEmptyDocumentTemplateSystemDescriptionRowDraft({
       subtitle: "",
-      description: "",
       lineCount: 1,
       placeholder: "Upiši sadržaj retka...",
       ...initial,

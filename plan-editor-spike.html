@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="hr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SafeNexus Plan Editor Spike</title>
+    <link rel="stylesheet" href="/assets/plan-editor-spike.css">
+  </head>
+  <body>
+    <main class="cad-spike-shell">
+      <header class="cad-spike-topbar">
+        <div class="cad-spike-brand">
+          <p class="cad-spike-kicker">Milestone 1</p>
+          <h1>SafeNexus Plan Editor Spike</h1>
+        </div>
+        <div class="cad-spike-actions">
+          <label class="cad-spike-file">
+            <span>Ucitaj DWG/DXF</span>
+            <input id="cad-spike-file" type="file" accept=".dwg,.dxf">
+          </label>
+          <label class="cad-spike-file">
+            <span>Ucitaj JSON</span>
+            <input id="cad-spike-json-file" type="file" accept=".json,application/json">
+          </label>
+          <button id="cad-spike-empty" class="cad-spike-button" type="button">Prazno</button>
+          <button id="cad-spike-fit" class="cad-spike-button" type="button">Fit</button>
+          <button id="cad-spike-save-json" class="cad-spike-button" type="button">Spremi JSON</button>
+          <button id="cad-spike-reload-json" class="cad-spike-button" type="button">Ponovno ucitaj</button>
+          <button id="cad-spike-download-json" class="cad-spike-button" type="button">Preuzmi JSON</button>
+          <button id="cad-spike-export-pdf" class="cad-spike-button is-primary" type="button">PDF export</button>
+        </div>
+      </header>
+
+      <section class="cad-spike-layout">
+        <aside class="cad-spike-sidebar">
+          <section class="cad-spike-panel">
+            <h2>Status</h2>
+            <div id="cad-spike-status" class="cad-spike-status">Spike se ucitava...</div>
+          </section>
+
+          <section class="cad-spike-panel">
+            <h2>Layeri</h2>
+            <div id="cad-spike-layer-list" class="cad-spike-layer-list"></div>
+          </section>
+
+          <section class="cad-spike-panel">
+            <h2>Odabir</h2>
+            <p id="cad-spike-selection" class="cad-spike-selection"></p>
+          </section>
+        </aside>
+
+        <section class="cad-spike-workspace">
+          <section class="cad-spike-viewport">
+            <div class="cad-spike-viewport-title">
+              <span>SafeNexus CAD JSON prikaz</span>
+              <span id="cad-spike-meta"></span>
+            </div>
+            <svg id="cad-spike-svg" class="cad-spike-svg" data-testid="cad-spike-svg" role="img" aria-label="SafeNexus CAD viewport"></svg>
+          </section>
+
+          <section class="cad-spike-viewport">
+            <div class="cad-spike-viewport-title">
+              <span>MLightCAD adapter prikaz</span>
+              <span id="cad-spike-mlight-status">Runtime jos nije otvorio datoteku.</span>
+            </div>
+            <div id="cad-spike-mlight-host" class="cad-spike-mlight-host"></div>
+          </section>
+        </section>
+
+        <aside class="cad-spike-inspector">
+          <section class="cad-spike-panel">
+            <h2>SafeNexus CAD JSON</h2>
+            <textarea id="cad-spike-json-output" class="cad-spike-json" spellcheck="false" readonly></textarea>
+          </section>
+          <section class="cad-spike-panel">
+            <h2>Granica spikea</h2>
+            <p class="cad-spike-note">Ova ruta je izolirani tehnicki spike za upload, layer listu, selekciju LINE/POLYLINE, grip endpoint pomak, JSON roundtrip i osnovni PDF.</p>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <script type="module" src="/assets/plan-editor-spike.js"></script>
+  </body>
+</html>
