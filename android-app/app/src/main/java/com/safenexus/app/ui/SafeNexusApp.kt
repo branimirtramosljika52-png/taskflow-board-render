@@ -38944,6 +38944,49 @@ private fun createBlankMeasurementRow(
 private fun cloneMeasurementFormat(format: JSONObject?): JSONObject =
     format?.let { runCatching { JSONObject(it.toString()) }.getOrDefault(JSONObject()) } ?: JSONObject()
 
+private fun isMobileMeasurementFormula(value: String): Boolean =
+    value.trim().startsWith("=")
+
+private fun WorkOrderMeasurementSheet.isFormulaSeedRow(rowIndex: Int): Boolean {
+    val row = rows.getOrNull(rowIndex) ?: return false
+    return row.id !in headerRows && !isMergedMeasurementSectionRow(row.id)
+}
+
+private fun WorkOrderMeasurementSheet.findFormulaSeedForColumn(
+    columnId: String,
+    targetRowIndex: Int,
+): Pair<Int, String>? {
+    val before = rows.withIndex()
+        .take(targetRowIndex.coerceIn(0, rows.size))
+        .lastOrNull { (rowIndex, row) ->
+            isFormulaSeedRow(rowIndex) && isMobileMeasurementFormula(row.cells[columnId].orEmpty())
+        }
+    if (before != null) {
+        return before.index to before.value.cells[columnId].orEmpty()
+    }
+
+    val after = rows.withIndex()
+        .drop(targetRowIndex.coerceIn(0, rows.size))
+        .firstOrNull { (rowIndex, row) ->
+            isFormulaSeedRow(rowIndex) && isMobileMeasurementFormula(row.cells[columnId].orEmpty())
+        }
+    return after?.let { it.index to it.value.cells[columnId].orEmpty() }
+}
+
+private fun WorkOrderMeasurementSheet.seedFormulaCellsForNewRow(
+    cells: Map<String, String>,
+    targetRowIndex: Int,
+): Map<String, String> {
+    val seeded = cells.toMutableMap()
+    columns.forEach { column ->
+        if (!column.isEditableMeasurementColumn()) return@forEach
+        if (seeded[column.id].orEmpty().isNotBlank()) return@forEach
+        val (sourceRowIndex, sourceFormula) = findFormulaSeedForColumn(column.id, targetRowIndex) ?: return@forEach
+        seeded[column.id] = shiftMeasurementFormulaReferencesMobile(sourceFormula, targetRowIndex - sourceRowIndex)
+    }
+    return seeded
+}
+
 private fun appendBlankMeasurementRows(
     sheet: WorkOrderMeasurementSheet,
     count: Int,
@@ -38954,7 +38997,14 @@ private fun appendBlankMeasurementRows(
     val nextRows = sheet.rows.toMutableList()
     nextRows.addAll(
         insertionIndex,
-        List(safeCount) { createBlankMeasurementRow(sheet, nextId()) },
+        List(safeCount) { offset ->
+            val targetRowIndex = insertionIndex + offset
+            createBlankMeasurementRow(
+                sheet = sheet,
+                id = nextId(),
+                cells = sheet.seedFormulaCellsForNewRow(emptyMap(), targetRowIndex),
+            )
+        },
     )
     return sheet.copy(rows = nextRows)
 }
@@ -38969,13 +39019,22 @@ private fun duplicateLastMeasurementRow(sheet: WorkOrderMeasurementSheet): WorkO
         }
         ?: return appendBlankMeasurementRows(sheet, 1)
     val nextId = measurementRowIdFactory(sheet.rows)
+    val insertionIndex = sheet.nextMeasurementInsertionIndex()
+    val sourceIndex = sheet.rows.indexOfFirst { it.id == source.id }.takeIf { it >= 0 } ?: (insertionIndex - 1)
+    val shiftedCells = source.cells.mapValues { (_, value) ->
+        if (isMobileMeasurementFormula(value)) {
+            shiftMeasurementFormulaReferencesMobile(value, insertionIndex - sourceIndex)
+        } else {
+            value
+        }
+    }
     val nextRows = sheet.rows.toMutableList()
     nextRows.add(
-        sheet.nextMeasurementInsertionIndex(),
+        insertionIndex,
         createBlankMeasurementRow(
             sheet = sheet,
             id = nextId(),
-            cells = source.cells,
+            cells = sheet.seedFormulaCellsForNewRow(shiftedCells, insertionIndex),
             formats = source.formats.mapValues { (_, value) -> cloneMeasurementFormat(value) },
         ),
     )
@@ -39202,10 +39261,12 @@ private fun applyMeasurementQuickFill(
         if (room.isNotBlank()) addHeader("Prostorija: $room", "#f0fbf4")
     }
 
+    val insertionIndex = sheet.nextMeasurementInsertionIndex()
     val rowsFromItems = if (items.isNotEmpty()) items else listOf(MeasurementQuickItemDraft(name = "", count = draft.defaultCount))
     rowsFromItems.forEachIndexed { itemIndex, item ->
         val rowFloor = item.floor.ifBlank { floor }
         val rowRoom = item.room.ifBlank { room }
+        val targetRowIndex = insertionIndex + rowsToInsert.size
         val cells = sheet.columns.associate { column ->
             val mode = draft.columnModes[column.id] ?: defaultMeasurementQuickFillColumnModeMobile(column)
             val customValue = draft.customValues[column.id].orEmpty()
@@ -39215,11 +39276,16 @@ private fun applyMeasurementQuickFill(
                 ""
             }
         }
-        rowsToInsert.add(createBlankMeasurementRow(sheet, nextId(), cells))
+        rowsToInsert.add(
+            createBlankMeasurementRow(
+                sheet,
+                nextId(),
+                sheet.seedFormulaCellsForNewRow(cells, targetRowIndex),
+            ),
+        )
     }
 
     if (rowsToInsert.isEmpty()) return sheet
-    val insertionIndex = sheet.nextMeasurementInsertionIndex()
     val nextRows = sheet.rows.toMutableList()
     nextRows.addAll(insertionIndex, rowsToInsert)
     return sheet.copy(
@@ -39805,6 +39871,7 @@ private class MobileMeasurementFormulaParser(
                 runCatching { evaluate(args[0]) }.getOrElse { evaluate(args[1]) }
             }
             "AND" -> MobileFormulaValue.scalar(args.all { evaluate(it).asBoolean() })
+            "OR" -> MobileFormulaValue.scalar(args.any { evaluate(it).asBoolean() })
             "SUM" -> MobileFormulaValue.scalar(numericValues().sum())
             "AVERAGE" -> {
                 val values = numericValues()
@@ -39822,6 +39889,19 @@ private class MobileMeasurementFormulaParser(
                 MobileFormulaValue.scalar(values.maxOrNull() ?: 0.0)
             }
             "COUNT" -> MobileFormulaValue.scalar(numericValues().size.toDouble())
+            "ROUND" -> {
+                if (args.size !in 1..2) error("ROUND trazi broj i opcionalno broj decimala.")
+                val value = evaluate(args[0]).asNumber()
+                val digits = args.getOrNull(1)?.takeIf { it.trim().isNotBlank() }?.let { evaluate(it).asNumber().toInt() } ?: 0
+                val factor = Math.pow(10.0, digits.toDouble())
+                MobileFormulaValue.scalar(kotlin.math.round(value * factor) / factor)
+            }
+            "SQRT" -> {
+                if (args.size != 1) error("SQRT trazi 1 argument.")
+                val value = evaluate(args[0]).asNumber()
+                if (value < 0) error("SQRT ne prima negativan broj.")
+                MobileFormulaValue.scalar(kotlin.math.sqrt(value))
+            }
             "COUNTIF" -> {
                 if (args.size != 2) error("COUNTIF trazi raspon i kriterij.")
                 val values = evaluate(args[0]).flatten()
@@ -41238,6 +41318,7 @@ private fun MeasurementTableEditor(
     var quickFillOpen by remember(table.key, table.id) { mutableStateOf(false) }
     var fillRequest by remember(table.key, table.id) { mutableStateOf<MeasurementCellFillRequest?>(null) }
     var lastQuickFillDraft by remember(table.key, table.id) { mutableStateOf<MeasurementQuickFillDraft?>(null) }
+    var commandsExpanded by remember(table.key, table.id) { mutableStateOf(false) }
     val rowLoadPageSize = if (tableOnly) 24 else 20
     val baseVisibleRowCount = remember(sheet.rows.size, lastMeaningfulRowIndex, tableOnly) {
         if (sheet.rows.isEmpty()) {
@@ -41620,7 +41701,31 @@ private fun MeasurementTableEditor(
                         }
                     }
                 }
-                if (!tableOnly && selectedRow != null && selectedColumn != null && selectedEditable) {
+                if (!tableOnly) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        OutlinedButton(
+                            onClick = { commandsExpanded = !commandsExpanded },
+                            enabled = enabled,
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
+                        ) {
+                            Icon(
+                                if (commandsExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                if (commandsExpanded) "Sakrij naredbe" else "Prikaži naredbe",
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+                if (!tableOnly && commandsExpanded && selectedRow != null && selectedColumn != null && selectedEditable) {
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -41656,7 +41761,7 @@ private fun MeasurementTableEditor(
                         )
                     }
                 }
-                if (!tableOnly) {
+                if (!tableOnly && commandsExpanded) {
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -41712,8 +41817,8 @@ private fun MeasurementTableEditor(
                         )
                     }
                 }
-                if (!tableOnly && selectedRow != null && selectedColumn != null && selectedEditable && !selectedRequiresSpaceSelection) {
-                    val formulaSeeds = listOf("SUM", "AVERAGE", "IF", "IFERROR", "COUNTIF", "TEXTAFTER", "VLOOKUP", "RANDBETWEEN")
+                if (!tableOnly && commandsExpanded && selectedRow != null && selectedColumn != null && selectedEditable && !selectedRequiresSpaceSelection) {
+                    val formulaSeeds = listOf("SUM", "AVERAGE", "IF", "IFERROR", "OR", "ROUND", "SQRT", "COUNTIF", "TEXTAFTER", "VLOOKUP", "RANDBETWEEN")
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -41771,7 +41876,7 @@ private fun MeasurementTableEditor(
                         }
                     }
                 }
-                if (!tableOnly && selectedRow != null && selectedColumn != null && selectedEditable) {
+                if (!tableOnly && commandsExpanded && selectedRow != null && selectedColumn != null && selectedEditable) {
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(7.dp),
