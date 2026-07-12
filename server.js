@@ -28833,7 +28833,15 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
   let mergedDefaults = null;
 
   services.forEach((service, serviceIndex) => {
-    const nativeTemplate = buildMobileNativeDocumentationTemplate(service, serviceIndex, workOrder, scopedSnapshot);
+    const nativePreset = getMobileNativeDocumentationPresetForService(service, serviceIndex, scopedSnapshot);
+    const nativeServiceCode = nativePreset?.serviceCode || "";
+    const linkedTemplates = getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot)
+      .map((templateId) => templateById.get(String(templateId)))
+      .filter(isActiveMobileDocumentTemplate)
+      .filter((template) => mobileDocumentTemplateMatchesNativeServiceCode(template, nativeServiceCode));
+    const nativeTemplate = linkedTemplates.length === 0
+      ? buildMobileNativeDocumentationTemplate(service, serviceIndex, workOrder, scopedSnapshot)
+      : null;
     if (nativeTemplate) {
       const latestRecord = findLatestMobileDocumentRecordForTemplate(nativeTemplate, workOrder, scopedSnapshot);
       const latestMeasurementRecord = findLatestMobileDocumentRecordForTemplate(
@@ -28866,11 +28874,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
       }
       return;
     }
-    getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot).forEach((templateId) => {
-      const template = templateById.get(String(templateId));
-      if (!isActiveMobileDocumentTemplate(template)) {
-        return;
-      }
+    linkedTemplates.forEach((template) => {
       const normalizedTemplateId = normalizeInputValue(template.id);
       const templateServiceKey = `${serviceIndex}::${normalizedTemplateId}`;
       if (!normalizedTemplateId || seenTemplateKeys.has(templateServiceKey)) {
@@ -34465,16 +34469,16 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
   const appendEntriesForService = (service, serviceIndex, generationWorkOrder = workOrder, options = {}) => {
     const nativePreset = getMobileNativeDocumentationPresetForService(service, serviceIndex, scopedSnapshot);
     const nativeServiceCode = nativePreset?.serviceCode || "";
-    const nativeTemplate = nativePreset
+    const linkedTemplates = getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot)
+      .map((templateId) => templateById.get(String(templateId)))
+      .filter(isActiveMobileDocumentTemplate)
+      .filter((template) => mobileDocumentTemplateMatchesNativeServiceCode(template, nativeServiceCode));
+    const nativeTemplate = linkedTemplates.length === 0 && nativePreset
       ? buildMobileNativeDocumentationTemplate(service, serviceIndex, generationWorkOrder, scopedSnapshot)
       : null;
-    const linkedTemplates = nativeTemplate
-      ? []
-      : getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot)
-        .map((templateId) => templateById.get(String(templateId)))
-        .filter(isActiveMobileDocumentTemplate)
-        .filter((template) => mobileDocumentTemplateMatchesNativeServiceCode(template, nativeServiceCode));
-    const templatesForService = nativeTemplate ? [nativeTemplate] : linkedTemplates;
+    const templatesForService = linkedTemplates.length > 0
+      ? linkedTemplates
+      : (nativeTemplate ? [nativeTemplate] : []);
 
     templatesForService.forEach((template) => {
       const objectId = getMobileWorkOrderLocationObjectId(generationWorkOrder);
