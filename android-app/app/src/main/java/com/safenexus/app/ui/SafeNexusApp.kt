@@ -43092,7 +43092,9 @@ private fun DocumentationSprMobileWorkspace(
             buildMobileDocumentationTemplateBlockSections(template)
                 .filter { section ->
                     !isDocumentationSignatureTemplateSection(section) &&
-                        !isDocumentationAttachmentTemplateSection(section)
+                        !isDocumentationAttachmentTemplateSection(section) &&
+                        !isEquipmentTemplateSection(section) &&
+                        !isLegalTemplateSection(section)
                 }
                 .map { section -> template to section }
         }.mapIndexed { index, (template, section) ->
