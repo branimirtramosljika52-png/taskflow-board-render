@@ -31073,6 +31073,7 @@ private fun documentationNativeServiceCodeForText(value: String): String {
         normalized == "spr" ||
             normalized.startsWith("spr ") ||
             normalized.contains("sigurnosna panik") ||
+            (normalized.contains("sigurnosn") && normalized.contains("rasvjet")) ||
             normalized.contains("panik rasvjet") ||
             normalized.contains("panic lighting") ||
             normalized.contains("emergency lighting") -> "SPR"
@@ -31158,6 +31159,36 @@ private fun WorkOrderDocumentationTemplate.matchesDocumentationServiceFlowItem(i
     return templateName.isNotBlank() &&
         itemName.isNotBlank() &&
         (templateName == itemName || templateName.contains(itemName) || itemName.contains(templateName))
+}
+
+private fun WorkOrderMeasurementTable.nativeDocumentationServiceCode(): String =
+    documentationNativeServiceCodeForText(
+        buildList {
+            add(id)
+            add(key)
+            add(tokenKey)
+            add(label)
+            add(helpText)
+            add(summary)
+            add(sourceSheet)
+            sheet.columns.forEach { column ->
+                add(column.id)
+                add(column.label)
+                add(column.placeholder)
+            }
+        }
+            .filter { it.isNotBlank() }
+            .joinToString(" "),
+    )
+
+private fun WorkOrderMeasurementTable.matchesSelectedNativeService(
+    selectedNativeCode: String,
+    templateNativeCode: String,
+): Boolean {
+    if (selectedNativeCode.isBlank()) return true
+    val tableNativeCode = nativeDocumentationServiceCode()
+    if (tableNativeCode.isNotBlank()) return tableNativeCode == selectedNativeCode
+    return templateNativeCode.isBlank() || templateNativeCode == selectedNativeCode
 }
 
 private fun normalizeDocumentationFlowTabCode(code: String): String {
@@ -32370,6 +32401,9 @@ private fun WorkOrderDocumentationWizardDialog(
             else -> serviceFlowItems.firstOrNull()
         }
     }
+    val selectedFlowNativeCode = remember(selectedFlowItem?.serviceCode, selectedFlowItem?.serviceName, selectedFlowItem?.serviceKey) {
+        selectedFlowItem?.nativeDocumentationServiceCode().orEmpty()
+    }
     val activeTemplates = remember(
         context.templates,
         selectedFlowItem?.serviceKey,
@@ -32833,9 +32867,16 @@ private fun WorkOrderDocumentationWizardDialog(
     val allMeasurementTemplates = remember(baseMeasurementTemplates, physicalFactorsMeasurementTemplates) {
         (baseMeasurementTemplates + physicalFactorsMeasurementTemplates).distinctBy { it.id }
     }
-    val measurementTemplates = remember(activeTemplates) {
+    val measurementTemplates = remember(activeTemplates, selectedFlowNativeCode) {
         activeTemplates
-            .map { template -> template.copy(measurementTables = template.measurementTables.filter { it.sheet.columns.isNotEmpty() }) }
+            .map { template ->
+                val templateNativeCode = template.nativeDocumentationServiceCode()
+                template.copy(
+                    measurementTables = template.measurementTables
+                        .filter { it.sheet.columns.isNotEmpty() }
+                        .filter { table -> table.matchesSelectedNativeService(selectedFlowNativeCode, templateNativeCode) },
+                )
+            }
             .filter { it.measurementTables.isNotEmpty() }
     }
     var measurementPreviewOpen by rememberSaveable(workOrder.id, selectedObjectId) { mutableStateOf(false) }
