@@ -118,7 +118,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.424.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.425.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -1304,6 +1304,7 @@ const STANDARD_SERVICE_CATALOG_ITEMS = Object.freeze([
     serviceType: "inspection",
     validityMonths: DOCUMENTATION_NATIVE_SERVICE_VALIDITY_MONTHS[preset.serviceCode] || "",
     note: summarizeDocumentationNativeServiceSeed(preset) || DOCUMENTATION_NATIVE_SERVICE_GENERIC_NOTE,
+    linkedTemplateTitles: [preset.title || preset.name || preset.serviceCode].filter(Boolean),
     autoSyncStandardSeed: true,
   })),
 ]);
@@ -15353,6 +15354,14 @@ function findWorkOrderServiceForDocumentRecord(input = {}, workOrder = {}, scope
 
 function resolveWorkOrderDocumentRecordTemplate(input = {}, workOrder = {}, scopedSnapshot = {}) {
   const service = findWorkOrderServiceForDocumentRecord(input, workOrder, scopedSnapshot);
+  const nativeTemplateId = parseMobileNativeDocumentationTemplateId(input.templateId || input.documentTemplateId);
+  if (nativeTemplateId) {
+    return buildMobileNativeDocumentationTemplate({
+      ...(service || {}),
+      serviceCode: nativeTemplateId.serviceCode,
+      code: nativeTemplateId.serviceCode,
+    }, nativeTemplateId.serviceIndex, workOrder, scopedSnapshot);
+  }
   const directTemplate = getScopedDocumentTemplateById(scopedSnapshot, input.templateId);
   if (directTemplate && isActiveMobileDocumentTemplate(directTemplate)) {
     return directTemplate;
@@ -15588,6 +15597,16 @@ function expandDocumentationSprRecordFieldSheetsForTemplate(fieldSheets = {}, te
         });
     });
 
+  (Array.isArray(template?.measurementTables) ? template.measurementTables : [])
+    .forEach((table, index) => {
+      getMobileDocumentationMeasurementPresetTableKeys(table, `gridline-results-${index + 1}`)
+        .forEach((key) => {
+          if (key && !normalizedSheets[key]) {
+            normalizedSheets[key] = genericSheet;
+          }
+        });
+    });
+
   return normalizedSheets;
 }
 
@@ -15608,7 +15627,11 @@ function buildWorkOrderDocumentRecordPayloadFromRequest(input = {}, workOrder = 
       || fieldValues[MOBILE_DOCUMENTATION_RECORD_TEMPLATE_ATTACHMENTS_KEY]
       || {},
   );
-  const scopedAttachments = getMobileDocumentationTemplateAttachments(templateAttachments, template.id, []);
+  const storageTemplateId = normalizeMobileDocumentRecordTemplateIdForStorage(input.templateId || input.documentTemplateId || template.id, template);
+  const scopedAttachmentsByRuntimeId = getMobileDocumentationTemplateAttachments(templateAttachments, template.id, []);
+  const scopedAttachments = scopedAttachmentsByRuntimeId.length > 0
+    ? scopedAttachmentsByRuntimeId
+    : getMobileDocumentationTemplateAttachments(templateAttachments, storageTemplateId, []);
   const recordAttachments = normalizeMobileDocumentationAttachments(
     scopedAttachments.length > 0
       ? scopedAttachments
@@ -15621,7 +15644,10 @@ function buildWorkOrderDocumentRecordPayloadFromRequest(input = {}, workOrder = 
   );
   if (recordAttachments.length > 0) {
     fieldValues[MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY] = recordAttachments;
-    fieldValues[MOBILE_DOCUMENTATION_RECORD_TEMPLATE_ATTACHMENTS_KEY] = { [template.id]: recordAttachments };
+    fieldValues[MOBILE_DOCUMENTATION_RECORD_TEMPLATE_ATTACHMENTS_KEY] = {
+      [template.id]: recordAttachments,
+      ...(storageTemplateId && storageTemplateId !== template.id ? { [storageTemplateId]: recordAttachments } : {}),
+    };
   } else {
     delete fieldValues[MOBILE_DOCUMENTATION_RECORD_ATTACHMENTS_KEY];
     delete fieldValues[MOBILE_DOCUMENTATION_RECORD_TEMPLATE_ATTACHMENTS_KEY];
@@ -15635,7 +15661,7 @@ function buildWorkOrderDocumentRecordPayloadFromRequest(input = {}, workOrder = 
 
   return {
     organizationId: normalizeInputValue(scopedSnapshot.activeOrganizationId || workOrder.organizationId),
-    templateId: normalizeInputValue(template.id),
+    templateId: storageTemplateId || normalizeInputValue(template.id),
     templateTitle: normalizeInputValue(input.templateTitle || template.title || template.documentType || "Zapisnik"),
     documentType: normalizeInputValue(input.documentType || template.documentType || "Zapisnik"),
     companyId: normalizeInputValue(input.companyId || workOrder.companyId),
@@ -18049,11 +18075,23 @@ async function ensureStandardServiceCatalogItemsForRequest(user, request) {
       if (existingItem && seed.autoSyncStandardSeed) {
         const patch = { organizationId };
         const currentNote = String(existingItem.note || "").trim();
+        const currentLinkedTemplateTitles = Array.isArray(existingItem.linkedTemplateTitles)
+          ? existingItem.linkedTemplateTitles.map((value) => normalizeInputValue(value)).filter(Boolean)
+          : [];
+        const seedLinkedTemplateTitles = Array.isArray(seed.linkedTemplateTitles)
+          ? seed.linkedTemplateTitles.map((value) => normalizeInputValue(value)).filter(Boolean)
+          : [];
         if (seed.note && currentNote !== seed.note && isGenericStandardServiceCatalogNote(currentNote)) {
           patch.note = seed.note;
         }
         if (seed.validityMonths && !String(existingItem.validityMonths || "").trim()) {
           patch.validityMonths = seed.validityMonths;
+        }
+        if (seed.serviceType && String(existingItem.serviceType || "").trim().toLowerCase() !== seed.serviceType) {
+          patch.serviceType = seed.serviceType;
+        }
+        if (seedLinkedTemplateTitles.length > 0 && seedLinkedTemplateTitles.some((title) => !currentLinkedTemplateTitles.includes(title))) {
+          patch.linkedTemplateTitles = Array.from(new Set([...currentLinkedTemplateTitles, ...seedLinkedTemplateTitles]));
         }
         if (Object.keys(patch).length > 1) {
           const updated = await domainRepository.updateServiceCatalogItem(existingItem.id, patch);
@@ -18075,6 +18113,7 @@ async function ensureStandardServiceCatalogItemsForRequest(user, request) {
         isTraining: seed.serviceType === "znr",
         validityMonths: seed.validityMonths || "",
         linkedTemplateIds: [],
+        linkedTemplateTitles: Array.isArray(seed.linkedTemplateTitles) ? seed.linkedTemplateTitles : [],
         linkedLearningTestIds: [],
         linkedQualificationKeys: [],
       });
@@ -28190,11 +28229,22 @@ function collectMobileNativeDocumentationLookupValues(service = {}, catalogItem 
 }
 
 function getMobileNativeDocumentationPresetForService(service = {}, serviceIndex = 0, scopedSnapshot = {}) {
-  void service;
-  void serviceIndex;
-  void scopedSnapshot;
-  // Operations / Izrada dokumentacije is the only runtime template source.
-  return null;
+  const catalogItem = findMobileServiceCatalogItemForWorkOrderService(service, scopedSnapshot) || {};
+  const lookupValues = collectMobileNativeDocumentationLookupValues(service, catalogItem, serviceIndex);
+
+  for (const value of lookupValues) {
+    const preset = getMobileNativeDocumentationPresetFromLookupValue(value);
+    if (preset) {
+      return preset;
+    }
+  }
+
+  const lookup = normalizeMobileSprLookupText(lookupValues.join(" "));
+  if (!lookup) {
+    return null;
+  }
+  const semanticMatch = MOBILE_NATIVE_DOCUMENTATION_SEMANTIC_MATCHERS.find((matcher) => matcher.matches(lookup));
+  return semanticMatch?.code ? getMobileNativeDocumentationPresetByCode(semanticMatch.code) : null;
 }
 
 function buildMobileNativeDocumentationField(id, label, type = "text", {
@@ -28892,6 +28942,139 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
   };
 }
 
+function isMobileNativeDocumentationRuntimeTemplate(template = {}) {
+  return normalizeInputValue(template?.id).startsWith("native-")
+    || (
+      normalizeInputValue(template?.exportKind).toLowerCase() === "documentation_spr"
+      && Array.isArray(template?.fields)
+      && Array.isArray(template?.fieldBlocks)
+    );
+}
+
+function buildMobileWorkOrderDocumentationTemplateContextEntry({
+  template = {},
+  workOrder = {},
+  service = {},
+  serviceIndex = 0,
+  scopedSnapshot = {},
+  documentTemplateAiSettings = {},
+} = {}) {
+  const normalizedTemplateId = normalizeInputValue(template.id);
+  if (!normalizedTemplateId) {
+    return null;
+  }
+
+  const latestRecord = findLatestMobileDocumentRecordForTemplate(template, workOrder, scopedSnapshot);
+  const latestMeasurementRecord = findLatestMobileDocumentRecordForTemplate(
+    template,
+    workOrder,
+    scopedSnapshot,
+    { requireMeaningfulFieldSheets: true },
+  );
+  const dataSource = buildMobileDocumentTemplateDataSource(template, latestRecord);
+  const presetDefaults = buildMobileDocumentationMeasurementPresetDefaults(template, workOrder, scopedSnapshot);
+  const measurementRecordDefaults = latestMeasurementRecord && latestMeasurementRecord !== latestRecord
+    ? buildMobileDocumentRecordWizardDefaults(latestMeasurementRecord, workOrder)
+    : {};
+  const recordDefaults = buildMobileDocumentRecordWizardDefaults(latestRecord, workOrder);
+  let contextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(null, presetDefaults, template);
+  contextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(contextDefaults, measurementRecordDefaults, template, { overwrite: true });
+  contextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(contextDefaults, recordDefaults, template, { overwrite: true }) || recordDefaults;
+  const common = normalizeMobileWorkOrderDocumentWizardInput(contextDefaults);
+  const signatureAreas = Array.from(new Set([
+    ...(Array.isArray(template.signatureAreas) ? template.signatureAreas : []),
+    ...getMobileDocumentTemplateSignatureAreas(template, service, scopedSnapshot),
+  ].map(normalizeInputValue).filter(Boolean)));
+
+  if (isMobileNativeDocumentationRuntimeTemplate(template)) {
+    const templateWithDefaults = applyMobileDocumentationDefaultSheetsToTemplate(template, contextDefaults);
+    return {
+      template: {
+        ...templateWithDefaults,
+        id: normalizedTemplateId,
+        title: normalizeInputValue(template.title || template.documentType || "Zapisnik"),
+        documentType: normalizeInputValue(template.documentType || template.title || "Zapisnik"),
+        serviceName: normalizeInputValue(template.serviceName || service?.name || service?.serviceName || service?.title || service?.serviceCode),
+        serviceCode: normalizeInputValue(template.serviceCode || getMobileDocumentTemplateServiceCode(service, serviceIndex)),
+        serviceIndex,
+        signatureAreas,
+        documentNumber: normalizeInputValue(template.documentNumber) || buildMobileDocumentTemplateDocumentNumber(service, workOrder, template, serviceIndex),
+        documentName: normalizeInputValue(template.documentName) || `${buildMobileDocumentTemplateFileBaseName(
+          template,
+          workOrder,
+          buildMobileDocumentTemplateDocumentNumber(service, workOrder, template, serviceIndex),
+        )}.pdf`,
+        ...dataSource,
+        fields: Array.isArray(template.fields) ? template.fields : [],
+        fieldBlocks: Array.isArray(template.fieldBlocks) ? template.fieldBlocks : [],
+        inspectionTypeOptions: Array.isArray(template.inspectionTypeOptions) ? template.inspectionTypeOptions : [],
+        measurementTables: Array.isArray(templateWithDefaults.measurementTables) ? templateWithDefaults.measurementTables : [],
+        formulaSheets: Array.isArray(template.formulaSheets) ? template.formulaSheets : [],
+        aiFields: Array.isArray(template.aiFields) ? template.aiFields : [],
+        aiMeasurementColumns: Array.isArray(template.aiMeasurementColumns) ? template.aiMeasurementColumns : [],
+      },
+      contextDefaults,
+      signatureAreas,
+    };
+  }
+
+  const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, workOrder, service, scopedSnapshot, common);
+  const measurementPlaceholders = buildMobileDocumentTemplateMeasurementPlaceholders(template, fieldSheets);
+  const placeholders = {
+    ...buildMobileGeneratedDocumentPlaceholders(workOrder, service, scopedSnapshot, common),
+    ...measurementPlaceholders,
+    ...(common.fieldValues || {}),
+  };
+  const measurementTables = buildMobileDocumentTemplateMeasurementTables(template, workOrder, service, scopedSnapshot, common);
+  const templateWithDefaults = applyMobileDocumentationDefaultSheetsToTemplate({
+    ...template,
+    measurementTables,
+  }, contextDefaults);
+  const nativeFormulaServiceCode = normalizeMobileNativeMeasurementServiceCode(
+    getMobileTemplateNativeDocumentationServiceCode(template)
+    || getMobileDocumentTemplateServiceCode(service, serviceIndex),
+  );
+  const formulaSheets = Array.isArray(template.formulaSheets) && template.formulaSheets.length
+    ? template.formulaSheets
+    : (nativeFormulaServiceCode ? createDocumentationFormulaSheetsForService(nativeFormulaServiceCode) : []);
+
+  return {
+    template: {
+      id: normalizedTemplateId,
+      title: normalizeInputValue(template.title || template.documentType || "Zapisnik"),
+      documentType: normalizeInputValue(template.documentType || "Zapisnik"),
+      serviceName: normalizeInputValue(service?.name || service?.serviceName || service?.title || service?.serviceCode),
+      serviceCode: getMobileDocumentTemplateServiceCode(service, serviceIndex),
+      serviceIndex,
+      signatureAreas,
+      documentNumber: buildMobileDocumentTemplateDocumentNumber(service, workOrder, template, serviceIndex),
+      documentName: `${buildMobileDocumentTemplateFileBaseName(
+        template,
+        workOrder,
+        buildMobileDocumentTemplateDocumentNumber(service, workOrder, template, serviceIndex),
+      )}.pdf`,
+      ...dataSource,
+      fields: buildMobileDocumentTemplatePromptFields(template, placeholders, common),
+      fieldBlocks: buildMobileDocumentTemplateFieldBlocks(template, workOrder, service, scopedSnapshot, common, fieldSheets),
+      inspectionTypeOptions: buildMobileDocumentTemplateInspectionTypeOptions(template),
+      measurementTables: Array.isArray(templateWithDefaults.measurementTables) ? templateWithDefaults.measurementTables : [],
+      formulaSheets,
+      aiFields: buildMobileDocumentTemplateAiFields(template, documentTemplateAiSettings),
+      aiMeasurementColumns: buildMobileDocumentTemplateAiMeasurementColumns(
+        template,
+        workOrder,
+        service,
+        scopedSnapshot,
+        common,
+        fieldSheets,
+        documentTemplateAiSettings,
+      ),
+    },
+    contextDefaults,
+    signatureAreas,
+  };
+}
+
 function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot = {}) {
   const documentTemplates = Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [];
   const documentTemplateAiSettings = getMobileDocumentTemplateAiSettings(scopedSnapshot);
@@ -28903,79 +29086,47 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
   let mergedDefaults = null;
 
   services.forEach((service, serviceIndex) => {
-    const linkedTemplates = getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot)
-      .map((templateId) => templateById.get(String(templateId)))
-      .filter(isActiveMobileDocumentTemplate);
-    linkedTemplates.forEach((template) => {
-      const normalizedTemplateId = normalizeInputValue(template.id);
+    const appendTemplate = (template) => {
+      const normalizedTemplateId = normalizeInputValue(template?.id);
       const templateServiceKey = `${serviceIndex}::${normalizedTemplateId}`;
       if (!normalizedTemplateId || seenTemplateKeys.has(templateServiceKey)) {
         return;
       }
-      seenTemplateKeys.add(templateServiceKey);
-      const latestRecord = findLatestMobileDocumentRecordForTemplate(template, workOrder, scopedSnapshot);
-      const latestMeasurementRecord = findLatestMobileDocumentRecordForTemplate(
+      const entry = buildMobileWorkOrderDocumentationTemplateContextEntry({
         template,
         workOrder,
-        scopedSnapshot,
-        { requireMeaningfulFieldSheets: true },
-      );
-      const dataSource = buildMobileDocumentTemplateDataSource(template, latestRecord);
-      const presetDefaults = buildMobileDocumentationMeasurementPresetDefaults(template, workOrder, scopedSnapshot);
-      const measurementRecordDefaults = latestMeasurementRecord && latestMeasurementRecord !== latestRecord
-        ? buildMobileDocumentRecordWizardDefaults(latestMeasurementRecord, workOrder)
-        : {};
-      const recordDefaults = buildMobileDocumentRecordWizardDefaults(latestRecord, workOrder);
-      let contextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(null, presetDefaults, template);
-      contextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(contextDefaults, measurementRecordDefaults, template, { overwrite: true });
-      contextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(contextDefaults, recordDefaults, template, { overwrite: true }) || recordDefaults;
-      mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, presetDefaults, template);
-      mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, measurementRecordDefaults, template, { overwrite: true });
-      mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, recordDefaults, template, { overwrite: true });
-      const common = normalizeMobileWorkOrderDocumentWizardInput(contextDefaults);
-      const fieldSheets = buildMobileDocumentTemplateFieldSheets(template, workOrder, service, scopedSnapshot, common);
-      const measurementPlaceholders = buildMobileDocumentTemplateMeasurementPlaceholders(template, fieldSheets);
-      const placeholders = {
-        ...buildMobileGeneratedDocumentPlaceholders(workOrder, service, scopedSnapshot, common),
-        ...measurementPlaceholders,
-        ...(common.fieldValues || {}),
-      };
-      const signatureAreas = getMobileDocumentTemplateSignatureAreas(template, service, scopedSnapshot);
-      signatureAreas.forEach((area) => signatureAreaKeys.add(area));
-      templates.push({
-        id: normalizedTemplateId,
-        title: normalizeInputValue(template.title || template.documentType || "Zapisnik"),
-        documentType: normalizeInputValue(template.documentType || "Zapisnik"),
-        serviceName: normalizeInputValue(service?.name || service?.serviceName || service?.title || service?.serviceCode),
-        serviceCode: getMobileDocumentTemplateServiceCode(service, serviceIndex),
+        service,
         serviceIndex,
-        signatureAreas,
-        documentNumber: buildMobileDocumentTemplateDocumentNumber(service, workOrder, template, serviceIndex),
-        documentName: `${buildMobileDocumentTemplateFileBaseName(
-          template,
-          workOrder,
-          buildMobileDocumentTemplateDocumentNumber(service, workOrder, template, serviceIndex),
-        )}.pdf`,
-        ...dataSource,
-        fields: buildMobileDocumentTemplatePromptFields(template, placeholders, common),
-        fieldBlocks: buildMobileDocumentTemplateFieldBlocks(template, workOrder, service, scopedSnapshot, common, fieldSheets),
-        inspectionTypeOptions: buildMobileDocumentTemplateInspectionTypeOptions(template),
-        measurementTables: applyMobileDocumentationDefaultSheetsToTemplate({
-          ...template,
-          measurementTables: buildMobileDocumentTemplateMeasurementTables(template, workOrder, service, scopedSnapshot, common),
-        }, contextDefaults).measurementTables,
-        aiFields: buildMobileDocumentTemplateAiFields(template, documentTemplateAiSettings),
-        aiMeasurementColumns: buildMobileDocumentTemplateAiMeasurementColumns(
-          template,
-          workOrder,
-          service,
-          scopedSnapshot,
-          common,
-          fieldSheets,
-          documentTemplateAiSettings,
-        ),
+        scopedSnapshot,
+        documentTemplateAiSettings,
       });
-    });
+      if (!entry?.template) {
+        return;
+      }
+      seenTemplateKeys.add(templateServiceKey);
+      entry.signatureAreas.forEach((area) => signatureAreaKeys.add(area));
+      mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(
+        mergedDefaults,
+        entry.contextDefaults,
+        entry.template,
+        { overwrite: true },
+      );
+      templates.push(entry.template);
+    };
+
+    const linkedTemplates = getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot)
+      .map((templateId) => templateById.get(String(templateId)))
+      .filter(isActiveMobileDocumentTemplate);
+    linkedTemplates.forEach(appendTemplate);
+
+    const nativeTemplate = buildMobileNativeDocumentationTemplate(service, serviceIndex, workOrder, scopedSnapshot);
+    const nativeCode = getMobileTemplateNativeDocumentationServiceCode(nativeTemplate);
+    const linkedHasNativeCode = nativeCode && linkedTemplates.some((template) => (
+      getMobileTemplateNativeDocumentationServiceCode(template) === nativeCode
+    ));
+    if (nativeTemplate && !linkedHasNativeCode) {
+      appendTemplate(nativeTemplate);
+    }
   });
 
   templates.sort((left, right) => String(left?.title || "").localeCompare(String(right?.title || ""), "hr", {

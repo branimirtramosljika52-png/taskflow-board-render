@@ -5434,6 +5434,7 @@ export function createServiceCatalogItem(
   const normalizedTemplateIds = deriveServiceTemplateSnapshot(
     state,
     hasOwn(input, "linkedTemplateIds") ? input.linkedTemplateIds : [],
+    hasOwn(input, "linkedTemplateTitles") ? input.linkedTemplateTitles : [],
   );
   const normalizedLearningTestIds = deriveServiceLearningTestSnapshot(
     state,
@@ -7660,8 +7661,12 @@ export function updateServiceCatalogItem(current, patch, state, now = isoNow) {
         false,
       ) ? "znr" : "inspection",
     );
-  const templateSnapshot = hasOwn(patch, "linkedTemplateIds")
-    ? deriveServiceTemplateSnapshot(state, patch.linkedTemplateIds, current.linkedTemplateTitles)
+  const templateSnapshot = hasOwn(patch, "linkedTemplateIds") || hasOwn(patch, "linkedTemplateTitles")
+    ? deriveServiceTemplateSnapshot(
+      state,
+      hasOwn(patch, "linkedTemplateIds") ? patch.linkedTemplateIds : current.linkedTemplateIds,
+      hasOwn(patch, "linkedTemplateTitles") ? patch.linkedTemplateTitles : current.linkedTemplateTitles,
+    )
     : deriveServiceTemplateSnapshot(state, current.linkedTemplateIds, current.linkedTemplateTitles);
   const learningTestSnapshot = hasOwn(patch, "linkedLearningTestIds")
     ? deriveServiceLearningTestSnapshot(state, patch.linkedLearningTestIds, current.linkedLearningTestTitles)

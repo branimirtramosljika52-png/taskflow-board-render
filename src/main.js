@@ -62677,11 +62677,20 @@ function saveCurrentDocumentationSprTemplate() {
     model: cloneDocumentationSprModelForTemplate(documentationSprModel),
   };
   const withoutCurrent = documentationSprTemplateLibrary.templates.filter((entry) => entry.id !== templateId);
-  documentationSprTemplateLibrary = normalizeDocumentationSprTemplateLibrary({
+  const seenTemplateIds = new Set();
+  documentationSprTemplateLibrary = {
     version: 1,
     activeTemplateId: templateId,
-    templates: [nextEntry, ...withoutCurrent],
-  });
+    templates: mergeDocumentationNativeTemplateSeeds([nextEntry, ...withoutCurrent])
+      .filter((entry) => {
+        const entryId = String(entry?.id || "").trim();
+        if (!entryId || seenTemplateIds.has(entryId)) {
+          return false;
+        }
+        seenTemplateIds.add(entryId);
+        return true;
+      }),
+  };
   writeDocumentationSprModelToForm();
   persistDocumentationSprTemplateLibrary();
   persistDocumentationSprModelNow("Predložak spremljen");
