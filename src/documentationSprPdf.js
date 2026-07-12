@@ -1482,6 +1482,19 @@ function findPdfCompatibleMeasurementTableSource(defaultTable = {}, sourceTables
   )) || null;
 }
 
+function mergePdfNativeMeasurementTable(defaultTable = {}, sourceTable = null) {
+  if (!sourceTable) {
+    return defaultTable;
+  }
+  return {
+    ...defaultTable,
+    sheet: sourceTable.sheet || defaultTable.sheet,
+    pageOrientation: sourceTable.pageOrientation || sourceTable.orientation || defaultTable.pageOrientation,
+    enabled: defaultTable.enabled !== false,
+    includeInReport: defaultTable.includeInReport !== false,
+  };
+}
+
 function resolvePdfMeasurementSourceTables(model = {}) {
   const explicitTables = Array.isArray(model.measurementTables) && model.measurementTables.length > 0
     ? model.measurementTables
@@ -1500,20 +1513,18 @@ function resolvePdfMeasurementSourceTables(model = {}) {
   ));
   const hasOtherNativeTable = explicitTables.some((table) => pdfMeasurementTableLooksLikeOtherNativeService(table, serviceCode));
   if (hasCompatibleNativeTable && !hasOtherNativeTable) {
-    return explicitTables;
+    const revivedServiceTables = serviceTables.map((serviceTable) => (
+      mergePdfNativeMeasurementTable(serviceTable, findPdfCompatibleMeasurementTableSource(serviceTable, explicitTables))
+    ));
+    const extraTables = explicitTables.filter((table) => (
+      !serviceTables.some((serviceTable) => pdfMeasurementSheetsCompatible(serviceTable?.sheet, table?.sheet))
+    ));
+    return [...revivedServiceTables, ...extraTables];
   }
 
   return serviceTables.map((serviceTable) => {
     const compatibleSource = findPdfCompatibleMeasurementTableSource(serviceTable, explicitTables);
-    if (!compatibleSource) {
-      return serviceTable;
-    }
-    return {
-      ...serviceTable,
-      enabled: serviceTable.enabled !== false && compatibleSource.enabled !== false,
-      includeInReport: serviceTable.includeInReport !== false && compatibleSource.includeInReport !== false,
-      sheet: compatibleSource.sheet,
-    };
+    return mergePdfNativeMeasurementTable(serviceTable, compatibleSource);
   });
 }
 

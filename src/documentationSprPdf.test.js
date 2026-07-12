@@ -181,6 +181,7 @@ test("SPR native documentation export restores SRR Gridline table when a linked 
       responsiblePerson: "Test Ispitivac",
       measurementTables: [{
         ...hydrantTable,
+        enabled: false,
         sheet: editedSrrSheet,
       }],
     },

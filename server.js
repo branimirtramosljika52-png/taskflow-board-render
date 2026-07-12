@@ -33376,6 +33376,7 @@ function resolveMobileDocumentationMeasurementBaseTables(template = {}, serviceC
 
 function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, common = {}, serviceCode = "SRR") {
   const baseTables = resolveMobileDocumentationMeasurementBaseTables(template, serviceCode);
+  const nativeServiceCode = normalizeMobileNativeMeasurementServiceCode(serviceCode);
   if (normalizeInputValue(serviceCode).toUpperCase() === "STROJEVI") {
     const manualStrojeviTable = buildMobileStrojeviManualMeasurementTable(baseTables[0] || {}, common);
     if (manualStrojeviTable) {
@@ -33395,15 +33396,20 @@ function buildMobileDocumentationMeasurementTables(entry = {}, template = {}, co
       : explicitOrientation === "portrait"
         ? "portrait"
         : ((sheet?.columns?.length || 0) > 5 ? "landscape" : "");
+    const explicitEnabled = getMobileMeasurementTableExplicitEnabled(common, template, table, index);
+    const defaultEnabled = getMobileDocumentationTemplateBooleanValue(
+      common,
+      template,
+      [table.enabledFieldId, `use-${table.key}`, `use-${table.id}`],
+      table.enabledByDefault !== false,
+    );
+    const forceNativeGridline = Boolean(nativeServiceCode)
+      && table.includeInReport !== false
+      && table.enabledByDefault !== false;
     return {
       ...table,
       pageOrientation,
-      enabled: getMobileMeasurementTableExplicitEnabled(common, template, table, index) ?? getMobileDocumentationTemplateBooleanValue(
-        common,
-        template,
-        [table.enabledFieldId, `use-${table.key}`, `use-${table.id}`],
-        table.enabledByDefault !== false,
-      ),
+      enabled: forceNativeGridline ? true : (explicitEnabled ?? defaultEnabled),
       sheet: {
         ...sheet,
         pageOrientation,
@@ -33748,6 +33754,27 @@ function resolveMobileDocumentationHeaderImage({
   return { dataUrl: "", name: "" };
 }
 
+function resolveMobileDocumentationInspectionType(common = {}, placeholders = {}, serviceCode = "") {
+  const serviceNativeCode = normalizeMobileNativeMeasurementServiceCode(serviceCode);
+  const candidates = [
+    common.inspectionType,
+    placeholders.VRSTA_ISPITIVANJA,
+    placeholders.INSPECTION_TYPE,
+  ];
+  for (const candidate of candidates) {
+    const value = normalizeInputValue(candidate);
+    if (!value) {
+      continue;
+    }
+    const candidateNativeCode = inferMobileNativeDocumentationServiceCode(value);
+    if (serviceNativeCode && candidateNativeCode && candidateNativeCode !== serviceNativeCode) {
+      continue;
+    }
+    return value;
+  }
+  return "Periodi\u010Dno ispitivanje";
+}
+
 function buildMobileDocumentationSprModel({
   entry = {},
   template = {},
@@ -33890,7 +33917,7 @@ function buildMobileDocumentationSprModel({
     inspectionPlace,
     inspectionObject: normalizeInputValue(placeholders.OBJEKT || entry.objectName || workOrder.objectName || workOrder.locationObjectName),
     inspectionObjectId: normalizeInputValue(placeholders.OBJEKT_ID || entry.objectId || workOrder.objectId || workOrder.locationObjectId),
-    inspectionType: normalizeInputValue(common.inspectionType || placeholders.VRSTA_ISPITIVANJA || "Periodično ispitivanje"),
+    inspectionType: resolveMobileDocumentationInspectionType(common, placeholders, serviceCode),
     inspectionDate: formatMobileSprDate(inspectionDate),
     issueDate: formatMobileSprDate(issuedDate),
     validUntil: formatMobileSprDate(validUntil),
