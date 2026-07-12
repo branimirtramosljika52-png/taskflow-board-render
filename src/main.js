@@ -67060,7 +67060,7 @@ function getDocumentationSprSingleExportEntry() {
   };
 }
 
-const DOCUMENTATION_SPR_SERVER_NATIVE_PDF_SERVICE_CODES = new Set(["EXEI", "EXSE", "EXOV"]);
+const DOCUMENTATION_SPR_SERVER_NATIVE_PDF_SERVICE_CODES = new Set();
 
 function shouldUseDocumentationSprServerNativePdf(model = documentationSprModel) {
   return DOCUMENTATION_SPR_SERVER_NATIVE_PDF_SERVICE_CODES.has(getDocumentationSprServiceCode(model));

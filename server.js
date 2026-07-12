@@ -12230,29 +12230,6 @@ function assertHandoverUsesWordTemplate(entry = {}, template = {}) {
 
 function resolveMobileTemplateForExportEntry(documentTemplates = [], entry = {}, scopedSnapshot = {}) {
   const normalizedTemplateId = normalizeInputValue(entry?.templateId);
-  const workOrder = (Array.isArray(scopedSnapshot.workOrders) ? scopedSnapshot.workOrders : [])
-    .find((item) => normalizeInputValue(item?.id) === normalizeInputValue(entry?.workOrderId));
-  const nativeIdMatch = normalizedTemplateId.match(/^native-([a-z0-9]+)-(\d+)$/i);
-  const serviceIndex = Math.max(
-    0,
-    Number.parseInt(entry?.serviceIndex ?? nativeIdMatch?.[2] ?? "0", 10) || 0,
-  );
-  const serviceCode = normalizeInputValue(
-    entry?.serviceCode
-      || entry?.code
-      || nativeIdMatch?.[1]?.toUpperCase()
-      || entry?.templateTitle
-      || entry?.documentType,
-  );
-  const nativeTemplate = buildMobileNativeDocumentationTemplate({
-    ...entry,
-    serviceCode,
-    code: serviceCode,
-    name: entry?.serviceName || entry?.documentType || entry?.templateTitle || serviceCode,
-  }, serviceIndex, workOrder || {}, scopedSnapshot);
-  if (nativeTemplate) {
-    return nativeTemplate;
-  }
 
   const scopedTemplate = (Array.isArray(documentTemplates) ? documentTemplates : [])
     .find((template) => normalizeInputValue(template?.id) === normalizedTemplateId);
@@ -15375,43 +15352,7 @@ function findWorkOrderServiceForDocumentRecord(input = {}, workOrder = {}, scope
 }
 
 function resolveWorkOrderDocumentRecordTemplate(input = {}, workOrder = {}, scopedSnapshot = {}) {
-  const nativeTemplateId = parseMobileNativeDocumentationTemplateId(input.templateId || input.documentTemplateId);
-  if (nativeTemplateId) {
-    const nativeTemplate = buildMobileNativeDocumentationTemplate({
-      ...input,
-      serviceCode: nativeTemplateId.serviceCode,
-      code: nativeTemplateId.serviceCode,
-      name: input.serviceName || input.documentType || input.templateTitle || nativeTemplateId.serviceCode,
-    }, nativeTemplateId.serviceIndex, workOrder, scopedSnapshot);
-    if (nativeTemplate) {
-      return nativeTemplate;
-    }
-  }
-
-  const inputNativePreset = getMobileNativeDocumentationPresetForService({
-    ...input,
-    serviceCode: input.serviceCode || input.activeServiceCode || input.code,
-    code: input.serviceCode || input.activeServiceCode || input.code,
-    name: input.serviceName || input.activeServiceName || input.documentType || input.templateTitle,
-  }, Math.max(0, Number.parseInt(input.serviceIndex || "0", 10) || 0), scopedSnapshot);
-  if (inputNativePreset) {
-    const nativeTemplate = buildMobileNativeDocumentationTemplate({
-      ...input,
-      serviceCode: inputNativePreset.serviceCode,
-      code: inputNativePreset.serviceCode,
-      name: input.serviceName || input.documentType || input.templateTitle || inputNativePreset.serviceCode,
-    }, Math.max(0, Number.parseInt(input.serviceIndex || "0", 10) || 0), workOrder, scopedSnapshot);
-    if (nativeTemplate) {
-      return nativeTemplate;
-    }
-  }
-
   const service = findWorkOrderServiceForDocumentRecord(input, workOrder, scopedSnapshot);
-  const serviceNativeTemplate = buildMobileNativeDocumentationTemplate(service || {}, Number.parseInt(input.serviceIndex || "0", 10) || 0, workOrder, scopedSnapshot);
-  if (serviceNativeTemplate) {
-    return serviceNativeTemplate;
-  }
-
   const directTemplate = getScopedDocumentTemplateById(scopedSnapshot, input.templateId);
   if (directTemplate && isActiveMobileDocumentTemplate(directTemplate)) {
     return directTemplate;
@@ -28083,45 +28024,10 @@ function collectMobileNativeDocumentationLookupValues(service = {}, catalogItem 
 }
 
 function getMobileNativeDocumentationPresetForService(service = {}, serviceIndex = 0, scopedSnapshot = {}) {
-  const catalogItem = findMobileServiceCatalogItemForWorkOrderService(service, scopedSnapshot);
-  const lookupValues = collectMobileNativeDocumentationLookupValues(service, catalogItem, serviceIndex);
-  const explicitPreset = lookupValues
-    .map(getMobileNativeDocumentationPresetFromLookupValue)
-    .find(Boolean);
-  if (explicitPreset) {
-    return explicitPreset;
-  }
-
-  const serviceText = normalizeMobileSprLookupText(lookupValues.join(" "));
-  if (!serviceText) {
-    return null;
-  }
-  const serviceTokens = new Set(serviceText.split(/\s+/u).filter(Boolean));
-  const codePreset = [...MOBILE_NATIVE_DOCUMENTATION_PRESETS]
-    .sort((left, right) => String(right.serviceCode || "").length - String(left.serviceCode || "").length)
-    .find((preset) => serviceTokens.has(normalizeMobileSprLookupText(preset.serviceCode)));
-  if (codePreset) {
-    return codePreset;
-  }
-
-  const semanticCode = inferMobileNativeDocumentationServiceCode(serviceText);
-  const semanticPreset = semanticCode ? getMobileNativeDocumentationPresetByCode(semanticCode) : null;
-  if (semanticPreset) {
-    return semanticPreset;
-  }
-
-  const namePreset = [...MOBILE_NATIVE_DOCUMENTATION_PRESETS]
-    .sort((left, right) => (
-      normalizeMobileSprLookupText(right.serviceName).length - normalizeMobileSprLookupText(left.serviceName).length
-    ))
-    .find((preset) => {
-      const name = normalizeMobileSprLookupText(preset.serviceName);
-      return name && serviceText.includes(name);
-    });
-  if (namePreset) {
-    return namePreset;
-  }
-
+  void service;
+  void serviceIndex;
+  void scopedSnapshot;
+  // Operations / Izrada dokumentacije is the only runtime template source.
   return null;
 }
 
@@ -28833,47 +28739,9 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
   let mergedDefaults = null;
 
   services.forEach((service, serviceIndex) => {
-    const nativePreset = getMobileNativeDocumentationPresetForService(service, serviceIndex, scopedSnapshot);
-    const nativeServiceCode = nativePreset?.serviceCode || "";
     const linkedTemplates = getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot)
       .map((templateId) => templateById.get(String(templateId)))
-      .filter(isActiveMobileDocumentTemplate)
-      .filter((template) => mobileDocumentTemplateMatchesNativeServiceCode(template, nativeServiceCode));
-    const nativeTemplate = linkedTemplates.length === 0
-      ? buildMobileNativeDocumentationTemplate(service, serviceIndex, workOrder, scopedSnapshot)
-      : null;
-    if (nativeTemplate) {
-      const latestRecord = findLatestMobileDocumentRecordForTemplate(nativeTemplate, workOrder, scopedSnapshot);
-      const latestMeasurementRecord = findLatestMobileDocumentRecordForTemplate(
-        nativeTemplate,
-        workOrder,
-        scopedSnapshot,
-        { requireMeaningfulFieldSheets: true },
-      );
-      const dataSource = buildMobileDocumentTemplateDataSource(nativeTemplate, latestRecord);
-      const presetDefaults = buildMobileDocumentationMeasurementPresetDefaults(nativeTemplate, workOrder, scopedSnapshot);
-      const measurementRecordDefaults = latestMeasurementRecord && latestMeasurementRecord !== latestRecord
-        ? buildMobileDocumentRecordWizardDefaults(latestMeasurementRecord, workOrder)
-        : {};
-      const recordDefaults = buildMobileDocumentRecordWizardDefaults(latestRecord, workOrder);
-      mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, presetDefaults, nativeTemplate);
-      mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, measurementRecordDefaults, nativeTemplate, { overwrite: true });
-      mergedDefaults = mergeMobileDocumentWizardDefaultsForTemplate(mergedDefaults, recordDefaults, nativeTemplate, { overwrite: true });
-      let nativeContextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(null, presetDefaults, nativeTemplate);
-      nativeContextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(nativeContextDefaults, measurementRecordDefaults, nativeTemplate, { overwrite: true });
-      nativeContextDefaults = mergeMobileDocumentWizardDefaultsForTemplate(nativeContextDefaults, recordDefaults, nativeTemplate, { overwrite: true }) || recordDefaults;
-      const contextNativeTemplate = applyMobileDocumentationDefaultSheetsToTemplate(nativeTemplate, nativeContextDefaults);
-      const templateServiceKey = `${serviceIndex}::native::${nativeTemplate.serviceCode}`;
-      if (!seenTemplateKeys.has(templateServiceKey)) {
-        seenTemplateKeys.add(templateServiceKey);
-        contextNativeTemplate.signatureAreas.forEach((area) => signatureAreaKeys.add(area));
-        templates.push({
-          ...contextNativeTemplate,
-          ...dataSource,
-        });
-      }
-      return;
-    }
+      .filter(isActiveMobileDocumentTemplate);
     linkedTemplates.forEach((template) => {
       const normalizedTemplateId = normalizeInputValue(template.id);
       const templateServiceKey = `${serviceIndex}::${normalizedTemplateId}`;
@@ -34467,18 +34335,10 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
   const seenPairs = new Set();
 
   const appendEntriesForService = (service, serviceIndex, generationWorkOrder = workOrder, options = {}) => {
-    const nativePreset = getMobileNativeDocumentationPresetForService(service, serviceIndex, scopedSnapshot);
-    const nativeServiceCode = nativePreset?.serviceCode || "";
     const linkedTemplates = getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot)
       .map((templateId) => templateById.get(String(templateId)))
-      .filter(isActiveMobileDocumentTemplate)
-      .filter((template) => mobileDocumentTemplateMatchesNativeServiceCode(template, nativeServiceCode));
-    const nativeTemplate = linkedTemplates.length === 0 && nativePreset
-      ? buildMobileNativeDocumentationTemplate(service, serviceIndex, generationWorkOrder, scopedSnapshot)
-      : null;
-    const templatesForService = linkedTemplates.length > 0
-      ? linkedTemplates
-      : (nativeTemplate ? [nativeTemplate] : []);
+      .filter(isActiveMobileDocumentTemplate);
+    const templatesForService = linkedTemplates;
 
     templatesForService.forEach((template) => {
       const objectId = getMobileWorkOrderLocationObjectId(generationWorkOrder);
