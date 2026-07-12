@@ -47109,10 +47109,12 @@ private fun isDocumentationSignatureTemplateSection(section: TemplateBlockSectio
 }
 
 private fun isEquipmentTemplateSection(section: TemplateBlockSection): Boolean {
+    if (isMeasurementTemplateSection(section)) return false
     val lookup = section.lookupText()
     return section.blocks.any { it.type.equals("equipment_list", ignoreCase = true) } ||
-        lookup.contains("mjerna") ||
-        lookup.contains("ispitna oprema")
+        lookup.contains("mjerna oprema") ||
+        lookup.contains("ispitna oprema") ||
+        (lookup.contains("oprema") && (lookup.contains("mjerna") || lookup.contains("ispitna")))
 }
 
 private fun isLegalTemplateSection(section: TemplateBlockSection): Boolean {
