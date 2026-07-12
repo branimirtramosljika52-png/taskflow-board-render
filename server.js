@@ -118,7 +118,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.423.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.424.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -27119,26 +27119,131 @@ function mergeMobileRuntimeLinkedDocumentTemplates(scopedSnapshot = {}, rawSnaps
   const existingTemplates = Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [];
   const existingTemplateIds = new Set(existingTemplates.map((template) => normalizeInputValue(template?.id)).filter(Boolean));
   const scopedServiceCatalog = Array.isArray(scopedSnapshot.serviceCatalog) ? scopedSnapshot.serviceCatalog : [];
-  const runtimeServiceCatalog = scopedServiceCatalog.length > 0
-    ? scopedServiceCatalog
-    : (Array.isArray(rawSnapshot.serviceCatalog) ? rawSnapshot.serviceCatalog : [])
-      .filter((item) => !organizationId || normalizeInputValue(item?.organizationId) === organizationId);
+  const rawServiceCatalog = (Array.isArray(rawSnapshot.serviceCatalog) ? rawSnapshot.serviceCatalog : [])
+    .filter((item) => !organizationId || normalizeInputValue(item?.organizationId) === organizationId);
+  const serviceCatalogByKey = new Map();
+  const serviceCatalogOrder = [];
+  const rememberCatalogKey = (item = {}) => [
+    item?.id,
+    item?.serviceCode,
+    item?.code,
+    item?.shortCode,
+    item?.name,
+    item?.serviceName,
+    item?.title,
+  ].map(normalizeMobileTemplateLookupKey).filter(Boolean);
+  const mergeCatalogItems = (existing = {}, incoming = {}) => {
+    const linkedTemplateIds = collectMobileLinkedTemplateIds(
+      existing.linkedTemplateIds,
+      existing.documentTemplateIds,
+      existing.templateIds,
+      existing.recordTemplateIds,
+      existing.linkedTemplateId,
+      existing.documentTemplateId,
+      existing.templateId,
+      incoming.linkedTemplateIds,
+      incoming.documentTemplateIds,
+      incoming.templateIds,
+      incoming.recordTemplateIds,
+      incoming.linkedTemplateId,
+      incoming.documentTemplateId,
+      incoming.templateId,
+    );
+    const linkedTemplateTitles = collectMobileLinkedTemplateIds(
+      existing.linkedTemplateTitles,
+      existing.templateTitles,
+      incoming.linkedTemplateTitles,
+      incoming.templateTitles,
+    );
+    return {
+      ...existing,
+      ...incoming,
+      ...(linkedTemplateIds.length > 0 ? { linkedTemplateIds } : {}),
+      ...(linkedTemplateTitles.length > 0 ? { linkedTemplateTitles } : {}),
+    };
+  };
+  const upsertCatalogItem = (item = {}) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return;
+    }
+    const keys = rememberCatalogKey(item);
+    if (keys.length === 0) {
+      return;
+    }
+    const existingKey = keys.find((key) => serviceCatalogByKey.has(key));
+    const merged = existingKey ? mergeCatalogItems(serviceCatalogByKey.get(existingKey), item) : { ...item };
+    const canonicalKey = existingKey || keys[0];
+    if (!existingKey) {
+      serviceCatalogOrder.push(canonicalKey);
+    }
+    keys.forEach((key) => serviceCatalogByKey.set(key, merged));
+  };
+  rawServiceCatalog.forEach(upsertCatalogItem);
+  scopedServiceCatalog.forEach(upsertCatalogItem);
+  const runtimeServiceCatalog = serviceCatalogOrder
+    .map((key) => serviceCatalogByKey.get(key))
+    .filter(Boolean);
   const lookupSnapshot = {
     ...scopedSnapshot,
     serviceCatalog: runtimeServiceCatalog,
-    documentTemplates: existingTemplates,
+    documentTemplates: [...existingTemplates, ...rawTemplates],
   };
   const linkedTemplateIds = new Set();
 
   getMobileWorkOrderDocumentationServices(workOrder).forEach((service) => {
-    getMobileWorkOrderServiceTemplateIds(service, lookupSnapshot)
+    const serviceTemplateIds = getMobileWorkOrderServiceTemplateIds(service, lookupSnapshot)
       .map(normalizeInputValue)
-      .filter(Boolean)
-      .forEach((templateId) => linkedTemplateIds.add(templateId));
+      .filter(Boolean);
+    serviceTemplateIds.forEach((templateId) => linkedTemplateIds.add(templateId));
+    if (serviceTemplateIds.length > 0) {
+      return;
+    }
+    const catalogItem = findMobileServiceCatalogItemForWorkOrderService(service, lookupSnapshot);
+    const serviceCodeKeys = [
+      service?.serviceCode,
+      service?.code,
+      service?.shortCode,
+      service?.serviceKey,
+      catalogItem?.serviceCode,
+      catalogItem?.code,
+      catalogItem?.shortCode,
+    ].map(normalizeMobileTemplateLookupKey).filter(Boolean);
+    if (serviceCodeKeys.length === 0) {
+      return;
+    }
+    rawTemplates
+      .filter(isActiveMobileDocumentTemplate)
+      .filter((template) => !organizationId || normalizeInputValue(template?.organizationId) === organizationId)
+      .forEach((template) => {
+        const templateId = normalizeInputValue(template?.id);
+        if (!templateId) {
+          return;
+        }
+        const templateKeys = [
+          template?.serviceCode,
+          template?.code,
+          template?.shortCode,
+          template?.title,
+          template?.documentType,
+          template?.outputFileName,
+        ].map(normalizeMobileTemplateLookupKey).filter(Boolean);
+        const matchesServiceCode = serviceCodeKeys.some((serviceCodeKey) => (
+          templateKeys.some((templateKey) => (
+            templateKey === serviceCodeKey
+            || templateKey.startsWith(`${serviceCodeKey} `)
+            || templateKey.startsWith(`${serviceCodeKey} v`)
+            || templateKey.startsWith(`${serviceCodeKey}_`)
+            || templateKey.startsWith(`${serviceCodeKey}-`)
+          ))
+        ));
+        if (matchesServiceCode) {
+          linkedTemplateIds.add(templateId);
+        }
+      });
   });
 
   if (linkedTemplateIds.size === 0) {
-    return scopedServiceCatalog.length > 0 ? scopedSnapshot : { ...scopedSnapshot, serviceCatalog: runtimeServiceCatalog };
+    return runtimeServiceCatalog.length > 0 ? { ...scopedSnapshot, serviceCatalog: runtimeServiceCatalog } : scopedSnapshot;
   }
 
   const missingTemplates = rawTemplates
@@ -27152,12 +27257,12 @@ function mergeMobileRuntimeLinkedDocumentTemplates(scopedSnapshot = {}, rawSnaps
     .map((template) => ({ ...template }));
 
   if (missingTemplates.length === 0 && scopedServiceCatalog.length > 0) {
-    return scopedSnapshot;
+    return runtimeServiceCatalog.length > 0 ? { ...scopedSnapshot, serviceCatalog: runtimeServiceCatalog } : scopedSnapshot;
   }
 
   return {
     ...scopedSnapshot,
-    serviceCatalog: scopedServiceCatalog.length > 0 ? scopedServiceCatalog : runtimeServiceCatalog,
+    serviceCatalog: runtimeServiceCatalog.length > 0 ? runtimeServiceCatalog : scopedServiceCatalog,
     documentTemplates: [...existingTemplates, ...missingTemplates],
   };
 }

@@ -1939,7 +1939,10 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
 
         val cacheKey = documentationContextCacheKey(workOrderId, contextObjectId)
-        val cachedContext = documentationContextCache[cacheKey]
+        if (forceRefresh) {
+            documentationContextCache.remove(cacheKey)
+        }
+        val cachedContext = if (forceRefresh) null else documentationContextCache[cacheKey]
         if (!silent) {
             state = state.copy(
                 documentationContextWorkOrderId = workOrderId,
