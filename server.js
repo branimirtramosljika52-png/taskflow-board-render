@@ -27103,6 +27103,65 @@ function mergeMobileMeasurementSheetPresets(scopedSnapshot = {}, freshPresets = 
   };
 }
 
+function getMobileWorkOrderDocumentationServices(workOrder = {}) {
+  return Array.isArray(workOrder.serviceItems) && workOrder.serviceItems.length > 0
+    ? workOrder.serviceItems.map((item) => (item && typeof item === "object" ? item : { name: item }))
+    : [{ name: workOrder.serviceLine || "" }];
+}
+
+function mergeMobileRuntimeLinkedDocumentTemplates(scopedSnapshot = {}, rawSnapshot = {}, workOrder = {}) {
+  const rawTemplates = Array.isArray(rawSnapshot?.documentTemplates) ? rawSnapshot.documentTemplates : [];
+  if (rawTemplates.length === 0) {
+    return scopedSnapshot;
+  }
+
+  const organizationId = normalizeInputValue(scopedSnapshot.activeOrganizationId || workOrder.organizationId);
+  const existingTemplates = Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [];
+  const existingTemplateIds = new Set(existingTemplates.map((template) => normalizeInputValue(template?.id)).filter(Boolean));
+  const scopedServiceCatalog = Array.isArray(scopedSnapshot.serviceCatalog) ? scopedSnapshot.serviceCatalog : [];
+  const runtimeServiceCatalog = scopedServiceCatalog.length > 0
+    ? scopedServiceCatalog
+    : (Array.isArray(rawSnapshot.serviceCatalog) ? rawSnapshot.serviceCatalog : [])
+      .filter((item) => !organizationId || normalizeInputValue(item?.organizationId) === organizationId);
+  const lookupSnapshot = {
+    ...scopedSnapshot,
+    serviceCatalog: runtimeServiceCatalog,
+    documentTemplates: existingTemplates,
+  };
+  const linkedTemplateIds = new Set();
+
+  getMobileWorkOrderDocumentationServices(workOrder).forEach((service) => {
+    getMobileWorkOrderServiceTemplateIds(service, lookupSnapshot)
+      .map(normalizeInputValue)
+      .filter(Boolean)
+      .forEach((templateId) => linkedTemplateIds.add(templateId));
+  });
+
+  if (linkedTemplateIds.size === 0) {
+    return scopedServiceCatalog.length > 0 ? scopedSnapshot : { ...scopedSnapshot, serviceCatalog: runtimeServiceCatalog };
+  }
+
+  const missingTemplates = rawTemplates
+    .filter((template) => {
+      const templateId = normalizeInputValue(template?.id);
+      if (!templateId || existingTemplateIds.has(templateId) || !linkedTemplateIds.has(templateId)) {
+        return false;
+      }
+      return !organizationId || normalizeInputValue(template?.organizationId) === organizationId;
+    })
+    .map((template) => ({ ...template }));
+
+  if (missingTemplates.length === 0 && scopedServiceCatalog.length > 0) {
+    return scopedSnapshot;
+  }
+
+  return {
+    ...scopedSnapshot,
+    serviceCatalog: scopedServiceCatalog.length > 0 ? scopedServiceCatalog : runtimeServiceCatalog,
+    documentTemplates: [...existingTemplates, ...missingTemplates],
+  };
+}
+
 function buildMobileDocumentationPreviousRecords(workOrder = {}, scopedSnapshot = {}) {
   const companyId = normalizeInputValue(workOrder?.companyId);
   const locationId = normalizeInputValue(workOrder?.locationId);
@@ -27177,7 +27236,9 @@ function buildMobileDocumentationPreviousRecords(workOrder = {}, scopedSnapshot 
     .map(({ sortKey, ...record }) => record);
 }
 
-async function buildMobileDocumentationContextSnapshot(workOrder = {}, scopedSnapshot = {}) {
+async function buildMobileDocumentationContextSnapshot(workOrder = {}, scopedSnapshot = {}, rawSnapshot = {}) {
+  scopedSnapshot = mergeMobileRuntimeLinkedDocumentTemplates(scopedSnapshot, rawSnapshot, workOrder);
+
   if (
     typeof domainRepository.listDocumentRecords !== "function"
     && typeof domainRepository.listMeasurementSheetPresets !== "function"
@@ -28730,9 +28791,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
   const documentTemplates = Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [];
   const documentTemplateAiSettings = getMobileDocumentTemplateAiSettings(scopedSnapshot);
   const templateById = new Map(documentTemplates.map((template) => [String(template.id), template]));
-  const services = Array.isArray(workOrder.serviceItems) && workOrder.serviceItems.length > 0
-    ? workOrder.serviceItems.map((item) => (item && typeof item === "object" ? item : { name: item }))
-    : [{ name: workOrder.serviceLine || "" }];
+  const services = getMobileWorkOrderDocumentationServices(workOrder);
   const templates = [];
   const seenTemplateKeys = new Set();
   const signatureAreaKeys = new Set();
@@ -38795,7 +38854,7 @@ async function handleApiRequest(request, response, url) {
         return true;
       }
 
-      const { scopedSnapshot } = await getScopedState(user, request);
+      const { scopedSnapshot, rawSnapshot } = await getScopedState(user, request);
       const workOrder = await hydrateWorkOrderMeasurementSheet(assertInScope(
         scopedSnapshot.workOrders ?? [],
         mobileWorkOrderDocumentationContextMatch[1],
@@ -38804,7 +38863,7 @@ async function handleApiRequest(request, response, url) {
       const workOrderForContext = applyMobileSelectedObjectToWorkOrder(workOrder, scopedSnapshot, {
         objectId: url.searchParams.get("objectId") ?? "",
       });
-      const contextSnapshot = await buildMobileDocumentationContextSnapshot(workOrderForContext, scopedSnapshot);
+      const contextSnapshot = await buildMobileDocumentationContextSnapshot(workOrderForContext, scopedSnapshot, rawSnapshot);
       try {
         const isznrWorkEquipment = await fetchIsznrWorkEquipmentForWorkOrder({
           user,
@@ -38960,17 +39019,18 @@ async function handleApiRequest(request, response, url) {
       }
 
       const body = await readJsonBody(request).catch(() => ({}));
-      const { scopedSnapshot } = await getScopedState(user, request);
+      const { scopedSnapshot, rawSnapshot } = await getScopedState(user, request);
       const workOrder = await hydrateWorkOrderMeasurementSheet(assertInScope(
         scopedSnapshot.workOrders ?? [],
         mobileWorkOrderDocumentationDraftMatch[1],
         "Radni nalog nije pronađen.",
       ));
       const workOrderForDraft = applyMobileSelectedObjectToWorkOrder(workOrder, scopedSnapshot, body);
+      const draftSnapshot = mergeMobileRuntimeLinkedDocumentTemplates(scopedSnapshot, rawSnapshot, workOrderForDraft);
       const result = await persistMobileWorkOrderDocumentationDraft({
         body,
         workOrder: workOrderForDraft,
-        scopedSnapshot,
+        scopedSnapshot: draftSnapshot,
         user,
       });
 
@@ -39144,18 +39204,19 @@ async function handleApiRequest(request, response, url) {
       }
 
       const body = await readJsonBody(request).catch(() => ({}));
-      const { scopedSnapshot } = await getScopedState(user, request);
+      const { scopedSnapshot, rawSnapshot } = await getScopedState(user, request);
       const workOrder = await hydrateWorkOrderMeasurementSheet(assertInScope(
         scopedSnapshot.workOrders ?? [],
         mobileWorkOrderGenerateDocumentsMatch[1],
         "Radni nalog nije pronađen.",
       ));
       const workOrderForGeneration = applyMobileSelectedObjectToWorkOrder(workOrder, scopedSnapshot, body);
+      const generationSnapshot = mergeMobileRuntimeLinkedDocumentTemplates(scopedSnapshot, rawSnapshot, workOrderForGeneration);
       const job = startMobileDocumentGenerationJob({
         workOrderId: workOrder.id,
         workOrder: workOrderForGeneration,
         wizardInput: body,
-        scopedSnapshot,
+        scopedSnapshot: generationSnapshot,
         user,
       });
       if (body.async === true || body.generateAsync === true || request.headers["x-safenexus-async"] === "1") {
