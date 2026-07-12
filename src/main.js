@@ -36279,7 +36279,7 @@ function getSettingsDocumentTemplateAiEntryBlockLabel(entry = {}) {
   const fieldLabel = String(entry.fieldLabel || "").trim();
   const service = String(entry.service || "").trim().toUpperCase();
   const identity = `${fieldLabel} ${entry.templateTitle || ""} ${entry.columnLabel || ""}`.toLowerCase();
-  if (service.includes("SPR") && /(sigurnosn|protupani|panic|panik|rasvjet)/i.test(identity)) {
+  if (["PR", "SPR", "PANIK"].some((code) => service.split(/\s+/g).includes(code)) && /(sigurnosn|protupani|panic|panik|rasvjet)/i.test(identity)) {
     return "Panik rasvjeta";
   }
   if (entry.kind === "column" && fieldLabel) {
@@ -38410,7 +38410,7 @@ function getSignatureRoleFallbackLabel(role = "") {
   const normalized = String(role || "").trim().toUpperCase();
   if (normalized.includes("DIREKTOR")) return "Direktor";
   if (normalized.includes("KLIJENT")) return "Odgovorna osoba";
-  if (normalized.includes("ZNR") || normalized.includes("SPR")) return "Ispitivač SPR";
+  if (normalized.includes("ZNR") || normalized.includes("PR") || normalized.includes("SPR")) return "Ispitivač PR";
   if (normalized.includes("OCIJEN")) return "Ocijenio zapisnik";
   return normalized || "Potpisnik";
 }
@@ -58567,7 +58567,7 @@ function triggerBlobDownload(blob, fileName) {
 const DOCUMENTATION_SPR_STORAGE_KEY = "safenexus.documentation-workbench.spr.v1";
 const DOCUMENTATION_SPR_TEMPLATE_LIBRARY_STORAGE_KEY = "safenexus.documentation-workbench.spr.templates.v1";
 const DOCUMENTATION_SPR_GLOBAL_HEADER_STORAGE_KEY = "safenexus.documentation-workbench.spr.global-header.v1";
-const DOCUMENTATION_SPR_TEMPLATE_DEFAULT_ID = "spr-v1-0-0";
+const DOCUMENTATION_SPR_TEMPLATE_DEFAULT_ID = "documentation-native-template-default";
 const DOCUMENTATION_SPR_RECORD_ATTACHMENTS_KEY = "__mobileDocumentationAttachments";
 const DOCUMENTATION_SPR_RECORD_TEMPLATE_ATTACHMENTS_KEY = "__mobileDocumentationTemplateAttachments";
 const DOCUMENTATION_SPR_GRID_ROW_COUNT = 24;
@@ -58696,27 +58696,26 @@ function buildDocumentationSprGridlineModelFromRows(rows = getDocumentationSprDe
 }
 
 function createDefaultDocumentationSprModel() {
-  const reportDefaults = createDocumentationReportModelDefaults("SPR");
   return {
-    templateCode: "SPR v1.0.0",
+    templateCode: "Novi predložak",
     layoutPreset: DOCUMENTATION_SPR_DEFAULT_LAYOUT_PRESET,
     workOrderId: "",
     workOrderNumber: "25-1287",
     companyId: "",
     locationId: "",
     serviceId: "",
-    serviceCode: reportDefaults.serviceCode,
-    serviceName: reportDefaults.serviceName,
-    reportTitle: reportDefaults.reportTitle,
-    coverSubtitle: reportDefaults.coverSubtitle,
-    measurementTableTitle: reportDefaults.measurementTableTitle,
-    recordNumber: "25-1287-SPR",
-    hasCertificate: reportDefaults.hasCertificate === true,
-    issueCertificate: reportDefaults.hasCertificate === true,
-    certificateNumber: reportDefaults.hasCertificate === true ? buildDocumentationNativeCertificateNumber("25-1287-SPR") : "",
-    certificateTitle: reportDefaults.certificateTitle || "",
-    certificateLead: reportDefaults.certificateLead || "",
-    certificateResultText: reportDefaults.certificateResultText || "",
+    serviceCode: "",
+    serviceName: "",
+    reportTitle: "ZAPISNIK",
+    coverSubtitle: "",
+    measurementTableTitle: "Tablica 1. - rezultati ispitivanja",
+    recordNumber: "25-1287",
+    hasCertificate: false,
+    issueCertificate: false,
+    certificateNumber: "",
+    certificateTitle: "",
+    certificateLead: "",
+    certificateResultText: "",
     certificateFactualNote: "",
     documentStatus: "U izradi",
     companyName: "PETROL d.o.o.",
@@ -58732,35 +58731,17 @@ function createDefaultDocumentationSprModel() {
     inspectionDate: "20.2.2026",
     issueDate: "20.2.2026",
     validUntil: "20.2.2027",
-    equipment: [
-      "Elektronski mjerni ispitni instrument METREL EUROTEST 61557 ser. Br. 09340197",
-      "Mjerilo vremena, Rucanor, inv. br. 77",
-      "Uređaj za mjerenje osvijetljenosti, proizvođač Extech, tip HD 450, inv.br. 106",
-    ].join("\n"),
-    regulations: [
-      "Tehnički propis za niskonaponske električne instalacije (NN 05/10)",
-      "Zakon o normizaciji (NN 80/13)",
-      "Zakon o gradnji (NN 153/13, 20/17, 39/19, 125/19)",
-      "Zakon o zaštiti na radu (NN 71/14, 118/14, 94/18, 96/18)",
-      "Pravilnik o sigurnosti i zdravlju pri radu s električnom energijom (NN 88/12),",
-      "Zakon o zaštiti od požara (NN 92/10, 114/22),",
-      "Pravilnik o zaštiti na radu za mjesta rada (NN 29/13)",
-      "Pravilnik o zaštiti od požara ugostiteljskih objekata (NN 100/99)",
-      "Norma HRN IEC 60598-2-22 Svjetiljke za sigurnosnu rasvjetu",
-      "Norma EN 1838 Emergency lighting",
-      "Norma EN 50172 Emergency escape lighting system",
-      "ISO 3864-1 Grafički simboli",
-      "NFPA 101/2006 Fire safety code",
-    ].join("\n"),
-    projectDocumentation: "Zapisnik od prethodnog ispitivanja od strane Abeceda zaštite d.o.o.",
+    equipment: "",
+    regulations: "",
+    projectDocumentation: "",
     technicalData: "",
-    systemDescription: reportDefaults.systemDescription || "",
-    resultsText: reportDefaults.resultsText,
-    eiNote: reportDefaults.eiNote,
-    eiminNote: reportDefaults.eiminNote,
-    assessmentLabel: reportDefaults.assessmentLabel,
-    conclusionLead: reportDefaults.conclusionLead,
-    validitySentence: reportDefaults.validitySentence,
+    systemDescription: "",
+    resultsText: "",
+    eiNote: "",
+    eiminNote: "",
+    assessmentLabel: "",
+    conclusionLead: "",
+    validitySentence: "",
     inspectors: "",
     responsiblePerson: "",
     signatureClass: "UP/I-133-02/25-02/26",
@@ -58784,11 +58765,11 @@ function createDefaultDocumentationSprModel() {
     fieldSettings: {},
     aiSources: [],
     attachments: [],
-    checklists: reportDefaults.checklists || [],
-    measurementAssessments: reportDefaults.measurementAssessments || [],
-    measurementTables: reportDefaults.measurementTables,
-    formulaSheets: reportDefaults.formulaSheets || [],
-    gridlineModel: buildDocumentationSprGridlineModelFromRows(createDocumentationGridlineRowsForService("SPR")),
+    checklists: [],
+    measurementAssessments: [],
+    measurementTables: [],
+    formulaSheets: [],
+    gridlineModel: buildDocumentationSprGridlineModelFromRows(getDocumentationSprBlankRows()),
   };
 }
 
@@ -59089,21 +59070,17 @@ function findDocumentationSprNativeEntryByDefault(source = [], defaultEntry = {}
 }
 
 function shouldReconcileDocumentationSprNativeDefaults(serviceCode = "", defaults = []) {
-  return normalizeLooseName(serviceCode) !== "spr" && Array.isArray(defaults) && defaults.length > 0;
+  return Array.isArray(defaults) && defaults.length > 0;
 }
 
 function mergeDocumentationSprMeasurementTableWithDefault(defaultTable = {}, existingTable = null) {
   if (!existingTable || typeof existingTable !== "object") {
     return defaultTable;
   }
-  const defaultColumnIds = (defaultTable.sheet?.columns || [])
-    .map((column) => normalizeLooseName(column.id || column.key || column.label))
-    .filter(Boolean);
-  const existingColumnIds = (existingTable.sheet?.columns || [])
-    .map((column) => normalizeLooseName(column.id || column.key || column.label))
-    .filter(Boolean);
-  const hasCompatibleSheet = defaultColumnIds.length > 0
-    && defaultColumnIds.every((id, index) => existingColumnIds[index] === id);
+  const hasCompatibleSheet = areDocumentationSprMeasurementSheetsCompatible(
+    defaultTable.sheet,
+    existingTable.sheet,
+  );
   return {
     ...defaultTable,
     label: String(existingTable.label || defaultTable.label || "").trim(),
@@ -59119,6 +59096,43 @@ function mergeDocumentationSprMeasurementTableWithDefault(defaultTable = {}, exi
     sheet: hasCompatibleSheet ? existingTable.sheet : defaultTable.sheet,
     gridlineModel: existingTable.gridlineModel || defaultTable.gridlineModel || null,
   };
+}
+
+function isGenericDocumentationSprColumnId(value = "") {
+  return /^(?:c|col_?|column_?)\d+$/i.test(String(value || "").trim());
+}
+
+function getDocumentationSprColumnLabelSignature(column = {}) {
+  return normalizeLooseName([
+    column?.label,
+    column?.placeholder,
+  ].filter(Boolean).join(" "));
+}
+
+function areDocumentationSprColumnsCompatible(expected = {}, candidate = {}) {
+  const expectedLabel = getDocumentationSprColumnLabelSignature(expected);
+  const candidateLabel = getDocumentationSprColumnLabelSignature(candidate);
+  if (expectedLabel && candidateLabel) {
+    return expectedLabel === candidateLabel;
+  }
+  const expectedId = normalizeLooseName(expected?.id || expected?.key || "");
+  const candidateId = normalizeLooseName(candidate?.id || candidate?.key || "");
+  return Boolean(
+    expectedId
+      && candidateId
+      && expectedId === candidateId
+      && !isGenericDocumentationSprColumnId(expectedId)
+      && !isGenericDocumentationSprColumnId(candidateId),
+  );
+}
+
+function areDocumentationSprMeasurementSheetsCompatible(expectedSheet = null, candidateSheet = null) {
+  const expectedColumns = Array.isArray(expectedSheet?.columns) ? expectedSheet.columns : [];
+  const candidateColumns = Array.isArray(candidateSheet?.columns) ? candidateSheet.columns : [];
+  if (!expectedColumns.length || candidateColumns.length < expectedColumns.length) {
+    return false;
+  }
+  return expectedColumns.every((column, index) => areDocumentationSprColumnsCompatible(column, candidateColumns[index]));
 }
 
 function normalizeDocumentationSprMeasurementTables(value = [], model = {}) {
@@ -59543,7 +59557,7 @@ function getDocumentationSprServiceBindingKey(binding = null) {
   if (normalized.serviceId) {
     return `id:${normalized.serviceId}`;
   }
-  const serviceCode = normalizeLooseName(normalized.serviceCode);
+  const serviceCode = normalizeLooseName(normalizeDocumentTemplateRuntimeServiceCode(normalized.serviceCode) || normalized.serviceCode);
   if (serviceCode) {
     return `code:${serviceCode}`;
   }
@@ -59745,7 +59759,7 @@ function normalizeDocumentationSprTemplateEntry(entry = null, index = 0) {
 
 function buildDocumentationNativeTemplateModel(preset = {}) {
   const base = createDefaultDocumentationSprModel();
-  const reportDefaults = createDocumentationReportModelDefaults(preset.serviceCode || base.serviceCode || "SPR");
+  const reportDefaults = createDocumentationReportModelDefaults(preset.serviceCode || base.serviceCode || "PR");
   const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(reportDefaults.serviceCode || preset.serviceCode);
   return {
     ...base,
@@ -59769,14 +59783,19 @@ function buildDocumentationNativeTemplateModel(preset = {}) {
     measurementTables: reportDefaults.measurementTables,
     formulaSheets: reportDefaults.formulaSheets || [],
     gridlineModel: buildDocumentationSprGridlineModelFromRows(createDocumentationGridlineRowsForService(reportDefaults.serviceCode)),
-    recordNumber: `25-1287-${preset.serviceCode || "SPR"}`,
+    recordNumber: `25-1287-${preset.serviceCode || "PR"}`,
   };
 }
 
+function normalizeDocumentationNativeTemplatePresetCode(serviceCode = "") {
+  const runtimeCode = normalizeDocumentTemplateRuntimeServiceCode(serviceCode);
+  return normalizeLooseName(runtimeCode || serviceCode);
+}
+
 function getDocumentationNativeTemplatePresetByCode(serviceCode = "") {
-  const normalizedCode = normalizeLooseName(serviceCode);
+  const normalizedCode = normalizeDocumentationNativeTemplatePresetCode(serviceCode);
   return DOCUMENTATION_NATIVE_TEMPLATE_PRESETS.find((preset) =>
-    normalizeLooseName(preset.serviceCode || "") === normalizedCode
+    normalizeDocumentationNativeTemplatePresetCode(preset.serviceCode || "") === normalizedCode
   ) || null;
 }
 
@@ -59788,11 +59807,20 @@ function isDocumentationNativeSeedLikeEntry(entry = {}, preset = {}) {
     entry.model?.serviceCode,
     entry.serviceBinding?.serviceCode,
   ].join(" "));
-  const code = normalizeLooseName(preset.serviceCode || "");
+  const code = normalizeDocumentationNativeTemplatePresetCode(preset.serviceCode || "");
+  const entryCodes = [
+    entry.serviceBinding?.serviceCode,
+    entry.model?.serviceCode,
+    entry.serviceCode,
+  ].map(normalizeDocumentationNativeTemplatePresetCode).filter(Boolean);
   const presetId = normalizeLooseName(preset.id || "");
   const presetName = normalizeLooseName(preset.name || "");
   return Boolean(code && (
-    haystack.includes(code)
+    entryCodes.includes(code)
+    || haystack.includes(code)
+    || (code === "pr" && haystack.includes("spr"))
+    || (code === "pr" && haystack.includes("panik"))
+    || (code === "pr" && haystack.includes("rasvjet"))
     || (presetId && haystack.includes(presetId))
     || (presetName && haystack.includes(presetName))
   ));
@@ -59809,6 +59837,13 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
   const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(preset.serviceCode || nativeModel.serviceCode || currentModel.serviceCode);
   const seedCreatedAt = "2026-01-01T00:00:00.000Z";
   const isBuiltInSeed = normalizeLooseName(entry.id) === normalizeLooseName(preset.id);
+  const rawEntryCode = String(entry.serviceBinding?.serviceCode || entry.model?.serviceCode || entry.serviceCode || "").trim().toUpperCase();
+  const isLegacySprSeed = preset.serviceCode === "PR" && (
+    normalizeLooseName(entry.id).includes("spr")
+    || normalizeLooseName(entry.name).includes("spr")
+    || rawEntryCode === "SPR"
+    || rawEntryCode === "PANIK"
+  );
   const hasUserEdits = Boolean(String(entry.updatedAt || "").trim())
     && String(entry.updatedAt || "").trim() !== String(entry.createdAt || "").trim()
     && String(entry.updatedAt || "").trim() !== seedCreatedAt;
@@ -59829,7 +59864,7 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
     : nativeModel.formulaSheets;
   return {
     ...entry,
-    name: entry.name || preset.name,
+    name: (isBuiltInSeed || isLegacySprSeed) ? preset.name : (entry.name || preset.name),
     serviceBinding: {
       serviceId: "",
       serviceCode: preset.serviceCode,
@@ -59837,7 +59872,7 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
     },
     model: cloneDocumentationSprModelForTemplate({
       ...currentModel,
-      templateCode: entry.name || preset.name,
+      templateCode: (isBuiltInSeed || isLegacySprSeed) ? preset.name : (entry.name || preset.name),
       serviceCode: nativeModel.serviceCode,
       serviceName: nativeModel.serviceName,
       reportTitle: currentModel.reportTitle || nativeModel.reportTitle,
@@ -59879,7 +59914,7 @@ function mergeDocumentationNativeTemplateSeeds(templates = []) {
   const nextTemplates = [...templates];
   const existingIds = new Set(nextTemplates.map((entry) => String(entry.id || "").trim()).filter(Boolean));
   const existingServiceCodes = new Set(nextTemplates
-    .map((entry) => String(entry.serviceBinding?.serviceCode || entry.model?.serviceCode || "").trim().toUpperCase())
+    .map((entry) => normalizeDocumentTemplateRuntimeServiceCode(entry.serviceBinding?.serviceCode || entry.model?.serviceCode || ""))
     .filter(Boolean));
   createDocumentationNativeTemplateEntries("2026-01-01T00:00:00.000Z").forEach((seed) => {
     const code = String(seed.serviceBinding?.serviceCode || "").trim().toUpperCase();
@@ -59899,7 +59934,7 @@ function createInitialDocumentationSprTemplateLibrary() {
   const now = "2026-01-01T00:00:00.000Z";
   return {
     version: 1,
-    activeTemplateId: DOCUMENTATION_SPR_TEMPLATE_DEFAULT_ID,
+    activeTemplateId: "",
     templates: createDocumentationNativeTemplateEntries(now),
   };
 }
@@ -60934,8 +60969,8 @@ function documentationSprTemplateMatchesService(template = null, service = {}) {
   if (templateBinding.serviceId && serviceBinding.serviceId && templateBinding.serviceId === serviceBinding.serviceId) {
     return true;
   }
-  const templateCode = normalizeLooseName(templateBinding.serviceCode);
-  const serviceCode = normalizeLooseName(serviceBinding.serviceCode);
+  const templateCode = normalizeLooseName(normalizeDocumentTemplateRuntimeServiceCode(templateBinding.serviceCode) || templateBinding.serviceCode);
+  const serviceCode = normalizeLooseName(normalizeDocumentTemplateRuntimeServiceCode(serviceBinding.serviceCode) || serviceBinding.serviceCode);
   if (templateCode && serviceCode && templateCode === serviceCode) {
     return true;
   }
@@ -61112,10 +61147,29 @@ function getDocumentationSprKnownServiceCodes() {
     ...DOCUMENTATION_NATIVE_TEMPLATE_PRESETS
       .map((preset) => String(preset.serviceCode || "").trim().toUpperCase())
       .filter(Boolean),
+    "SPR",
+    "PANIK",
     "ZUDS",
     "IPK",
     "OI",
   ]);
+}
+
+function normalizeDocumentationSprPreviousRecordCode(value = "") {
+  const rawCode = String(value || "").trim().toUpperCase();
+  return rawCode ? (normalizeDocumentTemplateRuntimeServiceCode(rawCode) || rawCode) : "";
+}
+
+function documentationSprTextHasCodeToken(text = "", code = "") {
+  const normalizedText = normalizeLooseName(text);
+  const normalizedCode = normalizeLooseName(code);
+  if (!normalizedText || !normalizedCode) {
+    return false;
+  }
+  if (normalizedCode.length <= 2) {
+    return normalizedText.split(/\s+/g).includes(normalizedCode);
+  }
+  return normalizedText.includes(normalizedCode);
 }
 
 function getDocumentationSprPreviousRecordExplicitCodes(record = {}) {
@@ -61133,7 +61187,7 @@ function getDocumentationSprPreviousRecordExplicitCodes(record = {}) {
   ];
   const codes = new Set();
   directValues.forEach((value) => {
-    const code = String(value || "").trim().toUpperCase();
+    const code = normalizeDocumentationSprPreviousRecordCode(value);
     if (code) {
       codes.add(code);
     }
@@ -61147,10 +61201,16 @@ function getDocumentationSprPreviousRecordExplicitCodes(record = {}) {
     record.documentTitle,
   ].filter(Boolean).join(" "));
   knownCodes.forEach((code) => {
-    if (titleText.includes(normalizeLooseName(code))) {
-      codes.add(code);
+    if (documentationSprTextHasCodeToken(titleText, code)) {
+      const normalizedCode = normalizeDocumentationSprPreviousRecordCode(code);
+      if (normalizedCode) {
+        codes.add(normalizedCode);
+      }
     }
   });
+  if (titleText.includes("panik") || titleText.includes("sigurnosna rasvjeta") || titleText.includes("protupanic")) {
+    codes.add("PR");
+  }
   if (titleText.includes("tipkalo") || titleText.includes("isklop")) {
     codes.add("TZIN");
   }
@@ -61162,29 +61222,32 @@ function scoreDocumentationSprPreviousRecord(entry = {}, record = {}) {
   if (!sourceText) {
     return 0;
   }
-  const serviceCode = normalizeLooseName(entry.serviceCode || entry.serviceBinding?.serviceCode || "");
+  const rawServiceCode = entry.serviceCode || entry.serviceBinding?.serviceCode || "";
+  const serviceCode = normalizeLooseName(normalizeDocumentTemplateRuntimeServiceCode(rawServiceCode) || rawServiceCode);
   const serviceName = normalizeLooseName(entry.serviceName || entry.serviceBinding?.serviceName || "");
   const explicitCodes = getDocumentationSprPreviousRecordExplicitCodes(record);
   if (serviceCode && explicitCodes.size > 0) {
-    const hasRequestedCode = [...explicitCodes].some((code) => normalizeLooseName(code) === serviceCode);
+    const hasRequestedCode = [...explicitCodes].some((code) => (
+      normalizeLooseName(normalizeDocumentationSprPreviousRecordCode(code)) === serviceCode
+    ));
     if (!hasRequestedCode) {
       return 0;
     }
   }
   let score = 0;
-  if (serviceCode && sourceText.includes(serviceCode)) {
+  if (serviceCode && documentationSprTextHasCodeToken(sourceText, serviceCode)) {
     score += 80;
   }
   if (serviceName && sourceText.includes(serviceName)) {
     score += 50;
   }
-  if (serviceCode === "spr" && sourceText.includes("spr")) {
+  if (serviceCode === "pr" && documentationSprTextHasCodeToken(sourceText, "spr")) {
     score += 35;
   }
-  if (serviceCode === "spr" && (sourceText.includes("panik") || sourceText.includes("sigurnosna rasvjeta"))) {
+  if (serviceCode === "pr" && (sourceText.includes("panik") || sourceText.includes("sigurnosna rasvjeta") || sourceText.includes("protupanic"))) {
     score += 35;
   }
-  if (record?.fieldSheets && Object.keys(record.fieldSheets).length > 0) {
+  if (score > 0 && record?.fieldSheets && Object.keys(record.fieldSheets).length > 0) {
     score += 10;
   }
   return score;
@@ -61227,14 +61290,19 @@ function getDocumentationSprPreviousRecordFieldValue(record = {}, keys = []) {
   return "";
 }
 
-function getDocumentationSprPreviousRecordSheet(record = {}) {
+function getDocumentationSprPreviousRecordSheet(record = {}, table = null) {
   const directGridline = getDocumentationSprPreviousRecordFieldValue(record, [
+    "PR_GRIDLINE_MODEL",
     "DOCUMENTATION_SPR_GRIDLINE_MODEL",
     "SPR_GRIDLINE_MODEL",
     "GRIDLINE_MODEL",
   ]);
+  const defaultSheet = table?.sheet || null;
   if (directGridline && typeof directGridline === "object") {
-    return directGridline;
+    const normalizedDirect = normalizeWorkOrderMeasurementSheet(directGridline);
+    if (!defaultSheet || areDocumentationSprMeasurementSheetsCompatible(defaultSheet, normalizedDirect)) {
+      return directGridline;
+    }
   }
   const fieldSheets = record?.fieldSheets && typeof record.fieldSheets === "object" && !Array.isArray(record.fieldSheets)
     ? record.fieldSheets
@@ -61243,15 +61311,23 @@ function getDocumentationSprPreviousRecordSheet(record = {}) {
   if (entries.length === 0) {
     return null;
   }
-  const preferred = entries.find(([key]) => {
+  const preferred = entries.find(([key, value]) => {
     const normalizedKey = normalizeLooseName(key);
-    return normalizedKey.includes("spr")
-      || normalizedKey.includes("mjeren")
-      || normalizedKey.includes("measurement")
-      || normalizedKey.includes("tablica")
-      || normalizedKey.includes("grid");
+    const normalizedSheet = normalizeWorkOrderMeasurementSheet(value);
+    return (
+      normalizedKey.includes("pr")
+        || normalizedKey.includes("spr")
+        || normalizedKey.includes("mjeren")
+        || normalizedKey.includes("measurement")
+        || normalizedKey.includes("tablica")
+        || normalizedKey.includes("grid")
+    ) && (!defaultSheet || areDocumentationSprMeasurementSheetsCompatible(defaultSheet, normalizedSheet));
   }) || entries[0];
-  return preferred?.[1] || null;
+  const normalizedPreferred = normalizeWorkOrderMeasurementSheet(preferred?.[1]);
+  if (preferred && (!defaultSheet || areDocumentationSprMeasurementSheetsCompatible(defaultSheet, normalizedPreferred))) {
+    return preferred[1];
+  }
+  return null;
 }
 
 function getDocumentationSprPreviousRecordMeasurementTables(record = {}, model = {}) {
@@ -61280,9 +61356,9 @@ function getDocumentationSprPreviousRecordMeasurementTables(record = {}, model =
       };
     }
     if (index === 0) {
-      const legacySheet = getDocumentationSprPreviousRecordSheet(record);
+      const legacySheet = getDocumentationSprPreviousRecordSheet(record, table);
       const normalizedLegacySheet = normalizeWorkOrderMeasurementSheet(legacySheet);
-      if (normalizedLegacySheet?.columns?.length) {
+      if (normalizedLegacySheet?.columns?.length && areDocumentationSprMeasurementSheetsCompatible(table.sheet, normalizedLegacySheet)) {
         return {
           ...table,
           sheet: cloneDocumentationSprMeasurementSheet(normalizedLegacySheet),
@@ -61840,7 +61916,7 @@ function getDocumentationSprSignatureAreaForService(service = {}) {
   if (serviceCode === "TZIN" || serviceText.includes("tipkalo") || serviceText.includes("isklop")) {
     return "tzin";
   }
-  if (serviceCode === "SPR" || serviceText.includes("panik") || serviceText.includes("rasvjet")) {
+  if (serviceCode === "PR" || serviceText.includes("panik") || serviceText.includes("rasvjet")) {
     return "spr";
   }
   return "";
@@ -61910,7 +61986,8 @@ function buildDocumentationSprModelFromWorkOrderService(workOrder = {}, service 
   const workOrderNumber = String(workOrder.workOrderNumber || workOrder.number || "").trim();
   const companyId = String(workOrder.companyId || company.id || baseModel.companyId || "").trim();
   const locationId = String(workOrder.locationId || location.id || baseModel.locationId || "").trim();
-  const serviceCode = String(serviceBinding?.serviceCode || service.serviceCode || "").trim();
+  const rawServiceCode = String(serviceBinding?.serviceCode || service.serviceCode || "").trim();
+  const serviceCode = normalizeDocumentTemplateRuntimeServiceCode(rawServiceCode) || rawServiceCode;
   const serviceId = String(service.serviceId || service.id || serviceBinding?.serviceId || "").trim();
   const serviceName = String(serviceBinding?.serviceName || service.name || service.title || "").trim();
   const peopleContext = getDocumentationSprWizardPeopleContext(workOrder, service);
@@ -61931,7 +62008,7 @@ function buildDocumentationSprModelFromWorkOrderService(workOrder = {}, service 
     serviceId,
     serviceCode,
     serviceName,
-    recordNumber: [workOrderNumber, serviceCode || "SPR"].filter(Boolean).join("-"),
+    recordNumber: [workOrderNumber, serviceCode || "ZAPISNIK"].filter(Boolean).join("-"),
     companyName,
     companyAddress,
     companyOib: String(company.oib || workOrder.companyOib || "").trim(),
@@ -62260,7 +62337,7 @@ function createDocumentationSprBatchDockCard(group = {}, activeIndex = 0) {
     badge.className = "work-order-bottom-card-service is-sequence";
     badge.classList.toggle("is-active-report", isItemActive);
     badge.classList.toggle("is-error", !item.completion?.ok);
-    badge.textContent = item.serviceCode || item.timelineLabel || item.serviceName || "SPR";
+    badge.textContent = item.serviceCode || item.timelineLabel || item.serviceName || "Zapisnik";
     badge.title = [
       group.workOrderNumber ? `RN ${group.workOrderNumber}` : "",
       item.serviceName || item.serviceCode || "Zapisnik",
@@ -65369,15 +65446,17 @@ function renderDocumentationSprSectionTitle(number, title) {
 function getDocumentationSprServiceCode(model = documentationSprModel) {
   const bindingCode = String(model?.serviceBinding?.serviceCode || model?.serviceCode || "").trim();
   if (bindingCode) {
-    return bindingCode;
+    return normalizeDocumentTemplateRuntimeServiceCode(bindingCode) || bindingCode;
   }
   const templateCode = String(model?.templateCode || "").trim();
   const templateMatch = templateCode.match(/[A-ZČĆŽŠĐ]{2,6}/i);
   if (templateMatch) {
-    return templateMatch[0].toUpperCase();
+    return normalizeDocumentTemplateRuntimeServiceCode(templateMatch[0]) || templateMatch[0].toUpperCase();
   }
   const recordMatch = String(model?.recordNumber || "").match(/[A-ZČĆŽŠĐ]{2,6}$/i);
-  return recordMatch ? recordMatch[0].toUpperCase() : "SPR";
+  return recordMatch
+    ? (normalizeDocumentTemplateRuntimeServiceCode(recordMatch[0]) || recordMatch[0].toUpperCase())
+    : "";
 }
 
 function renderDocumentationSprPaperFooter(model, pageNumber, totalPages) {
@@ -67052,7 +67131,7 @@ function buildDocumentationSprSignatureMetadata(model = {}) {
     fieldName,
     label: name,
     name,
-    roleLabel: "Ispitivač SPR",
+    roleLabel: "Ispitivač PR",
     signerTitle: String(responsibleUser?.title || "").trim(),
     signerOrganization: organization,
     signerUserId: String(responsibleUser?.id || model.responsiblePersonUserId || "").trim(),
@@ -67063,7 +67142,7 @@ function buildDocumentationSprSignatureMetadata(model = {}) {
     width: null,
     height: null,
     anchorText: "",
-    role: "SPR",
+    role: "PR",
     oib,
     status: "available",
     standard: "SIGN_SPR_{OIB}",
@@ -67267,6 +67346,7 @@ function buildDocumentationSprMeasurementSheetsForRecord(model = {}) {
   });
   const primarySheet = buildDocumentationSprMeasurementSheetForRecord(model);
   return {
+    PR_GRIDLINE_MODEL: primarySheet,
     DOCUMENTATION_SPR_GRIDLINE_MODEL: primarySheet,
     SPR_GRIDLINE_MODEL: primarySheet,
     GRIDLINE_MODEL: primarySheet,
@@ -67276,6 +67356,10 @@ function buildDocumentationSprMeasurementSheetsForRecord(model = {}) {
 
 function buildDocumentationSprRecordFieldValues(model = {}) {
   const normalized = normalizeDocumentationSprModel(model);
+  const fieldServiceCode = getDocumentationSprServiceCode(normalized)
+    || normalizeDocumentTemplateRuntimeServiceCode(normalized.serviceCode || normalized.serviceBinding?.serviceCode || "")
+    || "";
+  const fieldServiceName = normalized.serviceName || normalized.serviceBinding?.serviceName || "";
   const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(getDocumentationSprServiceCode(normalized));
   const attachments = normalizeDocumentationSprAttachments(normalized.attachments);
   const inspectionDate = normalizeDateInputValue(normalized.inspectionDate);
@@ -67294,12 +67378,12 @@ function buildDocumentationSprRecordFieldValues(model = {}) {
     BROJ_UVJERENJA: normalized.certificateNumber || "",
     DOCUMENTATION_SPR_RECORD_NUMBER: normalized.recordNumber || "",
     DOCUMENTATION_SPR_LAYOUT_PRESET: normalizeDocumentationSprLayoutPreset(normalized.layoutPreset),
-    SERVICE_CODE: normalized.serviceCode || normalized.serviceBinding?.serviceCode || "SPR",
-    WORK_ORDER_SERVICE_CODE: normalized.serviceCode || normalized.serviceBinding?.serviceCode || "SPR",
-    DOCUMENTATION_SPR_SERVICE_CODE: normalized.serviceCode || normalized.serviceBinding?.serviceCode || "SPR",
-    SERVICE_NAME: normalized.serviceName || normalized.serviceBinding?.serviceName || "",
-    WORK_ORDER_SERVICE_NAME: normalized.serviceName || normalized.serviceBinding?.serviceName || "",
-    DOCUMENTATION_SPR_SERVICE_NAME: normalized.serviceName || normalized.serviceBinding?.serviceName || "",
+    SERVICE_CODE: fieldServiceCode,
+    WORK_ORDER_SERVICE_CODE: fieldServiceCode,
+    DOCUMENTATION_SPR_SERVICE_CODE: fieldServiceCode,
+    SERVICE_NAME: fieldServiceName,
+    WORK_ORDER_SERVICE_NAME: fieldServiceName,
+    DOCUMENTATION_SPR_SERVICE_NAME: fieldServiceName,
     COMPANY_NAME: normalized.companyName || "",
     TVRTKA: normalized.companyName || "",
     COMPANY_HEADQUARTERS: normalized.companyAddress || "",
@@ -67395,7 +67479,9 @@ function buildDocumentationSprDocumentRecordPayload(exportEntry = {}) {
     recordKind: "documentation_spr",
     workOrderNumber: model.workOrderNumber || exportEntry.workOrderNumber || workOrder.workOrderNumber || "",
     serviceId: model.serviceId || model.serviceBinding?.serviceId || exportEntry.serviceId || "",
-    serviceCode: model.serviceCode || model.serviceBinding?.serviceCode || exportEntry.serviceCode || "SPR",
+    serviceCode: getDocumentationSprServiceCode(model)
+      || normalizeDocumentTemplateRuntimeServiceCode(exportEntry.serviceCode || model.serviceCode || model.serviceBinding?.serviceCode || "")
+      || "",
     serviceName: model.serviceName || model.serviceBinding?.serviceName || exportEntry.serviceName || "",
     templateId,
     templateTitle: model.templateCode || exportEntry.serviceCode || "Zapisnik",
@@ -67530,7 +67616,7 @@ async function queueDocumentationSprForDigitalSignature() {
     button.disabled = true;
     button.textContent = "Spremam";
   });
-  setDocumentationSprStatus(`Spremam ${exportEntries.length} SPR PDF-a (${getDocumentationSprSignatureModeLabel(signatureMode)})`, "saving");
+  setDocumentationSprStatus(`Spremam ${exportEntries.length} PDF-a (${getDocumentationSprSignatureModeLabel(signatureMode)})`, "saving");
   try {
     const savedItems = [];
     for (const entry of exportEntries) {
@@ -67549,8 +67635,8 @@ async function queueDocumentationSprForDigitalSignature() {
       "saved",
     );
   } catch (error) {
-    console.error("SPR spremanje za potpis nije uspjelo.", error);
-    setDocumentationSprStatus(error?.message || "SPR PDF nije spremljen za potpis", "saving");
+    console.error("Spremanje zapisnika za potpis nije uspjelo.", error);
+    setDocumentationSprStatus(error?.message || "PDF nije spremljen za potpis", "saving");
   } finally {
     actionButtons.forEach((button) => {
       button.disabled = false;
@@ -67612,7 +67698,7 @@ async function exportDocumentationSprBatchPdf() {
       "saved",
     );
   } catch (error) {
-    console.error("Batch SPR PDF nije uspio.", error);
+    console.error("Batch PDF zapisnika nije uspio.", error);
     setDocumentationSprStatus(error?.message || "Batch PDF nije izrađen", "saving");
   } finally {
     actionButtons.forEach((button) => {
@@ -68153,7 +68239,7 @@ function initDocumentationSprWorkbench() {
     });
     documentationSprResetButton?.addEventListener("click", () => {
       applyDocumentationSprModel(createDefaultDocumentationSprModel(), {
-        templateId: DOCUMENTATION_SPR_TEMPLATE_DEFAULT_ID,
+        templateId: "",
         statusText: "Primjer učitan",
       });
     });
@@ -70045,8 +70131,8 @@ const USER_DOCUMENT_CATEGORY_OPTIONS = [
 const BUILTIN_QUALIFICATION_EXAM_DEFINITIONS = Object.freeze([
   Object.freeze({
     key: "spr",
-    title: "SPR - Sigurnosna panik rasvjeta",
-    label: "SPR - Sigurnosna panik rasvjeta",
+    title: "PR - Panik rasvjeta",
+    label: "PR - Panik rasvjeta",
     defaultExam: true,
     builtIn: true,
   }),
@@ -74189,7 +74275,7 @@ function getDocumentTemplateAiWizardDefinitions() {
     },
     { name: "sourcePriority", label: "Prioritet izvora", kind: "textarea", rows: 3, full: true, placeholder: "previous_report\nolder_previous_report\nuploaded_file\ntemplate" },
     { name: "displayOrder", label: "Redoslijed", kind: "number" },
-    { name: "group", label: "Blok / grupa", placeholder: "SPR · Korištena dokumentacija" },
+    { name: "group", label: "Blok / grupa", placeholder: "PR · Korištena dokumentacija" },
     { name: "validationRules", label: "Pravila provjere", kind: "textarea", rows: 3, full: true, placeholder: "Ako nije vidljivo u izvoru, ne smije biti označeno kao sigurno." },
   ];
 }
@@ -77546,13 +77632,14 @@ function normalizeDocumentTemplateSignatureServiceCode(value = "") {
     "ZNR",
     "TIPKALO",
     "PANIK",
+    "SPR",
   ].sort((left, right) => right.length - left.length);
   const knownMatch = known.find((code) => new RegExp(`\\b${code}\\b`, "i").test(direct));
   if (knownMatch) {
-    return knownMatch === "PANIK" ? "SPR" : knownMatch;
+    return ["PANIK", "SPR"].includes(knownMatch) ? "PR" : knownMatch;
   }
   if (/SIGURNOSNA\s+PANIK|PANIK\s+RASVJET/i.test(text)) {
-    return "SPR";
+    return "PR";
   }
   const compact = direct.replace(/\s+/g, "");
   return compact.length > 0 && compact.length <= 10 ? compact : "";
@@ -77563,6 +77650,7 @@ const DOCUMENT_TEMPLATE_RUNTIME_REQUIRED_SERVICE_CODES = new Set([
   "NO",
   "EIZ",
   "EMM",
+  "PR",
   "SPR",
   "SZOM",
   "SZOMV",
@@ -97617,7 +97705,7 @@ function getDocumentTemplateRuntimeServiceSpecificCompletion({ entry = {}, templ
   const activeTemplate = template || buildDocumentTemplateDraft();
   const activeWorkOrder = workOrder || {};
   const serviceCode = getDocumentTemplateRuntimeValidationServiceCode({ entry, template: activeTemplate, workOrder: activeWorkOrder });
-  if (serviceCode !== "SPR") {
+  if (serviceCode !== "PR") {
     return {
       ok: true,
       serviceCode,
@@ -97660,7 +97748,7 @@ function getDocumentTemplateRuntimeServiceSpecificCompletion({ entry = {}, templ
     ok: missingRequiredLabels.length === 0,
     serviceCode,
     missingRequiredLabels,
-    label: missingRequiredLabels.length === 0 ? "SPR uvjeti OK" : `SPR nedostaje ${missingRequiredLabels.length}`,
+    label: missingRequiredLabels.length === 0 ? "PR uvjeti OK" : `PR nedostaje ${missingRequiredLabels.length}`,
   };
 }
 
@@ -145468,7 +145556,7 @@ function renderWorkOrderDocumentWizardTemplates(workOrders = []) {
   if (recommendations.length === 0 && workEquipmentCards.length === 0 && physicalFactorsCards.length === 0 && chemicalFactorsCards.length === 0) {
     const empty = document.createElement("p");
     empty.className = "helper-copy module-copy";
-    empty.textContent = "Za odabrane RN-ove još nema povezanih templatea. Poveži ih na usluzi pa će se ovdje pojaviti po tipu zapisnika (SPR, TZIN, RO...).";
+    empty.textContent = "Za odabrane RN-ove još nema povezanih templatea. Poveži ih na usluzi pa će se ovdje pojaviti po tipu zapisnika (PR, TZIN, RO...).";
     workOrderDocumentWizardTemplateList.replaceChildren(empty);
     renderWorkOrderDocumentWizardTemplateDock([]);
     return;

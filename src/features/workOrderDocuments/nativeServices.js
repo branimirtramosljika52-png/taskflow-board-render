@@ -14,7 +14,7 @@ const DOCUMENTATION_NATIVE_TAB_ORDER = Object.freeze([
   "NO",
   "EIZ",
   "EMM",
-  "SPR",
+  "PR",
   "SZOM",
   "SZOMV",
   "TZIN",
@@ -62,6 +62,7 @@ const DOCUMENTATION_NATIVE_TIMELINE_LABELS = Object.freeze([
   "ZNR",
   "TIPKALO",
   "PANIK",
+  "SPR",
 ]);
 
 function normalizeNativeServiceCodeToken(value = "") {
@@ -102,8 +103,8 @@ export function normalizeDocumentTemplateRuntimeServiceCode(value = "") {
   if (["TIPKALO"].includes(token)) {
     return "TZIN";
   }
-  if (["PANIK"].includes(token)) {
-    return "SPR";
+  if (["SPR", "PANIK"].includes(token)) {
+    return "PR";
   }
   if (isWorkOrderDocumentPhysicalFactorsText(value)) {
     return "FC";

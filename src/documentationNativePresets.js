@@ -18,7 +18,11 @@ export const DOCUMENTATION_NATIVE_CERTIFICATE_SERVICE_CODES = Object.freeze([
 ]);
 
 function normalizeCode(value = "") {
-  return String(value || "").trim().toUpperCase();
+  const code = String(value || "").trim().toUpperCase();
+  if (code === "SPR" || code === "PANIK") {
+    return "PR";
+  }
+  return code;
 }
 
 const DOCUMENTATION_NATIVE_CERTIFICATE_SERVICE_CODE_SET = new Set(DOCUMENTATION_NATIVE_CERTIFICATE_SERVICE_CODES);
@@ -1565,12 +1569,12 @@ function makeDocumentationResultAiContext(subject = "predmetni zapisnik", terms 
 }
 
 const DOCUMENTATION_RESULT_AI_CONTEXT_BY_SERVICE = Object.freeze({
-  SPR: Object.freeze({
+  PR: Object.freeze({
     subject: "sigurnosnu i protupanicnu rasvjetu",
-    resultLookFor: ["SPR", "sigurnosna rasvjeta", "panik rasvjeta", "Ei", "Eimin", "zadovoljava", "ne zadovoljava"],
+    resultLookFor: ["PR", "SPR", "sigurnosna rasvjeta", "panik rasvjeta", "Ei", "Eimin", "zadovoljava", "ne zadovoljava"],
     defectsLookFor: ["nedostaci", "neispravna svjetiljka", "ne zadovoljava", "Ei", "Eimin", "rasvjeta"],
     recommendationsLookFor: ["preporuke", "napomena", "servis rasvjete", "zamjena svjetiljke", "provjera autonomije"],
-    aiAvoid: "Ne prepisuj podatke iz drugih vrsta zapisnika. Za SPR koristi samo rasvjetu, lux vrijednosti i ocjenu sigurnosne/protupanicne rasvjete.",
+    aiAvoid: "Ne prepisuj podatke iz drugih vrsta zapisnika. Za PR/panik rasvjetu koristi samo rasvjetu, lux vrijednosti i ocjenu sigurnosne/protupanicne rasvjete.",
   }),
   TZIN: Object.freeze({
     subject: "tipkala za isklop elektricne energije u slucaju nuzde",
@@ -3157,7 +3161,8 @@ const DOCUMENTATION_COLUMN_AI_BY_TABLE = Object.freeze({
 });
 
 function getDocumentationColumnAiMapping(tableId = "", columnId = "") {
-  const normalizedTableId = String(tableId || "") === "spr-cista-results" ? "spr-results" : tableId;
+  const rawTableId = String(tableId || "");
+  const normalizedTableId = ["pr-results", "spr-cista-results"].includes(rawTableId) ? "spr-results" : rawTableId;
   return DOCUMENTATION_COLUMN_AI_BY_TABLE[normalizedTableId]?.[columnId] || null;
 }
 
@@ -3178,7 +3183,8 @@ const EXEI_ALLOWED_AI_COLUMN_IDS_BY_TABLE = Object.freeze({
 });
 
 function isExeiBlockedAiColumn(tableId = "", column = {}) {
-  const normalizedTableId = String(tableId || "") === "spr-cista-results" ? "spr-results" : String(tableId || "");
+  const rawTableId = String(tableId || "");
+  const normalizedTableId = ["pr-results", "spr-cista-results"].includes(rawTableId) ? "spr-results" : rawTableId;
   const allowed = EXEI_ALLOWED_AI_COLUMN_IDS_BY_TABLE[normalizedTableId];
   if (!allowed) {
     return false;
@@ -3403,12 +3409,12 @@ function cistaTableSpec({
 }
 
 const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
-  SPR: [
+  PR: [
     {
-      id: "spr-results",
+      id: "pr-results",
       label: "Mjerna mjesta sigurnosne protupanicne rasvjete",
       summary: "Tablica 1. - mjerna mjesta sigurnosne protupanicne rasvjete",
-      sourceSheet: "SPR1.2",
+      sourceSheet: "PR1.2",
       columns: [
         "Redni broj",
         "Mjesto ispitivanja",
@@ -4316,11 +4322,11 @@ function makeSimpleSystemDescription(subject = "predmetni sustav") {
 }
 
 export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
-  SPR: Object.freeze({
-    serviceCode: "SPR",
-    serviceName: "Sigurnosna panik rasvjeta",
-    title: "SPR v1.0.0",
-    documentType: "Sigurnosna panik rasvjeta",
+  PR: Object.freeze({
+    serviceCode: "PR",
+    serviceName: "Panik rasvjeta",
+    title: "PR v1.0.0",
+    documentType: "Panik rasvjeta",
     reportTitle: "ISPITIVANJE SIGURNOSNE PROTUPANICNE RASVJETE",
     coverSubtitle: "O ISPITIVANJU PROTUPANICNE (SIGURNOSNE) RASVJETE",
     measurementTableTitle: "Tablica 1. - mjerna mjesta sigurnosne protupanicne rasvjete",
@@ -4339,7 +4345,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     signatureAreas: ["spr"],
     tables: [
       tableSpec({
-        id: "spr-results",
+        id: "pr-results",
         label: "Mjerna mjesta sigurnosne rasvjete",
         summary: "Tablica 1. - mjerna mjesta sigurnosne protupanicne rasvjete",
         columns: SPR_COLUMNS,
@@ -5220,7 +5226,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
 });
 
 export function getDocumentationNativeReportPreset(serviceCode = "") {
-  return DOCUMENTATION_NATIVE_REPORT_PRESETS[normalizeCode(serviceCode)] || DOCUMENTATION_NATIVE_REPORT_PRESETS.SPR;
+  return DOCUMENTATION_NATIVE_REPORT_PRESETS[normalizeCode(serviceCode)] || DOCUMENTATION_NATIVE_REPORT_PRESETS.PR;
 }
 
 export function createDocumentationMeasurementTablesForService(serviceCode = "") {
@@ -5345,7 +5351,7 @@ export function createDocumentationMeasurementAssessmentsForService(serviceCode 
 export function createDocumentationNativeAiFieldsForService(serviceCode = "") {
   const preset = getDocumentationNativeReportPreset(serviceCode);
   const resultContext = DOCUMENTATION_RESULT_AI_CONTEXT_BY_SERVICE[preset.serviceCode]
-    || DOCUMENTATION_RESULT_AI_CONTEXT_BY_SERVICE.SPR;
+    || DOCUMENTATION_RESULT_AI_CONTEXT_BY_SERVICE.PR;
   const technicalFields = (preset.technicalDataFields || [])
     .map((field) => withDocumentationTechnicalFieldAi(preset.serviceCode, field))
     .filter((field) => field?.ai);

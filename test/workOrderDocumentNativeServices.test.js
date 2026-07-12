@@ -42,14 +42,17 @@ test("documentation service codes normalize to the requested zapisnici tab label
   assert.equal(normalizeDocumentTemplateRuntimeServiceCode("NNZDPETROL"), "NNZD");
   assert.equal(normalizeDocumentTemplateRuntimeServiceCode("HMUV"), "HM");
   assert.equal(normalizeDocumentTemplateRuntimeServiceCode("VES"), "VS");
+  assert.equal(normalizeDocumentTemplateRuntimeServiceCode("SPR"), "PR");
+  assert.equal(normalizeDocumentTemplateRuntimeServiceCode("PANIK"), "PR");
+  assert.notEqual(normalizeDocumentTemplateRuntimeServiceCode("Pregled hidrantske mreze"), "PR");
 });
 
 test("documentation service code comparator follows the requested zapisnici tab order", () => {
-  const codes = ["EXSE", "SPR", "ROK", "STROJEVI", "ROF", "RADNAOPREMA", "EXEI", "NNZDPETROL"];
+  const codes = ["EXSE", "PR", "ROK", "STROJEVI", "ROF", "RADNAOPREMA", "EXEI", "NNZDPETROL"];
   assert.deepEqual(codes.sort(compareDocumentTemplateRuntimeServiceCodes), [
     "RADNAOPREMA",
     "STROJEVI",
-    "SPR",
+    "PR",
     "ROF",
     "ROK",
     "EXEI",
@@ -65,8 +68,9 @@ test("documentation timeline labels keep ROF and ROK out of the RO tab", () => {
   assert.equal(getDocumentTemplateRuntimeTimelineLabel({ templateTitle: "Predlozak ROK kemijski cimbenici" }), "KC");
 });
 
-test("SPR gridline template uses lighting columns with formula defaults", () => {
-  const [table] = createDocumentationMeasurementTablesForService("SPR");
+test("PR gridline template uses lighting columns with formula defaults and SPR legacy alias", () => {
+  const [table] = createDocumentationMeasurementTablesForService("PR");
+  const [legacyTable] = createDocumentationMeasurementTablesForService("SPR");
 
   assert.deepEqual(table.sheet.columns.map((column) => column.label), [
     "Redni broj",
@@ -77,7 +81,8 @@ test("SPR gridline template uses lighting columns with formula defaults", () => 
     "Zadovoljava",
   ]);
 
-  assert.equal(table.id, "spr-results");
+  assert.equal(table.id, "pr-results");
+  assert.equal(legacyTable.id, "pr-results");
   assert.equal(table.sheet.rows.length, 12);
   assert.deepEqual(table.sheet.rows[0].cells, {
     c1: '=IF(B1="","",ROW())',
