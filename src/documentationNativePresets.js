@@ -345,7 +345,7 @@ const SPR_DEFAULT_PLACES = Object.freeze([
 function makeSprMeasurementRowValues(rowNumber, index) {
   const place = SPR_DEFAULT_PLACES[index] || "";
   return {
-    number: `=IF(B${rowNumber}="","",ROW())`,
+    number: `=IF(B${rowNumber}="","",COUNTIF($B$1:B${rowNumber};"<>"))`,
     place,
     lampCount: `=IF(B${rowNumber}="","","1")`,
     ei: `=IF(B${rowNumber}="","",">2")`,
@@ -357,7 +357,7 @@ function makeSprMeasurementRowValues(rowNumber, index) {
 function makeSprCistaMeasurementRowValues(rowNumber, index) {
   const place = SPR_DEFAULT_PLACES[index] || "";
   return {
-    c1: `=IF(B${rowNumber}="","",ROW())`,
+    c1: `=IF(B${rowNumber}="","",COUNTIF($B$1:B${rowNumber};"<>"))`,
     c2: place,
     c3: `=IF(B${rowNumber}="","","1")`,
     c4: `=IF(B${rowNumber}="","",">2")`,

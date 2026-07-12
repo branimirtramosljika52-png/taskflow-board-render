@@ -87,7 +87,7 @@ test("SRR gridline template uses lighting columns with formula defaults and SPR 
   assert.equal(legacyTable.id, "srr-results");
   assert.equal(table.sheet.rows.length, 12);
   assert.deepEqual(table.sheet.rows[0].cells, {
-    c1: '=IF(B1="","",ROW())',
+    c1: '=IF(B1="","",COUNTIF($B$1:B1;"<>"))',
     c2: "Prodajni prostor",
     c3: '=IF(B1="","","1")',
     c4: '=IF(B1="","",">2")',
@@ -95,6 +95,6 @@ test("SRR gridline template uses lighting columns with formula defaults and SPR 
     c6: '=IF(B1="","","DA")',
   });
   assert.equal(table.sheet.rows[6].cells.c2, "");
-  assert.equal(table.sheet.rows[6].cells.c1, '=IF(B7="","",ROW())');
+  assert.equal(table.sheet.rows[6].cells.c1, '=IF(B7="","",COUNTIF($B$1:B7;"<>"))');
   assert.equal(table.sheet.rows[6].cells.c4, '=IF(B7="","",">2")');
 });

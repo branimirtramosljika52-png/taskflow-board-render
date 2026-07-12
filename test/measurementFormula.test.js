@@ -318,9 +318,13 @@ test("measurement formulas support ROW, CONCATENATE and COUNTIF style helpers", 
       return values.get(reference) ?? "";
     },
     resolveRange(startReference, endReference) {
-      assert.equal(startReference, "A1");
-      assert.equal(endReference, "A3");
-      return [["Da"], ["Ne"], ["Ne"]];
+      if (startReference === "A1" && endReference === "A3") {
+        return [["Da"], ["Ne"], ["Ne"]];
+      }
+      if (startReference === "$B$1" && endReference === "B3") {
+        return [["Ured"], ["Skladiste"], ["Ured"]];
+      }
+      assert.fail(`Unexpected range ${startReference}:${endReference}`);
     },
   };
 
@@ -328,6 +332,7 @@ test("measurement formulas support ROW, CONCATENATE and COUNTIF style helpers", 
   assert.equal(evaluateMeasurementFormula("=ROW(B3)", context), 3);
   assert.equal(evaluateMeasurementFormula('=CONCATENATE("MM ";ROW())', context), "MM 5");
   assert.equal(evaluateMeasurementFormula('=COUNTIF(A1:A3;"Ne")', context), 2);
+  assert.equal(evaluateMeasurementFormula('=COUNTIF($B$1:B3;"<>")', context), 3);
 });
 
 test("measurement formulas support COUNTIFS with numeric and text criteria", () => {

@@ -118,7 +118,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.433.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.434.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -1226,48 +1226,6 @@ const STANDARD_SERVICE_CATALOG_ITEMS = Object.freeze([
     serviceType: "inspection",
     validityMonths: "36",
     note: "Standardna usluga za zapisnik fizikalnih čimbenika radnog okoliša i periodiku.",
-  }),
-  Object.freeze({
-    name: "Panik rasvjeta",
-    serviceCode: "SRR",
-    serviceType: "inspection",
-    validityMonths: "12",
-    note: "Native zapisnik iz modula Izrada dokumentacije.",
-  }),
-  Object.freeze({
-    name: "Vizualni pregled sustava za zaštitu od djelovanja munje",
-    serviceCode: "SZOMV",
-    serviceType: "inspection",
-    validityMonths: "12",
-    note: "Native zapisnik iz modula Izrada dokumentacije.",
-  }),
-  Object.freeze({
-    name: "Tipkalo za isklop električne instalacije",
-    serviceCode: "TZIN",
-    serviceType: "inspection",
-    validityMonths: "12",
-    note: "Native zapisnik iz modula Izrada dokumentacije.",
-  }),
-  Object.freeze({
-    name: "Vježba evakuacije i spašavanja",
-    serviceCode: "VES",
-    serviceType: "inspection",
-    validityMonths: "24",
-    note: "Native zapisnik iz modula Izrada dokumentacije.",
-  }),
-  Object.freeze({
-    name: "Električne instalacije",
-    serviceCode: "EIZ",
-    serviceType: "inspection",
-    validityMonths: "12",
-    note: "Native zapisnik iz modula Izrada dokumentacije.",
-  }),
-  Object.freeze({
-    name: "Sustav za zaštitu od djelovanja munje",
-    serviceCode: "SZOM",
-    serviceType: "inspection",
-    validityMonths: "12",
-    note: "Native zapisnik iz modula Izrada dokumentacije.",
   }),
   Object.freeze({
     name: "Pregled vida",
@@ -26238,8 +26196,13 @@ function mobileMeasurementTableLooksLikeOtherNativeService(table = {}, serviceCo
 }
 
 function getMobileDefaultMeasurementTablesForNativeService(service = {}, template = {}) {
+  const templateNativeServiceCode = getMobileTemplateNativeDocumentationServiceCode(template);
+  const serviceNativeServiceCode = normalizeMobileNativeMeasurementServiceCode(
+    getMobileDocumentTemplateServiceCode(service, Number(template?.serviceIndex) || 0),
+  );
   const serviceCode = normalizeMobileNativeMeasurementServiceCode(
-    getMobileDocumentTemplateServiceCode(service, Number(template?.serviceIndex) || 0)
+    templateNativeServiceCode
+      || serviceNativeServiceCode
       || template?.serviceCode,
   );
   return {
@@ -29170,8 +29133,18 @@ function buildMobileWorkOrderDocumentationTemplateContextEntry({
     ...template,
     measurementTables,
   }, contextDefaults);
+  const templateNativeServiceCode = getMobileTemplateNativeDocumentationServiceCode(template);
+  const serviceNativeServiceCode = normalizeMobileNativeMeasurementServiceCode(
+    getMobileDocumentTemplateServiceCode(service, serviceIndex),
+  );
+  const resolvedServiceCode = normalizeInputValue(
+    templateNativeServiceCode
+    || serviceNativeServiceCode
+    || getMobileDocumentTemplateServiceCode(service, serviceIndex),
+  );
   const nativeFormulaServiceCode = normalizeMobileNativeMeasurementServiceCode(
-    getMobileTemplateNativeDocumentationServiceCode(template)
+    templateNativeServiceCode
+    || serviceNativeServiceCode
     || getMobileDocumentTemplateServiceCode(service, serviceIndex),
   );
   const formulaSheets = Array.isArray(template.formulaSheets) && template.formulaSheets.length
@@ -29184,7 +29157,7 @@ function buildMobileWorkOrderDocumentationTemplateContextEntry({
       title: normalizeInputValue(template.title || template.documentType || "Zapisnik"),
       documentType: normalizeInputValue(template.documentType || "Zapisnik"),
       serviceName: normalizeInputValue(service?.name || service?.serviceName || service?.title || service?.serviceCode),
-      serviceCode: getMobileDocumentTemplateServiceCode(service, serviceIndex),
+      serviceCode: resolvedServiceCode,
       serviceIndex,
       signatureAreas,
       documentNumber: buildMobileDocumentTemplateDocumentNumber(service, workOrder, template, serviceIndex),

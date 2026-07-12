@@ -32523,6 +32523,27 @@ private fun WorkOrderDocumentationWizardDialog(
             }
             val directMatches = usableTemplates(matchedTemplates)
             if (directMatches.isNotEmpty()) {
+                val flowNativeCode = flowItem.nativeDocumentationServiceCode()
+                if (flowNativeCode.isNotBlank()) {
+                    val directIds = directMatches.map { it.id }.toSet()
+                    val nativeSupplement = usableTemplates(
+                        context.templates.filter { template ->
+                            template.id !in directIds &&
+                                template.nativeDocumentationServiceCode() == flowNativeCode &&
+                                (
+                                    template.fieldBlocks.isNotEmpty() ||
+                                        template.measurementTables.any { table ->
+                                            table.sheet.columns.isNotEmpty() &&
+                                                table.matchesSelectedNativeService(flowNativeCode, flowNativeCode)
+                                        } ||
+                                        template.formulaSheets.isNotEmpty()
+                                )
+                        },
+                    )
+                    if (nativeSupplement.isNotEmpty()) {
+                        return@remember directMatches + nativeSupplement
+                    }
+                }
                 return@remember directMatches
             }
 
@@ -32952,8 +32973,9 @@ private fun WorkOrderDocumentationWizardDialog(
     val allMeasurementTemplates = remember(baseMeasurementTemplates, physicalFactorsMeasurementTemplates) {
         (baseMeasurementTemplates + physicalFactorsMeasurementTemplates).distinctBy { it.id }
     }
-    val measurementTemplates = remember(activeTemplates, selectedFlowNativeCode) {
-        activeTemplates
+    val measurementTemplates = remember(activeTemplates, context.templates, selectedFlowNativeCode) {
+        fun measurementTemplatesFor(templates: List<WorkOrderDocumentationTemplate>): List<WorkOrderDocumentationTemplate> =
+            templates
             .map { template ->
                 val templateNativeCode = template.nativeDocumentationServiceCode()
                 template.copy(
@@ -32963,6 +32985,15 @@ private fun WorkOrderDocumentationWizardDialog(
                 )
             }
             .filter { it.measurementTables.isNotEmpty() }
+
+        val directMeasurementTemplates = measurementTemplatesFor(activeTemplates)
+        if (directMeasurementTemplates.isNotEmpty() || selectedFlowNativeCode.isBlank()) {
+            directMeasurementTemplates
+        } else {
+            measurementTemplatesFor(context.templates.filter { template ->
+                template.nativeDocumentationServiceCode() == selectedFlowNativeCode
+            })
+        }
     }
     var measurementPreviewOpen by rememberSaveable(workOrder.id, selectedObjectId) { mutableStateOf(false) }
     var measurementPreviewOpening by rememberSaveable(workOrder.id, selectedObjectId) { mutableStateOf(false) }
