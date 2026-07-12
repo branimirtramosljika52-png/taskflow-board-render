@@ -398,6 +398,7 @@ private data class MainMenuShortcut(
     val section: AppSection,
     val icon: ImageVector,
     val moreFocus: MoreSectionFocus? = null,
+    val externalUrl: String = "",
 )
 
 private data class AppNavigationDestination(
@@ -3442,6 +3443,10 @@ fun SafeNexusApp(learningTestToken: String = "") {
 private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
     val state = viewModel.state
     val context = LocalContext.current
+    val planEditorUrl = remember { safeNexusPlanEditorUrl() }
+    val openPlanEditor: () -> Unit = remember(planEditorUrl, context) {
+        { openExternalUrl(context, planEditorUrl) }
+    }
     LaunchedEffect(state.pendingExternalUrl) {
         val url = state.pendingExternalUrl.trim()
         if (url.isNotBlank()) {
@@ -3710,6 +3715,7 @@ private fun SafeNexusWorkspaceApp(viewModel: SafeNexusViewModel = viewModel()) {
                         onUpdateTodoTask = viewModel::updateTodoTask,
                         onAddTodoTaskComment = viewModel::addTodoTaskComment,
                         onSaveClientPortalRecord = viewModel::saveClientPortalRecord,
+                        onOpenPlanEditor = openPlanEditor,
                     )
                 } else if (selectedRecord.kind == "todo_task") {
                     TodoTaskDetailScreen(
@@ -18574,6 +18580,7 @@ private fun WorkOrdersScreen(
     onUpdateTodoTask: (String, String?, String?, String?, String?, List<String>?) -> Unit,
     onAddTodoTaskComment: (String, String) -> Unit,
     onSaveClientPortalRecord: (ClientPortalRecordDraft, () -> Unit) -> Unit,
+    onOpenPlanEditor: () -> Unit,
 ) {
     val isClientPortal = state.user.hasClientPortalAccess()
     val normalizedQuery = remember(state.query) { state.query.trim().lowercase() }
@@ -18690,6 +18697,7 @@ private fun WorkOrdersScreen(
                         onLogout()
                     },
                     onNewWorkOrder = onNewWorkOrder,
+                    onOpenPlanEditor = onOpenPlanEditor,
                 )
             } else {
                 MainAppTopBar(
@@ -18705,6 +18713,7 @@ private fun WorkOrdersScreen(
                         mainMenuExpanded = false
                         onLogout()
                     },
+                    onOpenPlanEditor = onOpenPlanEditor,
                 )
             }
         },
@@ -18766,6 +18775,7 @@ private fun WorkOrdersScreen(
                         onCreateTodoTask = onCreateTodoTask,
                         isLoading = state.isLoading,
                         onSaveClientPortalRecord = onSaveClientPortalRecord,
+                        onOpenPlanEditor = onOpenPlanEditor,
                     )
                 }
                 item {
@@ -19233,6 +19243,7 @@ private fun MainAppTopBar(
     onSectionChange: (AppSection, MoreSectionFocus?) -> Unit,
     onRefresh: () -> Unit,
     onLogout: () -> Unit,
+    onOpenPlanEditor: () -> Unit,
 ) {
     TopAppBar(
         navigationIcon = {
@@ -19249,6 +19260,7 @@ private fun MainAppTopBar(
                     onExpandedChange = onMainMenuExpandedChange,
                     onSectionChange = onSectionChange,
                     onLogout = onLogout,
+                    onOpenPlanEditor = onOpenPlanEditor,
                 )
             }
         },
@@ -19295,6 +19307,7 @@ private fun WorkOrdersTopBar(
     onRefresh: () -> Unit,
     onLogout: () -> Unit,
     onNewWorkOrder: () -> Unit,
+    onOpenPlanEditor: () -> Unit,
 ) {
     TopAppBar(
         navigationIcon = {
@@ -19306,6 +19319,7 @@ private fun WorkOrdersTopBar(
                 onExpandedChange = onMainMenuExpandedChange,
                 onSectionChange = onSectionChange,
                 onLogout = onLogout,
+                onOpenPlanEditor = onOpenPlanEditor,
             )
         },
         title = {
@@ -19376,6 +19390,7 @@ private fun MainMenuButton(
     onExpandedChange: (Boolean) -> Unit,
     onSectionChange: (AppSection, MoreSectionFocus?) -> Unit,
     onLogout: () -> Unit,
+    onOpenPlanEditor: () -> Unit,
 ) {
     Box {
         IconButton(onClick = { onExpandedChange(true) }) {
@@ -19389,6 +19404,7 @@ private fun MainMenuButton(
             onDismiss = { onExpandedChange(false) },
             onSectionChange = onSectionChange,
             onLogout = onLogout,
+            onOpenPlanEditor = onOpenPlanEditor,
         )
     }
 }
@@ -19402,12 +19418,15 @@ private fun MainMenuDropdown(
     onDismiss: () -> Unit,
     onSectionChange: (AppSection, MoreSectionFocus?) -> Unit,
     onLogout: () -> Unit,
+    onOpenPlanEditor: () -> Unit,
 ) {
-    val shortcuts = remember(isClientPortal) {
+    val planEditorUrl = remember { safeNexusPlanEditorUrl() }
+    val shortcuts = remember(isClientPortal, planEditorUrl) {
         val allShortcuts = listOf(
             MainMenuShortcut("Home", "Istekli rokovi i nadolazeći teren", AppSection.Operations, Icons.Rounded.Home),
             MainMenuShortcut("Radni nalozi", "Lista, karta, statusi i skeniranje RN-a", AppSection.WorkOrders, Icons.Rounded.CheckCircle),
             MainMenuShortcut("Vozila", "Pregled vozila, servisa i rezervacija", AppSection.Vehicles, Icons.Rounded.Business),
+            MainMenuShortcut("Plan Editor", "CAD nacrti, DXF i PDF export", AppSection.More, Icons.Rounded.Map, externalUrl = planEditorUrl),
             MainMenuShortcut("ToDo", "Zadaci i teme", AppSection.More, Icons.Rounded.ListAlt, MoreSectionFocus.Todo),
             MainMenuShortcut("Plan terena", "Upiti i dogovori prije RN-a", AppSection.More, Icons.Rounded.EventNote, MoreSectionFocus.FieldInquiries),
             MainMenuShortcut("Ponude", "Pregled poslanih i primljenih ponuda", AppSection.More, Icons.Rounded.Description, MoreSectionFocus.Offers),
@@ -19433,7 +19452,10 @@ private fun MainMenuDropdown(
         modifier = Modifier.width(318.dp),
     ) {
         shortcuts.forEach { shortcut ->
-            val selected = if (shortcut.section == AppSection.More) {
+            val opensExternal = shortcut.externalUrl.isNotBlank()
+            val selected = if (opensExternal) {
+                false
+            } else if (shortcut.section == AppSection.More) {
                 currentSection == AppSection.More && currentMoreFocus == shortcut.moreFocus
             } else {
                 currentSection == shortcut.section
@@ -19474,7 +19496,11 @@ private fun MainMenuDropdown(
                     }
                 },
                 onClick = {
-                    onSectionChange(shortcut.section, shortcut.moreFocus)
+                    if (opensExternal) {
+                        onOpenPlanEditor()
+                    } else {
+                        onSectionChange(shortcut.section, shortcut.moreFocus)
+                    }
                     onDismiss()
                 },
             )
@@ -19800,6 +19826,7 @@ private fun OperationsContent(
     onCreateTodoTask: (String, String, String, String, String, String, List<String>, String, String, String) -> Unit,
     isLoading: Boolean,
     onSaveClientPortalRecord: (ClientPortalRecordDraft, () -> Unit) -> Unit,
+    onOpenPlanEditor: () -> Unit,
 ) {
     if (user?.isClientPortalUser == true) {
         ClientPortalHomeContent(
@@ -19825,6 +19852,7 @@ private fun OperationsContent(
             onCreateReminder = onCreateReminder,
             onUpdateReminderStatus = onUpdateReminderStatus,
             onCreateTodoTask = onCreateTodoTask,
+            onOpenPlanEditor = onOpenPlanEditor,
         )
     }
 }
@@ -20979,6 +21007,7 @@ private fun HomeContent(
     onCreateReminder: (String, String, String, String, String, String, String, String) -> Unit,
     onUpdateReminderStatus: (String, String) -> Unit,
     onCreateTodoTask: (String, String, String, String, String, String, List<String>, String, String, String) -> Unit,
+    onOpenPlanEditor: () -> Unit,
 ) {
     var scope by remember { mutableStateOf(HomeWorkOrderScope.Mine) }
     val today = remember { LocalDate.now() }
@@ -20998,6 +21027,7 @@ private fun HomeContent(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        PlanEditorHomeCard(onOpenPlanEditor = onOpenPlanEditor)
         HomeScopePicker(
             scope = scope,
             onScopeChange = { scope = it },
@@ -21041,6 +21071,53 @@ private fun HomeContent(
             items = upcomingExecutionItems,
             onOpenWorkOrder = onOpenWorkOrder,
         )
+    }
+}
+
+@Composable
+private fun PlanEditorHomeCard(onOpenPlanEditor: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpenPlanEditor),
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xFFEAF2FF),
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Surface(shape = RoundedCornerShape(16.dp), color = Color.White.copy(alpha = 0.86f)) {
+                Icon(
+                    Icons.Rounded.Map,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(46.dp)
+                        .padding(11.dp),
+                    tint = Color(0xFF0B63E5),
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Plan Editor", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
+                Text(
+                    "Otvori CAD nacrte, DXF i PDF export.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Button(
+                onClick = onOpenPlanEditor,
+                shape = RoundedCornerShape(14.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 9.dp),
+            ) {
+                Text("Otvori", fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }
 
@@ -48770,6 +48847,9 @@ private fun openExternalUrl(context: Context, url: String): Boolean {
         false
     }
 }
+
+private fun safeNexusPlanEditorUrl(): String =
+    "${BuildConfig.SAFE_NEXUS_BASE_URL.trimEnd('/')}/plan-editor"
 
 private fun openDialer(context: Context, phone: String): Boolean {
     val normalized = phone.trim().filterNot { it.isWhitespace() }
