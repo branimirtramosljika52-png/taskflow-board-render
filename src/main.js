@@ -66724,10 +66724,11 @@ function triggerDocumentationSprHtmlDownload(html = "", fileName = "zapisnik.htm
 }
 
 let documentationSprPdfGeneratorPromise = null;
+const DOCUMENTATION_SPR_PDF_GENERATOR_VERSION = "20260712-spr-gridline-v4";
 
 function loadDocumentationSprPdfGenerator() {
   if (!documentationSprPdfGeneratorPromise) {
-    documentationSprPdfGeneratorPromise = import("/assets/documentation-spr-pdf.js?v=20260706-ex-native-pdf-v2");
+    documentationSprPdfGeneratorPromise = import(`/assets/documentation-spr-pdf.js?v=${DOCUMENTATION_SPR_PDF_GENERATOR_VERSION}`);
   }
   return documentationSprPdfGeneratorPromise;
 }

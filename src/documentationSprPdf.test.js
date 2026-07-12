@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 import { PDFDict, PDFDocument, PDFName } from "pdf-lib";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import sharp from "sharp";
 
 import {
@@ -44,6 +45,25 @@ function getFirstPageImageCount(pdfDoc) {
   const resources = pdfDoc.getPage(0).node.Resources();
   const xObjects = resources?.lookup(PDFName.of("XObject"), PDFDict);
   return xObjects?.keys?.().length || 0;
+}
+
+async function extractPdfText(bytes) {
+  const loadingTask = getDocument({
+    data: bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes),
+    disableWorker: true,
+  });
+  const pdf = await loadingTask.promise;
+  try {
+    const pages = [];
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      const page = await pdf.getPage(pageNumber);
+      const content = await page.getTextContent();
+      pages.push(content.items.map((item) => item.str || "").join("\n"));
+    }
+    return pages.join("\n");
+  } finally {
+    await pdf.destroy();
+  }
 }
 
 test("native documentation HTML renders every XLSM-backed report preset", () => {
@@ -192,6 +212,67 @@ test("SPR native documentation export restores SRR Gridline table when a linked 
   assert.match(html, /Izmjerena razina osvjetljenja \[lux\]/, "SRR export keeps lux measurement columns");
   assert.match(html, /Test evakuacijski izlaz/, "SRR export keeps the edited Gridline row");
   assert.doesNotMatch(html, /Mjerenje hidrantske mreze/, "foreign HM table label is not exported for SRR");
+});
+
+test("SPR vector PDF export keeps the SRR Gridline table when cached data carries a foreign table", async () => {
+  const [srrTable] = createDocumentationMeasurementTablesForService("SRR");
+  const [hydrantTable] = createDocumentationMeasurementTablesForService("HM");
+  const columnId = (needle) => srrTable.sheet.columns.find((column) => (
+    String(column.label || "").toLowerCase().includes(needle)
+  ))?.id || "";
+  const placeColumnId = columnId("mjesto");
+  const lampColumnId = columnId("panel");
+  const measuredColumnId = columnId("izmjerena");
+  const requiredColumnId = columnId("potrebna");
+  const passColumnId = columnId("zadovoljava");
+  const editedSrrSheet = {
+    ...srrTable.sheet,
+    rows: srrTable.sheet.rows.map((row, index) => (
+      index === 0
+        ? {
+          ...row,
+          cells: {
+            ...row.cells,
+            [placeColumnId]: "Test evakuacijski izlaz",
+            [lampColumnId]: "2",
+            [measuredColumnId]: ">2",
+            [requiredColumnId]: "1",
+            [passColumnId]: "DA",
+          },
+        }
+        : row
+    )),
+  };
+
+  await withPdfFontFetch(async () => {
+    const result = await generateDocumentationSprPdfBlob({
+      model: {
+        ...createDocumentationReportModelDefaults("SPR"),
+        serviceCode: "SPR",
+        recordNumber: "26-672-SPR",
+        workOrderNumber: "26-672",
+        companyName: "Petrol d.o.o.",
+        inspectionPlace: "PM Zagreb Lucko",
+        inspectionObject: "Test objekt",
+        inspectionType: "Hidrantska mreza",
+        inspectionDate: "2026-07-05",
+        issueDate: "2026-07-05",
+        responsiblePerson: "Test Ispitivac",
+        measurementTables: [{
+          ...hydrantTable,
+          enabled: false,
+          sheet: editedSrrSheet,
+        }],
+      },
+      rows: [],
+    });
+    const text = await extractPdfText(result.bytes);
+
+    assert.match(text, /Mjerna mjesta sigurnosne/, "SPR PDF exports the SRR Gridline table label");
+    assert.match(text, /Izmjerena razina osvjetljenja/, "SPR PDF keeps lux measurement columns");
+    assert.match(text, /Test evakuacijski\s+izlaz/, "SPR PDF keeps the edited Gridline row");
+    assert.doesNotMatch(text, /Mjerenje hidrantske mreze/, "SPR PDF does not export the foreign HM table label");
+  });
 });
 
 test("SPR native PDF draws an uploaded WebP header on the first page", async () => {
