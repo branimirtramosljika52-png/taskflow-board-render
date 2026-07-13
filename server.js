@@ -118,7 +118,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.442.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.443.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -27412,7 +27412,7 @@ function getMobileWorkOrderDocumentationServices(workOrder = {}, scopedSnapshot 
   return services.length > 0 ? services : [{ name: workOrder.serviceLine || workOrder.displayService || "" }];
 }
 
-function mergeMobileRuntimeLinkedDocumentTemplates(scopedSnapshot = {}, rawSnapshot = {}, workOrder = {}) {
+function mergeMobileRuntimeLinkedDocumentTemplates(scopedSnapshot = {}, rawSnapshot = {}, workOrder = {}, source = {}) {
   const rawTemplates = Array.isArray(rawSnapshot?.documentTemplates) ? rawSnapshot.documentTemplates : [];
   if (rawTemplates.length === 0) {
     return scopedSnapshot;
@@ -27493,7 +27493,7 @@ function mergeMobileRuntimeLinkedDocumentTemplates(scopedSnapshot = {}, rawSnaps
   };
   const linkedTemplateIds = new Set();
 
-  getMobileWorkOrderDocumentationServices(workOrder, lookupSnapshot).forEach((service) => {
+  getMobileWorkOrderDocumentationServices(workOrder, lookupSnapshot, source).forEach((service) => {
     const serviceTemplateIds = getMobileWorkOrderServiceTemplateIds(service, lookupSnapshot)
       .map(normalizeInputValue)
       .filter(Boolean);
@@ -27644,8 +27644,8 @@ function buildMobileDocumentationPreviousRecords(workOrder = {}, scopedSnapshot 
     .map(({ sortKey, ...record }) => record);
 }
 
-async function buildMobileDocumentationContextSnapshot(workOrder = {}, scopedSnapshot = {}, rawSnapshot = {}) {
-  scopedSnapshot = mergeMobileRuntimeLinkedDocumentTemplates(scopedSnapshot, rawSnapshot, workOrder);
+async function buildMobileDocumentationContextSnapshot(workOrder = {}, scopedSnapshot = {}, rawSnapshot = {}, source = {}) {
+  scopedSnapshot = mergeMobileRuntimeLinkedDocumentTemplates(scopedSnapshot, rawSnapshot, workOrder, source);
 
   if (
     typeof domainRepository.listDocumentRecords !== "function"
@@ -35291,9 +35291,12 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
     const linkedTemplates = getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot)
       .map((templateId) => templateById.get(String(templateId)))
       .filter(isActiveMobileDocumentTemplate);
-    const templatesForService = linkedTemplates.length
+    const matchedTemplatesForService = linkedTemplates.length
       ? linkedTemplates
       : findMobileDocumentTemplatesForGenerationService(service, serviceIndex, documentTemplates);
+    const templatesForService = matchedTemplatesForService.length > 0
+      ? matchedTemplatesForService
+      : [buildMobileNativeDocumentationTemplate(service, serviceIndex, generationWorkOrder, scopedSnapshot)].filter(Boolean);
 
     templatesForService.forEach((template) => {
       const objectId = getMobileWorkOrderLocationObjectId(generationWorkOrder);
@@ -39940,7 +39943,7 @@ async function handleApiRequest(request, response, url) {
         "Radni nalog nije pronađen.",
       ));
       const workOrderForDraft = applyMobileSelectedObjectToWorkOrder(workOrder, scopedSnapshot, body);
-      const draftSnapshot = mergeMobileRuntimeLinkedDocumentTemplates(scopedSnapshot, rawSnapshot, workOrderForDraft);
+      const draftSnapshot = mergeMobileRuntimeLinkedDocumentTemplates(scopedSnapshot, rawSnapshot, workOrderForDraft, body);
       const result = await persistMobileWorkOrderDocumentationDraft({
         body,
         workOrder: workOrderForDraft,
@@ -40125,7 +40128,20 @@ async function handleApiRequest(request, response, url) {
         "Radni nalog nije pronađen.",
       ));
       const workOrderForGeneration = applyMobileSelectedObjectToWorkOrder(workOrder, scopedSnapshot, body);
-      const generationSnapshot = mergeMobileRuntimeLinkedDocumentTemplates(scopedSnapshot, rawSnapshot, workOrderForGeneration);
+      const generationSnapshot = mergeMobileRuntimeLinkedDocumentTemplates(scopedSnapshot, rawSnapshot, workOrderForGeneration, body);
+      const resolvedGenerationServices = getMobileWorkOrderDocumentationServices(workOrderForGeneration, generationSnapshot, body);
+      console.info("[mobile-document-generation] service-resolve", JSON.stringify({
+        workOrderId: normalizeInputValue(workOrder.id),
+        workOrderNumber: normalizeInputValue(workOrder.workOrderNumber || workOrder.number),
+        requestGenerationServices: Array.isArray(body?.generationServices) ? body.generationServices.length : 0,
+        requestAdditionalRecords: Array.isArray(body?.additionalRecords) ? body.additionalRecords.length : 0,
+        resolvedServices: resolvedGenerationServices.length,
+        documentTemplates: Array.isArray(generationSnapshot.documentTemplates) ? generationSnapshot.documentTemplates.length : 0,
+        serviceCodes: resolvedGenerationServices
+          .map((service) => normalizeInputValue(service?.serviceCode || service?.code || service?.shortCode || service?.serviceName || service?.name))
+          .filter(Boolean)
+          .slice(0, 20),
+      }));
       const job = startMobileDocumentGenerationJob({
         workOrderId: workOrder.id,
         workOrder: workOrderForGeneration,
