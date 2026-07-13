@@ -3177,7 +3177,8 @@ body.is-app-capabilities-open {
 }
 
 .help-tour-layer[hidden] {
-  display: none;
+  display: none !important;
+  pointer-events: none;
 }
 
 .help-tour-scrim {
@@ -3408,7 +3409,7 @@ body.is-app-capabilities-open {
   font-size: 1.54rem;
 }
 
-body.is-help-tour-open .help-tour-layer {
+body.is-help-tour-open .help-tour-layer:not([hidden]) {
   display: block;
 }
 

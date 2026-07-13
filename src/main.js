@@ -1033,6 +1033,75 @@ const PERIODICS_DUE_DATE_REJECT_KEY_HINTS = Object.freeze([
   "PERIODICNOST",
 ]);
 const PERIODICS_TRACKED_DATES_FIELD_KEY = "__PERIODICS_TRACKED_DATES";
+const WORK_EQUIPMENT_RO_PANEL_ASSET_VERSION = "20260703-ro-react-v1";
+const OZO_PANEL_ASSET_VERSION = "20260602-risk-export-card-matrix-v1";
+let workEquipmentRoPanelModulePromise = null;
+let workEquipmentRoPanelHydrationQueued = false;
+let ozoPanelModulePromise = null;
+
+function loadWorkEquipmentRoPanelModule() {
+  if (typeof window !== "undefined" && window.SafeNexusWorkEquipmentRoPanel?.mount) {
+    return Promise.resolve(window.SafeNexusWorkEquipmentRoPanel);
+  }
+  if (!workEquipmentRoPanelModulePromise) {
+    workEquipmentRoPanelModulePromise = import(`/assets/work-equipment-ro-panel.js?v=${WORK_EQUIPMENT_RO_PANEL_ASSET_VERSION}`)
+      .then(() => window.SafeNexusWorkEquipmentRoPanel ?? null)
+      .catch((error) => {
+        console.warn("RO React panel lazy load failed", error);
+        workEquipmentRoPanelModulePromise = null;
+        return null;
+      });
+  }
+  return workEquipmentRoPanelModulePromise;
+}
+
+function requestWorkEquipmentRoPanelHydration() {
+  if (workEquipmentRoPanelHydrationQueued) {
+    return;
+  }
+  workEquipmentRoPanelHydrationQueued = true;
+  void loadWorkEquipmentRoPanelModule().then((panel) => {
+    workEquipmentRoPanelHydrationQueued = false;
+    if (panel?.mount && state.workOrderDocumentWizard?.open) {
+      renderWorkOrderDocumentWizard();
+    }
+  });
+}
+
+function loadOzoPanelModule() {
+  if (typeof window !== "undefined" && window.SafeNexusOzoPanel?.mountAll) {
+    return Promise.resolve(window.SafeNexusOzoPanel);
+  }
+  if (!ozoPanelModulePromise) {
+    ozoPanelModulePromise = import(`/assets/ozo-panel.js?v=${OZO_PANEL_ASSET_VERSION}`)
+      .then(() => window.SafeNexusOzoPanel ?? null)
+      .catch((error) => {
+        console.warn("OZO panel lazy load failed", error);
+        ozoPanelModulePromise = null;
+        return null;
+      });
+  }
+  return ozoPanelModulePromise;
+}
+
+function mountLazyOzoEquipmentPanels(scope = document) {
+  const canUseElement = typeof Element !== "undefined";
+  const root = scope && typeof scope.querySelector === "function" ? scope : document;
+  const hasPanel = (canUseElement && root instanceof Element && root.matches("[data-ozo-equipment-panel]"))
+    || Boolean(root.querySelector?.("[data-ozo-equipment-panel]"));
+  if (!hasPanel) {
+    return;
+  }
+  const currentPanel = typeof window !== "undefined" ? window.SafeNexusOzoPanel : null;
+  if (currentPanel?.mountAll) {
+    currentPanel.mountAll(root);
+    return;
+  }
+  void loadOzoPanelModule().then((panel) => {
+    panel?.mountAll?.(root);
+  });
+}
+
 const PERIODICS_COMPANY_KEY_HINTS = Object.freeze([
   "TVRTKA",
   "NAZIVTVRTKE",
@@ -67548,7 +67617,7 @@ function triggerDocumentationSprHtmlDownload(html = "", fileName = "zapisnik.htm
 }
 
 let documentationSprPdfGeneratorPromise = null;
-const DOCUMENTATION_SPR_PDF_GENERATOR_VERSION = "20260712-spr-gridline-v4";
+const DOCUMENTATION_SPR_PDF_GENERATOR_VERSION = "20260713-report-cover-v1";
 
 function loadDocumentationSprPdfGenerator() {
   if (!documentationSprPdfGeneratorPromise) {
@@ -137556,6 +137625,9 @@ function appendWorkOrderDocumentRoMatrix(bodyNode, {
     return;
   }
   const reactPanel = typeof window !== "undefined" ? window.SafeNexusWorkEquipmentRoPanel : null;
+  if (!reactPanel || typeof reactPanel.mount !== "function") {
+    requestWorkEquipmentRoPanelHydration();
+  }
   if (reactPanel && typeof reactPanel.mount === "function") {
     if (typeof stateEntry.reactRoPanelUnmount === "function") {
       try {
@@ -184981,6 +185053,7 @@ function renderRiskAssessmentJobs(options = {}) {
     return row;
   })();
   riskAssessmentJobsList.replaceChildren(row);
+  mountLazyOzoEquipmentPanels(riskAssessmentJobsList);
   setRiskAssessmentActiveBlock(riskAssessmentActiveBlock || "basic");
   initializeRiskAssessmentPpeScenes();
   if (refreshTree) {

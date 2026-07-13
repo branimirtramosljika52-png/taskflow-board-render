@@ -46243,12 +46243,12 @@ function getStaticCacheHeaders(url, pathname, extension) {
     return NO_STORE_HEADERS;
   }
 
-  if (pathname === "/styles.css" || pathname.startsWith("/src/")) {
-    return NO_STORE_HEADERS;
-  }
-
   if (url.searchParams.has("v") || pathname.startsWith("/assets/vendor/")) {
     return STATIC_IMMUTABLE_HEADERS;
+  }
+
+  if (pathname === "/styles.css" || pathname.startsWith("/src/")) {
+    return NO_STORE_HEADERS;
   }
 
   if (pathname.startsWith("/assets/")) {
