@@ -118,7 +118,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.441.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.442.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -15271,17 +15271,15 @@ function getScopedDocumentTemplateById(scopedSnapshot = {}, templateId = "") {
     .find((template) => normalizeInputValue(template?.id) === normalizedId) || null;
 }
 
-function getWorkOrderServiceItemsForDocumentRecord(workOrder = {}) {
-  return Array.isArray(workOrder.serviceItems) && workOrder.serviceItems.length > 0
-    ? workOrder.serviceItems.map((item) => (item && typeof item === "object" ? item : { name: item }))
-    : [{ name: workOrder.serviceLine || workOrder.displayService || "" }];
+function getWorkOrderServiceItemsForDocumentRecord(workOrder = {}, scopedSnapshot = {}) {
+  return getMobileWorkOrderDocumentationServices(workOrder, scopedSnapshot);
 }
 
 function findWorkOrderServiceForDocumentRecord(input = {}, workOrder = {}, scopedSnapshot = {}) {
   const serviceId = normalizeInputValue(input.serviceId || input.serviceCatalogId);
   const serviceCode = normalizeMobileTemplateLookupKey(input.serviceCode || input.code);
   const serviceName = normalizeMobileTemplateLookupKey(input.serviceName || input.name || input.title);
-  const services = getWorkOrderServiceItemsForDocumentRecord(workOrder);
+  const services = getWorkOrderServiceItemsForDocumentRecord(workOrder, scopedSnapshot);
   const catalogByService = new Map(services.map((service) => [service, findMobileServiceCatalogItemForWorkOrderService(service, scopedSnapshot) || {}]));
 
   return services.find((service) => {
@@ -22004,9 +22002,7 @@ function isMobileTrainingServiceCatalogItem(service = {}, catalogItem = {}) {
 }
 
 function getMobileWorkOrderTrainingServices(workOrder = {}, scopedSnapshot = {}) {
-  const sourceServices = Array.isArray(workOrder.serviceItems) && workOrder.serviceItems.length > 0
-    ? workOrder.serviceItems.map((item) => (item && typeof item === "object" ? item : { name: item }))
-    : [{ name: workOrder.serviceLine || workOrder.displayService || "" }];
+  const sourceServices = getMobileWorkOrderDocumentationServices(workOrder, scopedSnapshot);
   const learningTestsById = new Map((Array.isArray(scopedSnapshot.learningTests) ? scopedSnapshot.learningTests : [])
     .map((test) => [normalizeInputValue(test?.id), test])
     .filter(([id]) => Boolean(id)));
@@ -27275,10 +27271,145 @@ function mergeMobileMeasurementSheetPresets(scopedSnapshot = {}, freshPresets = 
   };
 }
 
-function getMobileWorkOrderDocumentationServices(workOrder = {}) {
-  return Array.isArray(workOrder.serviceItems) && workOrder.serviceItems.length > 0
-    ? workOrder.serviceItems.map((item) => (item && typeof item === "object" ? item : { name: item }))
-    : [{ name: workOrder.serviceLine || "" }];
+function splitMobileWorkOrderServiceLine(value = "") {
+  const raw = normalizeInputValue(value);
+  if (!raw) {
+    return [];
+  }
+  const explicitParts = raw
+    .split(/\s*(?:[·•;\n|]+)\s*/u)
+    .map(normalizeInputValue)
+    .filter(Boolean);
+  if (explicitParts.length > 1) {
+    return explicitParts;
+  }
+
+  const nativeCodes = [...MOBILE_NATIVE_MEASUREMENT_SERVICE_CODES]
+    .sort((left, right) => right.length - left.length)
+    .filter((code) => {
+      const escaped = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`(^|[^A-Za-z0-9])${escaped}([^A-Za-z0-9]|$)`, "iu").test(raw);
+    });
+  return nativeCodes.length > 1 ? nativeCodes : [raw];
+}
+
+function normalizeMobileWorkOrderServiceCandidate(entry = {}, scopedSnapshot = {}, fallbackIndex = 0) {
+  const source = entry && typeof entry === "object" && !Array.isArray(entry)
+    ? entry
+    : { name: entry };
+  const nativeCode = getMobileGenerationServiceNativeCode(source);
+  const baseServiceCode = normalizeInputValue(
+    source.serviceCode
+    || source.code
+    || source.shortCode
+    || source.shortLabel
+    || nativeCode,
+  );
+  const candidate = {
+    ...source,
+    id: normalizeInputValue(source.id || source.serviceId || source.serviceCatalogId || source.catalogServiceId),
+    serviceId: normalizeInputValue(source.serviceId || source.id || source.serviceCatalogId || source.catalogServiceId),
+    serviceKey: normalizeInputValue(source.serviceKey || source.key),
+    key: normalizeInputValue(source.key || source.serviceKey),
+    serviceCode: baseServiceCode,
+    code: normalizeInputValue(source.code || baseServiceCode),
+    shortCode: normalizeInputValue(source.shortCode || source.shortLabel || baseServiceCode),
+    shortLabel: normalizeInputValue(source.shortLabel || source.shortCode || baseServiceCode),
+    serviceName: normalizeInputValue(source.serviceName || source.name || source.title || source.label || source.displayName),
+    name: normalizeInputValue(source.name || source.serviceName || source.title || source.label || source.displayName),
+    title: normalizeInputValue(source.title || source.serviceName || source.name || source.label),
+    label: normalizeInputValue(source.label || source.serviceName || source.name || source.title),
+    serviceIndex: Number.isFinite(Number(source.serviceIndex)) ? Number(source.serviceIndex) : fallbackIndex,
+    serviceStatus: normalizeInputValue(source.serviceStatus || source.status),
+    quantity: normalizeInputValue(source.quantity || source.measurementQuantity || source.count || "1") || "1",
+  };
+
+  const catalogItem = findMobileServiceCatalogItemForWorkOrderService(candidate, scopedSnapshot) || {};
+  const catalogServiceCode = normalizeInputValue(catalogItem.serviceCode || catalogItem.code || catalogItem.shortCode || catalogItem.shortLabel);
+  const catalogServiceName = normalizeInputValue(catalogItem.name || catalogItem.serviceName || catalogItem.title || catalogItem.label);
+  const serviceCode = candidate.serviceCode || catalogServiceCode || nativeCode;
+  const serviceName = candidate.serviceName || candidate.name || catalogServiceName || serviceCode || `Usluga ${fallbackIndex + 1}`;
+
+  return {
+    ...catalogItem,
+    ...candidate,
+    id: candidate.id || normalizeInputValue(catalogItem.id),
+    serviceId: candidate.serviceId || normalizeInputValue(catalogItem.id),
+    serviceKey: candidate.serviceKey || normalizeInputValue(catalogItem.serviceKey || catalogItem.key),
+    key: candidate.key || normalizeInputValue(catalogItem.key || catalogItem.serviceKey),
+    serviceCode,
+    code: candidate.code || serviceCode,
+    shortCode: candidate.shortCode || serviceCode,
+    shortLabel: candidate.shortLabel || serviceCode,
+    serviceName,
+    name: candidate.name || serviceName,
+    title: candidate.title || serviceName,
+    label: candidate.label || serviceName,
+    serviceIndex: candidate.serviceIndex,
+  };
+}
+
+function getMobileWorkOrderDocumentationServices(workOrder = {}, scopedSnapshot = {}, source = {}) {
+  const rawCandidates = [];
+  const pushArray = (value) => {
+    if (Array.isArray(value)) {
+      value.forEach((entry) => rawCandidates.push(entry));
+    }
+  };
+
+  pushArray(source?.generationServices);
+  pushArray(source?.selectedServices);
+  pushArray(source?.serviceFlowItems);
+  pushArray(workOrder.serviceItems);
+  pushArray(workOrder.serviceDetails);
+  pushArray(workOrder.services);
+  pushArray(workOrder.serviceCatalogItems);
+  pushArray(workOrder.selectedServices);
+
+  const serviceIds = normalizeMobileDocumentWizardArray(
+    workOrder.serviceIds
+    || workOrder.linkedServiceCatalogIds
+    || workOrder.linkedServiceIds
+    || workOrder.serviceCatalogIds,
+  );
+  serviceIds.forEach((serviceId) => {
+    const catalogItem = (Array.isArray(scopedSnapshot.serviceCatalog) ? scopedSnapshot.serviceCatalog : [])
+      .find((item) => normalizeInputValue(item?.id) === serviceId);
+    rawCandidates.push(catalogItem || { serviceId });
+  });
+
+  const serviceLineParts = splitMobileWorkOrderServiceLine(workOrder.serviceLine || workOrder.displayService || "");
+  if (serviceLineParts.length > 1) {
+    serviceLineParts.forEach((part) => rawCandidates.push({ name: part, serviceName: part, serviceCode: normalizeMobileNativeMeasurementServiceCode(part) }));
+  } else if (rawCandidates.length === 0 && serviceLineParts[0]) {
+    rawCandidates.push({ name: serviceLineParts[0], serviceName: serviceLineParts[0] });
+  }
+
+  const services = [];
+  const seenKeys = new Set();
+  rawCandidates.forEach((entry, index) => {
+    const service = normalizeMobileWorkOrderServiceCandidate(entry, scopedSnapshot, index);
+    const lookupKeys = getMobileGenerationServiceLookupKeys(service);
+    const nativeCode = getMobileGenerationServiceNativeCode(service);
+    const dedupeKey = normalizeInputValue(service.serviceId || service.id)
+      ? `id:${normalizeInputValue(service.serviceId || service.id)}`
+      : nativeCode
+        ? `native:${nativeCode}`
+        : `lookup:${lookupKeys[0] || index}`;
+    if (!lookupKeys.length && !nativeCode) {
+      return;
+    }
+    if (seenKeys.has(dedupeKey)) {
+      return;
+    }
+    seenKeys.add(dedupeKey);
+    services.push({
+      ...service,
+      serviceIndex: services.length,
+    });
+  });
+
+  return services.length > 0 ? services : [{ name: workOrder.serviceLine || workOrder.displayService || "" }];
 }
 
 function mergeMobileRuntimeLinkedDocumentTemplates(scopedSnapshot = {}, rawSnapshot = {}, workOrder = {}) {
@@ -27362,7 +27493,7 @@ function mergeMobileRuntimeLinkedDocumentTemplates(scopedSnapshot = {}, rawSnaps
   };
   const linkedTemplateIds = new Set();
 
-  getMobileWorkOrderDocumentationServices(workOrder).forEach((service) => {
+  getMobileWorkOrderDocumentationServices(workOrder, lookupSnapshot).forEach((service) => {
     const serviceTemplateIds = getMobileWorkOrderServiceTemplateIds(service, lookupSnapshot)
       .map(normalizeInputValue)
       .filter(Boolean);
@@ -29268,7 +29399,7 @@ function buildMobileWorkOrderDocumentationContext(workOrder = {}, scopedSnapshot
   const documentTemplates = Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [];
   const documentTemplateAiSettings = getMobileDocumentTemplateAiSettings(scopedSnapshot);
   const templateById = new Map(documentTemplates.map((template) => [String(template.id), template]));
-  const services = getMobileWorkOrderDocumentationServices(workOrder);
+  const services = getMobileWorkOrderDocumentationServices(workOrder, scopedSnapshot);
   const templates = [];
   const seenTemplateKeys = new Set();
   const signatureAreaKeys = new Set();
@@ -34542,9 +34673,7 @@ function buildMobileHandoverProtocol(workOrder = {}, scopedSnapshot = {}, common
     organization.address || "",
     [organization.postalCode, organization.city].filter(Boolean).join(" "),
   ].filter(Boolean).join(", ");
-  const services = Array.isArray(workOrder.serviceItems) && workOrder.serviceItems.length > 0
-    ? workOrder.serviceItems.map((item) => (item && typeof item === "object" ? item : { name: item }))
-    : [{ name: workOrder.serviceLine || "" }];
+  const services = getMobileWorkOrderDocumentationServices(workOrder, scopedSnapshot, common);
   const hasAdditionalRecordForService = (service, serviceIndex) => (
     (common.additionalRecords || []).some((record) => isMobileAdditionalRecordForService(record, service, serviceIndex))
   );
@@ -35154,9 +35283,7 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
   const common = normalizeMobileWorkOrderDocumentWizardInput(wizardInput);
   const documentTemplates = Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [];
   const templateById = new Map(documentTemplates.map((template) => [String(template.id), template]));
-  const services = Array.isArray(workOrder.serviceItems) && workOrder.serviceItems.length > 0
-    ? workOrder.serviceItems.map((item) => (item && typeof item === "object" ? item : { name: item }))
-    : [{ name: workOrder.serviceLine || "" }];
+  const services = getMobileWorkOrderDocumentationServices(workOrder, scopedSnapshot, common);
   const entries = [];
   const seenPairs = new Set();
 
