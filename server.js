@@ -118,7 +118,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.438.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.439.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -28972,16 +28972,6 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         editable: true,
         summary: "Dodaj red za svako zborno mjesto.",
         helpText: "Plus dodaje novi red, a vrijednosti se spremaju uz zapisnik.",
-      }),
-      buildMobileNativeDocumentationBlock("chapter-ves-signatures", "Potpisna lista", "chapter", {
-        typeLabel: "Poglavlje",
-        summary: "Potpisna lista vjezbe evakuacije i spasavanja.",
-      }),
-      buildMobileNativeDocumentationBlock("vesSignatureRows", "Potpisna lista", "ves_signature_rows", {
-        group: "Potpisna lista",
-        editable: true,
-        summary: "Dodaj sudionika, ime i prezime i potpis.",
-        helpText: "Svaki red sadrzi ime i prezime te potpis sudionika.",
       }),
     ] : []),
     ...(includeResultsText ? [

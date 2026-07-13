@@ -32565,6 +32565,11 @@ private fun WorkOrderDocumentationWizardDialog(
             }
         }
     }
+    val vesSignatureTemplateAndField = remember(activeTemplates) {
+        activeTemplates.firstNotNullOfOrNull { template ->
+            template.fields.firstOrNull { field -> field.isVesSignatureRowsField() }?.let { field -> template to field }
+        }
+    }
     val activeTemplatesHaveGridline = remember(activeTemplates) {
         activeTemplates.any { template ->
             template.measurementTables.any { table -> table.sheet.columns.isNotEmpty() }
@@ -33543,6 +33548,14 @@ private fun WorkOrderDocumentationWizardDialog(
     val effectiveTemplateFieldValues = remember(templateFieldValues, standardTemplateFieldValues) {
         standardTemplateFieldValues + templateFieldValues
     }
+    var documentationVesSignatureDialogOpen by remember(workOrder.id, selectedObjectId) { mutableStateOf(false) }
+    val vesSignatureAttachmentRows = remember(vesSignatureTemplateAndField, effectiveTemplateFieldValues) {
+        val target = vesSignatureTemplateAndField ?: return@remember emptyList()
+        val (template, field) = target
+        normalizeDocumentationVesSignatureRows(
+            effectiveTemplateFieldValues[templateFieldStateKey(template, field)].orEmpty().ifBlank { field.defaultValue },
+        ).filter { row -> row.name.isNotBlank() || row.signatureDataUrl.isNotBlank() }
+    }
     val missingRequiredFields = remember(requiredPromptTemplates, effectiveTemplateFieldValues, standardValues) {
         findMissingRequiredDocumentationFields(requiredPromptTemplates, effectiveTemplateFieldValues, standardValues)
     }
@@ -33932,7 +33945,66 @@ private fun WorkOrderDocumentationWizardDialog(
                 documentationAttachmentUploadSourceDialogOpen = false
                 documentationAttachmentFilePicker.launch(workOrderDocumentAllowedMimeTypes)
             },
+            extraChoices = {
+                if (vesSignatureTemplateAndField != null) {
+                    DocumentationAiUploadChoice(
+                        icon = Icons.Rounded.Fingerprint,
+                        title = "Potpisna lista",
+                        subtitle = "Ime i prezime sudionika te potpis na posebnom prilogu.",
+                        enabled = !formLoading && !documentationAttachmentLoading,
+                    ) {
+                        documentationAttachmentUploadSourceDialogOpen = false
+                        documentationVesSignatureDialogOpen = true
+                    }
+                }
+            },
         )
+    }
+
+    if (documentationVesSignatureDialogOpen) {
+        val target = vesSignatureTemplateAndField
+        if (target != null) {
+            val (template, field) = target
+            AlertDialog(
+                onDismissRequest = { documentationVesSignatureDialogOpen = false },
+                title = { Text("Potpisna lista", fontWeight = FontWeight.Black) },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .heightIn(max = 560.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            "Potpisna lista ide u PDF kao poseban prilog iza zapisnika.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.64f),
+                        )
+                        DocumentationVesSignatureRowsField(
+                            label = field.label.ifBlank { "Potpisna lista vježbe evakuacije i spašavanja" },
+                            value = effectiveTemplateFieldValues[templateFieldStateKey(template, field)].orEmpty().ifBlank { field.defaultValue },
+                            enabled = !formLoading,
+                            onChange = { value ->
+                                templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to value)
+                            },
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { documentationVesSignatureDialogOpen = false },
+                        enabled = !formLoading,
+                    ) {
+                        Text("Gotovo", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { documentationVesSignatureDialogOpen = false }) {
+                        Text("Zatvori")
+                    }
+                },
+            )
+        }
     }
 
     fun applyGridlineParserPreview(replaceExisting: Boolean) {
@@ -34933,6 +35005,15 @@ private fun WorkOrderDocumentationWizardDialog(
                         loading = documentationAttachmentLoading,
                         message = documentationAttachmentDisplayMessage,
                         enabled = !formLoading,
+                        signatureRows = vesSignatureAttachmentRows,
+                        onOpenSignatureList = vesSignatureTemplateAndField?.let {
+                            { documentationVesSignatureDialogOpen = true }
+                        },
+                        onClearSignatureList = vesSignatureTemplateAndField?.let { (template, field) ->
+                            {
+                                templateFieldValues = templateFieldValues + (templateFieldStateKey(template, field) to "[]")
+                            }
+                        },
                         onPickFiles = {
                             pendingDocumentationAttachmentTemplateKey = documentationAttachmentTargetKey
                             documentationAttachmentUploadSourceDialogOpen = true
@@ -43092,6 +43173,7 @@ private fun DocumentationSprMobileWorkspace(
             buildMobileDocumentationTemplateBlockSections(template)
                 .filter { section ->
                     !isDocumentationSignatureTemplateSection(section) &&
+                        !isDocumentationVesSignatureTemplateSection(section) &&
                         !isDocumentationAttachmentTemplateSection(section) &&
                         !isEquipmentTemplateSection(section) &&
                         !isLegalTemplateSection(section)
@@ -43683,10 +43765,36 @@ private fun buildDocumentationSprTemplateSectionSummary(
             chips = buildDocumentationSprFinalGradeChips(entry, values, visibleBlocks),
         )
     }
+    val vesExerciseField = visibleBlocks.firstNotNullOfOrNull { block ->
+        val field = findTemplateFieldForBlock(entry.template, block) ?: return@firstNotNullOfOrNull null
+        if (field.isVesExerciseRowsField() || block.type.equals("ves_exercise_rows", ignoreCase = true)) field else null
+    }
+    if (vesExerciseField != null) {
+        val rows = normalizeDocumentationVesExerciseRows(
+            values[templateFieldStateKey(entry.template, vesExerciseField)].orEmpty().ifBlank { vesExerciseField.defaultValue },
+        ).filter { row -> row.assemblyPoint.isNotBlank() || row.personCount.isNotBlank() || row.evacuationTime.isNotBlank() || row.note.isNotBlank() }
+        return DocumentationSprChapterSummary(
+            text = "Broj osoba i vrijeme izlaska",
+            chips = buildVesExerciseSummaryChips(rows),
+        )
+    }
+    if (visibleBlocks.any { block ->
+            val field = findTemplateFieldForBlock(entry.template, block)
+            field?.let(::isDocumentationSystemDescriptionTemplateField) == true ||
+                block.type.equals("richtext", ignoreCase = true) ||
+                block.type.equals("system_description", ignoreCase = true)
+        }
+    ) {
+        return DocumentationSprChapterSummary(
+            text = "Upisan opis poglavlja",
+            chips = emptyList(),
+        )
+    }
 
     val filledValues = visibleBlocks
         .mapNotNull { block ->
             val field = findTemplateFieldForBlock(entry.template, block) ?: return@mapNotNull null
+            if (field.isVesSignatureRowsField()) return@mapNotNull null
             val value = values[templateFieldStateKey(entry.template, field)].orEmpty().toSprSummaryPlainText()
             if (value.isBlank()) null else block.label.ifBlank { field.label } to value
         }
@@ -43743,6 +43851,25 @@ private fun formatSprMeasurementTotal(total: Double): String =
         String.format(Locale.getDefault(), "%.2f", total).trimEnd('0').trimEnd(',', '.')
     }
 
+private fun buildVesExerciseSummaryChips(rows: List<DocumentationVesExerciseRow>): List<DocumentationSprSummaryChipData> {
+    val personNumbers = rows.mapNotNull { row ->
+        Regex("""\d+""").find(row.personCount)?.value?.toIntOrNull()
+    }
+    val personChip = when {
+        personNumbers.isNotEmpty() -> "${personNumbers.sum()} osoba"
+        else -> rows.firstOrNull { it.personCount.isNotBlank() }?.personCount
+    }?.let { DocumentationSprSummaryChipData(it, Color(0xFF2563EB)) }
+    val timeChip = rows
+        .map { it.evacuationTime.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .take(2)
+        .joinToString(" · ")
+        .takeIf { it.isNotBlank() }
+        ?.let { DocumentationSprSummaryChipData(it, Color(0xFF0F766E)) }
+    return listOfNotNull(personChip, timeChip)
+}
+
 private fun buildDocumentationSprFinalGradeChips(
     entry: DocumentationSprMenuEntry,
     values: Map<String, String>,
@@ -43790,6 +43917,9 @@ private fun DocumentationSprStandaloneAttachmentsSection(
     loading: Boolean,
     message: String,
     enabled: Boolean,
+    signatureRows: List<DocumentationVesSignatureRow> = emptyList(),
+    onOpenSignatureList: (() -> Unit)? = null,
+    onClearSignatureList: (() -> Unit)? = null,
     onPickFiles: () -> Unit,
     onOpen: (WorkOrderDocumentationAiFile) -> Unit,
     onRemove: (String) -> Unit,
@@ -43839,6 +43969,9 @@ private fun DocumentationSprStandaloneAttachmentsSection(
                 loading = loading,
                 message = message,
                 enabled = enabled,
+                signatureRows = signatureRows,
+                onOpenSignatureList = onOpenSignatureList,
+                onClearSignatureList = onClearSignatureList,
                 onPickFiles = onPickFiles,
                 onOpen = onOpen,
                 onRemove = onRemove,
@@ -44169,11 +44302,15 @@ private fun DocumentationSprAttachmentsCard(
     loading: Boolean,
     message: String,
     enabled: Boolean,
+    signatureRows: List<DocumentationVesSignatureRow> = emptyList(),
+    onOpenSignatureList: (() -> Unit)? = null,
+    onClearSignatureList: (() -> Unit)? = null,
     onPickFiles: () -> Unit,
     onOpen: (WorkOrderDocumentationAiFile) -> Unit,
     onRemove: (String) -> Unit,
 ) {
     val canAdd = enabled && !loading && files.size < WORK_ORDER_DOCUMENTATION_ATTACHMENT_MAX_INLINE_FILES
+    val hasSignatureRows = signatureRows.any { row -> row.name.isNotBlank() || row.signatureDataUrl.isNotBlank() }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -44205,8 +44342,40 @@ private fun DocumentationSprAttachmentsCard(
             if (loading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
-            if (files.isNotEmpty()) {
+            if (files.isNotEmpty() || hasSignatureRows) {
                 Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    if (hasSignatureRows) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f))
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Rounded.Fingerprint,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Potpisna lista", fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    "${signatureRows.size} ${if (signatureRows.size == 1) "sudionik" else "sudionika"} · PDF prilog",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.56f),
+                                )
+                            }
+                            IconButton(onClick = { onOpenSignatureList?.invoke() }, enabled = enabled && !loading && onOpenSignatureList != null) {
+                                Icon(Icons.Rounded.Visibility, contentDescription = "Otvori potpisnu listu", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                            }
+                            IconButton(onClick = { onClearSignatureList?.invoke() }, enabled = enabled && !loading && onClearSignatureList != null) {
+                                Icon(Icons.Rounded.Delete, contentDescription = "Ukloni potpisnu listu", tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
                     files.forEach { file ->
                         Row(
                             modifier = Modifier
@@ -45172,6 +45341,7 @@ private fun DocumentationAiUploadSourceDialog(
     onPhotos: () -> Unit,
     onPdf: () -> Unit,
     onFile: () -> Unit,
+    extraChoices: @Composable ColumnScope.() -> Unit = {},
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -45188,6 +45358,7 @@ private fun DocumentationAiUploadSourceDialog(
                 DocumentationAiUploadChoice(Icons.Rounded.Image, "Slike", "Dodaj jednu ili više slika.", enabled, onPhotos)
                 DocumentationAiUploadChoice(Icons.Rounded.PictureAsPdf, "PDF", "Odaberi postojeći PDF zapisnik.", enabled, onPdf)
                 DocumentationAiUploadChoice(Icons.Rounded.Folder, "Datoteka", "PDF, tekst, CSV, JSON ili druga datoteka.", enabled, onFile)
+                extraChoices()
             }
         },
         confirmButton = {},
@@ -47126,6 +47297,12 @@ private fun isDocumentationSignatureTemplateSection(section: TemplateBlockSectio
         }
 }
 
+private fun isDocumentationVesSignatureTemplateSection(section: TemplateBlockSection): Boolean {
+    val lookup = section.lookupText()
+    return lookup.contains("potpisna lista") ||
+        section.blocks.any { block -> block.type.equals("ves_signature_rows", ignoreCase = true) }
+}
+
 private fun isEquipmentTemplateSection(section: TemplateBlockSection): Boolean {
     if (isMeasurementTemplateSection(section)) return false
     val lookup = section.lookupText()
@@ -47356,6 +47533,21 @@ private fun isDocumentationSystemDescriptionTemplateField(field: WorkOrderDocume
         normalizedLookup.contains("systemdescription") ||
         normalizedLookup.contains("opis sustava") ||
         normalizedLookup.contains("opis sistema")
+}
+
+private fun WorkOrderDocumentationField.isVesExerciseRowsField(): Boolean {
+    val lookup = normalizeTemplateSectionLookup(listOf(id, key, tokenKey, label, type).joinToString(" "))
+    return type.equals("ves_exercise_rows", ignoreCase = true) ||
+        lookup.contains("vesexerciserows") ||
+        lookup.contains("zborna mjesta") ||
+        lookup.contains("zborno mjesto")
+}
+
+private fun WorkOrderDocumentationField.isVesSignatureRowsField(): Boolean {
+    val lookup = normalizeTemplateSectionLookup(listOf(id, key, tokenKey, label, type).joinToString(" "))
+    return type.equals("ves_signature_rows", ignoreCase = true) ||
+        lookup.contains("vessignaturerows") ||
+        lookup.contains("potpisna lista")
 }
 
 private fun isDocumentationRichAiField(field: WorkOrderDocumentationField): Boolean =
@@ -48151,8 +48343,9 @@ private fun DocumentationVesSignatureDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    val strokes = remember(participantLabel) { mutableStateListOf<List<Offset>>() }
-    var currentStroke by remember(participantLabel) { mutableStateOf<List<Offset>>(emptyList()) }
+    val strokes = remember(participantLabel) { mutableStateListOf<MutableList<Offset>>() }
+    var currentStroke by remember(participantLabel) { mutableStateOf<MutableList<Offset>?>(null) }
+    var strokeVersion by remember(participantLabel) { mutableStateOf(0) }
     var canvasSize by remember(participantLabel) { mutableStateOf(IntSize.Zero) }
     val inkColor = MaterialTheme.colorScheme.onSurface
     val hasSignature = strokes.any { it.isNotEmpty() }
@@ -48185,24 +48378,27 @@ private fun DocumentationVesSignatureDialog(
                                 if (enabled) {
                                     detectDragGestures(
                                         onDragStart = { offset ->
-                                            currentStroke = listOf(offset)
-                                            strokes.add(currentStroke)
+                                            val stroke = mutableListOf(offset)
+                                            currentStroke = stroke
+                                            strokes.add(stroke)
+                                            strokeVersion += 1
                                         },
                                         onDrag = { change, _ ->
                                             change.consume()
-                                            val nextStroke = currentStroke + change.position
-                                            currentStroke = nextStroke
-                                            if (strokes.isNotEmpty()) {
-                                                strokes[strokes.lastIndex] = nextStroke
-                                            }
+                                            currentStroke?.add(change.position)
+                                            strokeVersion += 1
                                         },
-                                        onDragEnd = { currentStroke = emptyList() },
-                                        onDragCancel = { currentStroke = emptyList() },
+                                        onDragEnd = { currentStroke = null },
+                                        onDragCancel = { currentStroke = null },
                                     )
                                 }
                             },
                     ) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
+                            val repaintKey = strokeVersion
+                            if (repaintKey == Int.MIN_VALUE) {
+                                drawCircle(Color.Transparent, radius = 0f)
+                            }
                             strokes.forEach { points ->
                                 when {
                                     points.size == 1 -> drawCircle(
@@ -48236,11 +48432,12 @@ private fun DocumentationVesSignatureDialog(
                     }
                 }
                 TextButton(
-                    onClick = {
-                        strokes.clear()
-                        currentStroke = emptyList()
-                    },
-                    enabled = enabled && hasSignature,
+                onClick = {
+                    strokes.clear()
+                    currentStroke = null
+                    strokeVersion += 1
+                },
+                enabled = enabled && hasSignature,
                 ) {
                     Text("Obrisi potpis")
                 }
