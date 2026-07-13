@@ -5141,7 +5141,7 @@ private fun JSONArray?.toWorkOrderDocuments(): List<WorkOrderDocument> {
                     signatureFieldsJson = item.firstClean("signatureFieldsJson", "signature_fields_json"),
                     signedFieldsJson = item.firstClean("signedFieldsJson", "signed_fields_json"),
                     signatureReviewStatus = item.firstClean("signatureReviewStatus", "signature_review_status"),
-                    createdAt = item.firstClean("createdAt", "updatedAt"),
+                    createdAt = item.firstClean("updatedAt", "createdAt"),
                 ),
             )
         }

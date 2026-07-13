@@ -1916,6 +1916,23 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    private fun mergeWorkOrderDocuments(
+        current: List<WorkOrderDocument>,
+        incoming: List<WorkOrderDocument>,
+    ): List<WorkOrderDocument> {
+        if (incoming.isEmpty()) return current
+        val mergedById = LinkedHashMap<String, WorkOrderDocument>()
+        (incoming + current).forEachIndexed { index, document ->
+            val key = document.id.ifBlank {
+                "${document.workOrderId}:${document.fileName}:${document.documentCategory}:$index"
+            }
+            if (!mergedById.containsKey(key)) {
+                mergedById[key] = document
+            }
+        }
+        return mergedById.values.sortedByDescending { it.createdAt }
+    }
+
     fun refreshWorkOrderDocuments() {
         val workOrderId = state.selectedWorkOrder?.id ?: return
         loadWorkOrderDocuments(workOrderId)
@@ -2446,8 +2463,17 @@ class SafeNexusViewModel(application: Application) : AndroidViewModel(applicatio
             }
             api.generateWorkOrderDocumentation(workOrder.id, draft)
                 .onSuccess { documents ->
+                    val shouldMergeGeneratedDocuments = documents.isNotEmpty() &&
+                        state.selectedWorkOrder?.id == workOrder.id &&
+                        state.workOrderDocumentsWorkOrderId == workOrder.id
                     state = state.copy(
                         isLoading = false,
+                        workOrderDocuments = if (shouldMergeGeneratedDocuments) {
+                            mergeWorkOrderDocuments(state.workOrderDocuments, documents)
+                        } else {
+                            state.workOrderDocuments
+                        },
+                        workOrderDocumentsLoading = if (shouldMergeGeneratedDocuments) false else state.workOrderDocumentsLoading,
                         notice = if (documents.isNotEmpty()) {
                             when (draft.signatureMode.trim().lowercase(Locale.getDefault())) {
                                 "digital" -> "Dokumentacija je spremljena u Documents i poslana u Signatures na digitalni potpis."
@@ -29734,7 +29760,7 @@ private fun workOrderDocumentGroupMeta(key: String): WorkOrderDocumentGroupUi = 
 }
 
 private fun groupWorkOrderDocuments(documents: List<WorkOrderDocument>): List<Pair<WorkOrderDocumentGroupUi, List<WorkOrderDocument>>> {
-    val order = listOf("work-order", "worksheets", "projects", "photos", "reports", "other")
+    val order = listOf("reports", "work-order", "worksheets", "projects", "photos", "other")
     val grouped = documents.groupBy { workOrderDocumentGroupKey(it) }
     return order.mapNotNull { key ->
         val items = grouped[key].orEmpty()

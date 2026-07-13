@@ -5975,7 +5975,9 @@ export class InMemorySafetyRepository {
   async getWorkOrderDocuments(id) {
     return (this.workOrderDocuments.get(String(id)) ?? [])
       .slice()
-      .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
+      .sort((left, right) => (
+        String(right.updatedAt || right.createdAt || "").localeCompare(String(left.updatedAt || left.createdAt || ""))
+      ));
   }
 
   async listWorkOrderDocuments(workOrderIds = [], {
@@ -6012,7 +6014,7 @@ export class InMemorySafetyRepository {
 
     return items
       .sort((left, right) => (
-        String(right.createdAt || right.updatedAt || "").localeCompare(String(left.createdAt || left.updatedAt || ""))
+        String(right.updatedAt || right.createdAt || "").localeCompare(String(left.updatedAt || left.createdAt || ""))
       ))
       .slice(0, safeLimit);
   }
@@ -10564,7 +10566,7 @@ export class MySqlSafetyRepository {
                  created_at, updated_at
           FROM web_work_order_documents
           WHERE work_order_id = ?
-          ORDER BY created_at DESC, id DESC
+          ORDER BY COALESCE(updated_at, created_at) DESC, created_at DESC, id DESC
           LIMIT 200
         `,
         [Number(id)],
@@ -10637,7 +10639,7 @@ export class MySqlSafetyRepository {
                  created_at, updated_at
           FROM web_work_order_documents
           WHERE ${whereParts.join(" AND ")}
-          ORDER BY created_at DESC, id DESC
+          ORDER BY COALESCE(updated_at, created_at) DESC, created_at DESC, id DESC
           LIMIT ?
         `,
         [...params, safeLimit],
