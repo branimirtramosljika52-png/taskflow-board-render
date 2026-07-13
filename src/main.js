@@ -311,15 +311,6 @@ import {
   normalizeChatPreviewText,
   replaceEmojiShortcuts,
 } from "./chatMessageFormat.js";
-import { Editor, Extension } from "@tiptap/core";
-import StarterKit from "@tiptap/starter-kit";
-import { Table } from "@tiptap/extension-table";
-import TableRow from "@tiptap/extension-table-row";
-import TableCell from "@tiptap/extension-table-cell";
-import TableHeader from "@tiptap/extension-table-header";
-import Placeholder from "@tiptap/extension-placeholder";
-import Link from "@tiptap/extension-link";
-import Suggestion from "@tiptap/suggestion";
 import {
   APP_ROLE_PERMISSION_KEYS,
   COMPANY_PERMISSION_SCOPE_GENERAL,
@@ -1859,6 +1850,8 @@ let workOrderLeafletMap = null;
 let workOrderLeafletLayer = null;
 let workOrderLeafletClusterLayer = null;
 let workOrderLeafletMarkers = new Map();
+let workOrderLeafletAssetsPromise = null;
+let workOrderLeafletRenderQueued = false;
 let workOrderCalendarShellHeightFrame = 0;
 let periodicsCalendarShellHeightFrame = 0;
 let measurementQuickFillDraftCounter = 0;
@@ -1866,6 +1859,8 @@ let measurementSelectedClassElements = new Set();
 let measurementActiveCellElement = null;
 const COMPANIES_SEARCH_DEBOUNCE_MS = 140;
 const LOCATIONS_SEARCH_DEBOUNCE_MS = 140;
+const WORK_ORDER_SEARCH_DEBOUNCE_MS = 180;
+const DOCUMENT_TEMPLATE_SEARCH_DEBOUNCE_MS = 160;
 const WORK_ORDER_VIEW_MODES = [
   { value: "list", label: "List" },
   { value: "calendar", label: "Calendar" },
@@ -3838,11 +3833,16 @@ let logoutInProgress = false;
 let companiesListRenderSignature = "";
 let companiesSearchDebounceId = 0;
 let locationsSearchDebounceId = 0;
+let workOrderSearchDebounceId = 0;
+let documentTemplateSearchDebounceId = 0;
 let companiesColumnWidths = [];
 let companiesColumnResizeState = null;
 let companiesColumnResizeInitialized = false;
 let workOrderListColumnWidths = {};
 let workOrderListColumnResizeState = null;
+let filteredWorkOrdersCacheSignature = "";
+let filteredWorkOrdersCacheItems = [];
+let workOrderPremiumSummarySignature = "";
 let companyEditorRelatedDataRafId = 0;
 let companyEditorRelatedDataTimeoutId = 0;
 let companyEditorRelatedDataIdleId = 0;
@@ -58644,6 +58644,36 @@ function triggerBlobDownload(blob, fileName) {
   }, 1_000);
 }
 
+function loadStylesheetOnce(id, href) {
+  if (!href || document.getElementById(id)) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    const link = document.createElement("link");
+    link.id = id;
+    link.rel = "stylesheet";
+    link.href = href;
+    link.addEventListener("load", () => resolve(), { once: true });
+    link.addEventListener("error", () => reject(new Error(`Ne mogu ucitati stil ${href}`)), { once: true });
+    document.head.append(link);
+  });
+}
+
+function loadScriptOnce(id, src) {
+  if (!src || document.getElementById(id)) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.id = id;
+    script.src = src;
+    script.async = true;
+    script.addEventListener("load", () => resolve(), { once: true });
+    script.addEventListener("error", () => reject(new Error(`Ne mogu ucitati skriptu ${src}`)), { once: true });
+    document.head.append(script);
+  });
+}
+
 const DOCUMENTATION_SPR_STORAGE_KEY = "safenexus.documentation-workbench.spr.v1";
 const DOCUMENTATION_SPR_TEMPLATE_LIBRARY_STORAGE_KEY = "safenexus.documentation-workbench.spr.templates.v1";
 const DOCUMENTATION_SPR_GLOBAL_HEADER_STORAGE_KEY = "safenexus.documentation-workbench.spr.global-header.v1";
@@ -66857,7 +66887,7 @@ function shouldRenderDocumentationSprPreviewPages() {
   return previewVisible || inlinePreviewVisible;
 }
 
-function renderDocumentationSprPreview() {
+function renderDocumentationSprPreviewNow() {
   if (documentationSprPreviewRenderTimer) {
     window.clearTimeout(documentationSprPreviewRenderTimer);
     documentationSprPreviewRenderTimer = 0;
@@ -66909,13 +66939,35 @@ function renderDocumentationSprPreview() {
   }
 }
 
+function renderDocumentationSprPreview(options = {}) {
+  const immediate = options?.immediate === true;
+  if (documentationSprPreviewRenderTimer) {
+    window.clearTimeout(documentationSprPreviewRenderTimer);
+    documentationSprPreviewRenderTimer = 0;
+  }
+  if (immediate || !shouldRenderDocumentationSprPreviewPages()) {
+    renderDocumentationSprPreviewNow();
+    return;
+  }
+  if (documentationSprPreviewSummary) {
+    documentationSprPreviewSummary.textContent = "Preview se osvjezava...";
+  }
+  if (documentationSprInlineDocumentSummary) {
+    documentationSprInlineDocumentSummary.textContent = "Preview se osvjezava...";
+  }
+  documentationSprPreviewRenderTimer = window.setTimeout(() => {
+    documentationSprPreviewRenderTimer = 0;
+    renderDocumentationSprPreviewNow();
+  }, 220);
+}
+
 function scheduleDocumentationSprPreviewRender(delayMs = 260) {
   if (documentationSprPreviewRenderTimer) {
     window.clearTimeout(documentationSprPreviewRenderTimer);
   }
   documentationSprPreviewRenderTimer = window.setTimeout(() => {
     documentationSprPreviewRenderTimer = 0;
-    renderDocumentationSprPreview();
+    renderDocumentationSprPreviewNow();
   }, Math.max(0, Number(delayMs) || 0));
 }
 
@@ -81747,6 +81799,52 @@ let documentTemplateRuntimeRichTriggerRange = null;
 let documentTemplateRuntimeRichQuery = "";
 let documentTemplateRuntimeRichCommandIndex = 0;
 let documentTemplateRuntimeRichSuppressEscapeKeyup = false;
+let documentTemplateRuntimeTiptapModules = null;
+let documentTemplateRuntimeTiptapModulesPromise = null;
+
+async function loadDocumentTemplateRuntimeTiptapModules() {
+  if (documentTemplateRuntimeTiptapModules) {
+    return documentTemplateRuntimeTiptapModules;
+  }
+  if (!documentTemplateRuntimeTiptapModulesPromise) {
+    documentTemplateRuntimeTiptapModulesPromise = Promise.all([
+      import("@tiptap/core"),
+      import("@tiptap/starter-kit"),
+      import("@tiptap/extension-table"),
+      import("@tiptap/extension-table-row"),
+      import("@tiptap/extension-table-cell"),
+      import("@tiptap/extension-table-header"),
+      import("@tiptap/extension-placeholder"),
+      import("@tiptap/extension-link"),
+      import("@tiptap/suggestion"),
+    ]).then(([
+      core,
+      starterKit,
+      table,
+      tableRow,
+      tableCell,
+      tableHeader,
+      placeholder,
+      link,
+      suggestion,
+    ]) => {
+      documentTemplateRuntimeTiptapModules = {
+        Editor: core.Editor,
+        Extension: core.Extension,
+        StarterKit: starterKit.default || starterKit.StarterKit,
+        Table: table.Table || table.default,
+        TableRow: tableRow.default || tableRow.TableRow,
+        TableCell: tableCell.default || tableCell.TableCell,
+        TableHeader: tableHeader.default || tableHeader.TableHeader,
+        Placeholder: placeholder.default || placeholder.Placeholder,
+        Link: link.default || link.Link,
+        Suggestion: suggestion.default || suggestion.Suggestion,
+      };
+      return documentTemplateRuntimeTiptapModules;
+    });
+  }
+  return documentTemplateRuntimeTiptapModulesPromise;
+}
 
 function stopDocumentTemplateRuntimeRichKeyEvent(event) {
   event.preventDefault();
@@ -82124,7 +82222,11 @@ function createDocumentTemplateRuntimeTiptapSlashRenderer() {
   };
 }
 
-function createDocumentTemplateRuntimeTiptapSlashExtension() {
+function createDocumentTemplateRuntimeTiptapSlashExtension(tiptapModules) {
+  const { Extension, Suggestion } = tiptapModules || {};
+  if (!Extension || !Suggestion) {
+    return null;
+  }
   return Extension.create({
     name: "safeNexusSlashCommands",
     addProseMirrorPlugins() {
@@ -82248,13 +82350,23 @@ function createDocumentTemplateRuntimeRichTableToolbar(editor, persist = null) {
     toolbar.append(button);
   });
 
-  const tiptapEditor = getDocumentTemplateRuntimeTiptapEditor(editor);
-  tiptapEditor?.on?.("selectionUpdate", refresh);
-  tiptapEditor?.on?.("transaction", refresh);
-  tiptapEditor?.on?.("focus", refresh);
-  tiptapEditor?.on?.("blur", () => {
-    window.setTimeout(refresh, 80);
-  });
+  const bindTiptapEvents = () => {
+    const tiptapEditor = getDocumentTemplateRuntimeTiptapEditor(editor);
+    if (!tiptapEditor || toolbar.dataset.tiptapBound === "true") {
+      return;
+    }
+    toolbar.dataset.tiptapBound = "true";
+    tiptapEditor.on?.("selectionUpdate", refresh);
+    tiptapEditor.on?.("transaction", refresh);
+    tiptapEditor.on?.("focus", refresh);
+    tiptapEditor.on?.("blur", () => {
+      window.setTimeout(refresh, 80);
+    });
+    refresh();
+  };
+
+  editor.addEventListener("safenexus:tiptap-ready", bindTiptapEvents);
+  bindTiptapEvents();
 
   refresh();
   return toolbar;
@@ -82360,6 +82472,76 @@ function trapDocumentTemplateRuntimeRichCommandKeyup(event) {
   }
 }
 
+async function enhanceDocumentTemplateRuntimeRichTextControlWithTiptap(editor, {
+  placeholder = "",
+  persist = null,
+} = {}) {
+  if (!(editor instanceof HTMLElement) || editor.__safeNexusTiptapEditor) {
+    return;
+  }
+  try {
+    const modules = await loadDocumentTemplateRuntimeTiptapModules();
+    if (!editor.isConnected || editor.__safeNexusTiptapEditor) {
+      return;
+    }
+    const {
+      Editor: TiptapEditor,
+      StarterKit,
+      Table,
+      TableRow,
+      TableHeader,
+      TableCell,
+      Placeholder,
+      Link,
+    } = modules;
+    const slashExtension = createDocumentTemplateRuntimeTiptapSlashExtension(modules);
+    const content = normalizeRichTextHtml(editor.innerHTML) || "<p></p>";
+    const tiptapEditor = new TiptapEditor({
+      element: editor,
+      extensions: [
+        StarterKit.configure({
+          link: false,
+        }),
+        Link.configure({
+          openOnClick: false,
+          autolink: true,
+          defaultProtocol: "https",
+        }),
+        Table.configure({
+          resizable: true,
+        }),
+        TableRow,
+        TableHeader,
+        TableCell,
+        Placeholder.configure({
+          placeholder,
+          showOnlyWhenEditable: true,
+        }),
+        slashExtension,
+      ].filter(Boolean),
+      content,
+      editorProps: {
+        attributes: {
+          class: "document-template-runtime-rich-prosemirror",
+          spellcheck: "true",
+        },
+      },
+      onUpdate: () => {
+        persist?.();
+      },
+      onBlur: () => {
+        persist?.({ cleanDom: true });
+      },
+    });
+    editor.__safeNexusTiptapEditor = tiptapEditor;
+    tiptapEditor.view.dom.__safeNexusTiptapEditor = tiptapEditor;
+    tiptapEditor.view.dom.dataset.documentTemplateRuntimeRichSurface = "true";
+    editor.dispatchEvent(new CustomEvent("safenexus:tiptap-ready", { bubbles: true }));
+  } catch (error) {
+    console.warn("Tiptap editor nije ucitan; koristi se osnovni rich text editor.", error);
+  }
+}
+
 function createDocumentTemplateRuntimeRichTextControl({
   value = "",
   minHeight = 160,
@@ -82376,6 +82558,9 @@ function createDocumentTemplateRuntimeRichTextControl({
   editor.dataset.placeholder = placeholder;
   editor.dataset.documentTemplateRuntimeRichSurface = "true";
   editor.style.minHeight = `${Math.max(120, minHeight)}px`;
+  editor.contentEditable = "true";
+  editor.spellcheck = true;
+  editor.innerHTML = normalizeRichTextHtml(value) || "<p><br></p>";
 
   const persist = ({ cleanDom = false } = {}) => {
     const tiptapEditor = getDocumentTemplateRuntimeTiptapEditor(editor);
@@ -82391,46 +82576,12 @@ function createDocumentTemplateRuntimeRichTextControl({
     onChange?.((text || /<img\b/i.test(html)) ? html : "");
   };
 
-  const tiptapEditor = new Editor({
-    element: editor,
-    extensions: [
-      StarterKit.configure({
-        link: false,
-      }),
-      Link.configure({
-        openOnClick: false,
-        autolink: true,
-        defaultProtocol: "https",
-      }),
-      Table.configure({
-        resizable: true,
-      }),
-      TableRow,
-      TableHeader,
-      TableCell,
-      Placeholder.configure({
-        placeholder,
-        showOnlyWhenEditable: true,
-      }),
-      createDocumentTemplateRuntimeTiptapSlashExtension(),
-    ],
-    content: normalizeRichTextHtml(value) || "<p></p>",
-    editorProps: {
-      attributes: {
-        class: "document-template-runtime-rich-prosemirror",
-        spellcheck: "true",
-      },
-    },
-    onUpdate: () => {
-      persist();
-    },
-    onBlur: () => {
-      persist({ cleanDom: true });
-    },
+  editor.addEventListener("input", () => {
+    if (getDocumentTemplateRuntimeTiptapEditor(editor)) {
+      return;
+    }
+    persist();
   });
-  editor.__safeNexusTiptapEditor = tiptapEditor;
-  tiptapEditor.view.dom.__safeNexusTiptapEditor = tiptapEditor;
-  tiptapEditor.view.dom.dataset.documentTemplateRuntimeRichSurface = "true";
 
   editor.addEventListener("paste", (event) => {
     const html = getRichTextHtmlFromClipboard(event.clipboardData);
@@ -82445,6 +82596,10 @@ function createDocumentTemplateRuntimeRichTextControl({
     createDocumentTemplateRuntimeRichTableToolbar(editor, persist),
     editor,
   );
+  void enhanceDocumentTemplateRuntimeRichTextControlWithTiptap(editor, {
+    placeholder,
+    persist,
+  });
   return shell;
 }
 
@@ -105179,6 +105334,26 @@ function renderDocumentTemplateModule() {
   if (documentTemplateReferenceCount) {
     documentTemplateReferenceCount.textContent = String(allItems.filter((item) => item.referenceDocument?.fileName).length);
   }
+  const listSignature = [
+    canManageDocumentTemplates ? "1" : "0",
+    documentTemplateIdInput?.value || "",
+    visibleItems.map((template) => [
+      template.id,
+      template.status,
+      template.title,
+      template.updatedAt,
+      template.description,
+      template.customFields?.length || 0,
+      getDocumentTemplateSelectedLegalFrameworks(template).length,
+      getDocumentTemplateLinkedEquipmentItems(template).length,
+      template.referenceDocument?.fileName || "",
+    ].map((value) => String(value ?? "")).join(":")).join("|"),
+  ].join("||");
+  if (documentTemplateList.dataset.renderSignature === listSignature) {
+    documentTemplateEmpty.hidden = visibleItems.length !== 0;
+    return;
+  }
+  documentTemplateList.dataset.renderSignature = listSignature;
   documentTemplateList.replaceChildren(...visibleItems.map((template) => {
     const card = document.createElement("article");
     card.className = `document-template-card is-${slugifyValue(template.status || "draft")}`;
@@ -127858,6 +128033,16 @@ function syncWorkOrderFilterResults({ rerenderBuilder = false } = {}) {
   renderWorkOrderWorkspace();
 }
 
+function scheduleWorkOrderFilterResultsSync(options = {}) {
+  if (workOrderSearchDebounceId) {
+    window.clearTimeout(workOrderSearchDebounceId);
+  }
+  workOrderSearchDebounceId = window.setTimeout(() => {
+    workOrderSearchDebounceId = 0;
+    syncWorkOrderFilterResults(options);
+  }, WORK_ORDER_SEARCH_DEBOUNCE_MS);
+}
+
 function getWorkOrderFilterRuleValueSummary(rule) {
   const field = getWorkOrderFilterFieldDefinition(rule.field);
 
@@ -128389,7 +128574,39 @@ function renderWorkOrderFilterBuilder() {
   workOrderFilterBuilder.append(groupList, footer);
 }
 
+function getWorkOrderFilterCacheSignature() {
+  const filterSignature = JSON.stringify({
+    query: state.workOrderFilters.query || "",
+    groups: state.workOrderFilters.groups || [],
+    metric: state.workOrderMetricFilter || "",
+  });
+  const workOrdersSignature = (state.workOrders ?? [])
+    .map((item) => [
+      item.id,
+      item.updatedAt,
+      item.workOrderNumber,
+      item.status,
+      item.openedDate,
+      item.priority,
+      item.companyName,
+      item.locationName,
+      item.companyOib,
+      item.region,
+      item.department,
+      item.description,
+      item.serviceLine,
+      getWorkOrderServiceSummary(item),
+      getWorkOrderExecutors(item).join(","),
+    ].map((value) => String(value ?? "")).join(":"))
+    .join("|");
+  return `${filterSignature}||${workOrdersSignature}`;
+}
+
 function getFilteredWorkOrders() {
+  const signature = getWorkOrderFilterCacheSignature();
+  if (filteredWorkOrdersCacheSignature === signature) {
+    return filteredWorkOrdersCacheItems;
+  }
   const filtered = filterWorkOrders(state.workOrders, {
     query: state.workOrderFilters.query,
     advancedFilters: {
@@ -128397,7 +128614,9 @@ function getFilteredWorkOrders() {
     },
   });
 
-  return sortWorkOrders(applyWorkOrderMetricFilter(filtered));
+  filteredWorkOrdersCacheSignature = signature;
+  filteredWorkOrdersCacheItems = sortWorkOrders(applyWorkOrderMetricFilter(filtered));
+  return filteredWorkOrdersCacheItems;
 }
 
 function getMapFilteredWorkOrders() {
@@ -130211,8 +130430,49 @@ function setWorkOrderMapEmptyOverlay(isVisible) {
   workOrderMapStage.append(overlay);
 }
 
+function isWorkOrderLeafletReady() {
+  return Boolean(window.L?.map && window.L?.marker);
+}
+
+function ensureWorkOrderLeafletAssetsLoaded() {
+  if (isWorkOrderLeafletReady()) {
+    return Promise.resolve(window.L);
+  }
+  if (!workOrderLeafletAssetsPromise) {
+    workOrderLeafletAssetsPromise = Promise.all([
+      loadStylesheetOnce("safenexus-leaflet-css", "/assets/vendor/leaflet.css"),
+      loadStylesheetOnce("safenexus-markercluster-css", "/assets/vendor/MarkerCluster.css"),
+      loadStylesheetOnce("safenexus-markercluster-default-css", "/assets/vendor/MarkerCluster.Default.css"),
+    ])
+      .then(() => loadScriptOnce("safenexus-leaflet-js", "/assets/vendor/leaflet.js"))
+      .then(() => loadScriptOnce("safenexus-leaflet-markercluster-js", "/assets/vendor/leaflet.markercluster.js"))
+      .then(() => window.L);
+  }
+  return workOrderLeafletAssetsPromise;
+}
+
+function queueWorkOrderMapRenderAfterLeaflet() {
+  if (workOrderLeafletRenderQueued) {
+    return;
+  }
+  workOrderLeafletRenderQueued = true;
+  ensureWorkOrderLeafletAssetsLoaded()
+    .then(() => {
+      workOrderLeafletRenderQueued = false;
+      if (state.activeWorkOrderViewMode === "maps" && workOrderMapCanvas?.isConnected) {
+        renderWorkOrderCroatiaMapView();
+      }
+    })
+    .catch((error) => {
+      workOrderLeafletRenderQueued = false;
+      if (workOrderMapSummary) {
+        workOrderMapSummary.textContent = error?.message || "Karta nije ucitana.";
+      }
+    });
+}
+
 function ensureWorkOrderLeafletMap() {
-  if (!workOrderMapCanvas || !window.L) {
+  if (!workOrderMapCanvas || !isWorkOrderLeafletReady()) {
     return null;
   }
 
@@ -130246,6 +130506,11 @@ function ensureWorkOrderLeafletMap() {
 }
 
 function syncWorkOrderLeafletMarkers(markers) {
+  if (Array.isArray(markers) && markers.length > 0 && !isWorkOrderLeafletReady()) {
+    queueWorkOrderMapRenderAfterLeaflet();
+    return;
+  }
+
   const map = ensureWorkOrderLeafletMap();
 
   if (!map || !workOrderLeafletLayer) {
@@ -131184,6 +131449,15 @@ function renderWorkOrderCroatiaMapView() {
     return;
   }
 
+  if (!isWorkOrderLeafletReady()) {
+    if (workOrderMapSummary) {
+      workOrderMapSummary.textContent = `${markers.length} s koordinatama · karta se ucitava`;
+    }
+    setWorkOrderMapEmptyOverlay(false);
+    queueWorkOrderMapRenderAfterLeaflet();
+    return;
+  }
+
   setWorkOrderMapEmptyOverlay(false);
 
   if (!markers.some((item) => String(item.workOrderId) === String(state.workOrderMap.selectedWorkOrderId))) {
@@ -131571,6 +131845,26 @@ function renderWorkOrderPremiumSummary(items = state.workOrders ?? []) {
   if (!workOrderMetricsBar) {
     return;
   }
+
+  const summarySignature = [
+    state.workOrderMetricFilter || "",
+    (Array.isArray(items) ? items : []).map((item) => [
+      item.id,
+      item.status,
+      item.priority,
+      item.openedDate,
+      item.dueDate,
+      item.executionDate,
+      item.invoiceDate,
+      item.weight,
+      item.completedBy,
+      getWorkOrderExecutors(item).join(","),
+    ].map((value) => String(value ?? "")).join(":")).join("|"),
+  ].join("||");
+  if (workOrderPremiumSummarySignature === summarySignature) {
+    return;
+  }
+  workOrderPremiumSummarySignature = summarySignature;
 
   const metrics = buildWorkOrderMetricData(items);
   workOrderMetricsBar.replaceChildren(...metrics.map((metric) => {
@@ -152388,7 +152682,7 @@ workOrdersTableWrap.addEventListener("scroll", () => {
 workOrderSearchInput?.addEventListener("input", () => {
   state.workOrderFilters.query = workOrderSearchInput.value.trim();
   setWorkOrderFilterActivePreset("");
-  syncWorkOrderFilterResults();
+  scheduleWorkOrderFilterResultsSync();
 });
 workOrderFilterResetButton?.addEventListener("click", () => {
   resetWorkOrderQuickFilters();
@@ -158491,7 +158785,13 @@ absenceReportExportButton?.addEventListener("click", () => {
 
 documentTemplateSearchInput?.addEventListener("input", () => {
   state.documentTemplateFilters.query = documentTemplateSearchInput.value.trim();
-  renderDocumentTemplateModule();
+  if (documentTemplateSearchDebounceId) {
+    window.clearTimeout(documentTemplateSearchDebounceId);
+  }
+  documentTemplateSearchDebounceId = window.setTimeout(() => {
+    documentTemplateSearchDebounceId = 0;
+    renderDocumentTemplateModule();
+  }, DOCUMENT_TEMPLATE_SEARCH_DEBOUNCE_MS);
 });
 
 documentTemplateFilterStatusInput?.addEventListener("change", () => {

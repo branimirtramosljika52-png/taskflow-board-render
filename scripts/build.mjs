@@ -232,11 +232,14 @@ async function buildPlanEditorBundle() {
 async function buildMainBrowserBundle() {
   await esbuild.build({
     entryPoints: [resolve(rootDir, "src", "main.js")],
-    outfile: resolve(distDir, "src", "main.js"),
+    outdir: resolve(distDir, "src"),
     bundle: true,
     format: "esm",
+    splitting: true,
+    entryNames: "[name]",
+    chunkNames: "chunks/[name]-[hash]",
     target: "es2020",
-    minify: false,
+    minify: true,
     sourcemap: false,
     external: ["/assets/*"],
   });
