@@ -42,6 +42,38 @@ function cleanMultiline(value = "") {
   return String(value ?? "").normalize("NFC").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
 }
 
+function getDocumentHeaderImageSource(model = {}) {
+  const candidates = [
+    {
+      dataUrl: model.headerImageDataUrl,
+      name: model.headerImageName,
+    },
+    model.documentationHeader,
+    model.documentationSprHeader,
+    model.documentHeader,
+    model.globalHeader,
+    model.documentStampSettings?.documentationHeader,
+    model.documentStampSettings?.documentationSprHeader,
+    model.documentStampSettings?.documentHeader,
+  ];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      continue;
+    }
+    const dataUrl = clean(candidate.dataUrl || candidate.headerImageDataUrl || candidate.documentHeaderDataUrl || "");
+    if (/^data:image\/(?:png|jpe?g|webp);base64,/i.test(dataUrl)) {
+      return {
+        dataUrl,
+        name: clean(candidate.name || candidate.headerImageName || candidate.documentHeaderName || model.headerImageName || ""),
+      };
+    }
+  }
+  return {
+    dataUrl: "",
+    name: clean(model.headerImageName || ""),
+  };
+}
+
 function normalizePdfFormulaLookupKey(value = "") {
   return clean(value)
     .normalize("NFD")
@@ -2451,12 +2483,13 @@ function renderNativeHtmlDocumentHeader(model = {}, serviceCode = "", {
   subtitle = "",
   showWorkOrderNumber = true,
 } = {}) {
-  const headerImage = clean(model.headerImageDataUrl || "");
+  const headerSource = getDocumentHeaderImageSource(model);
+  const headerImage = headerSource.dataUrl;
   const workOrderNumber = clean(model.workOrderNumber || "");
   if (headerImage) {
     return `
       <header class="doc-header is-uploaded">
-        <img src="${escapeNativeHtml(headerImage)}" alt="${escapeNativeHtml(clean(model.headerImageName || "Header dokumenta"))}">
+        <img src="${escapeNativeHtml(headerImage)}" alt="${escapeNativeHtml(headerSource.name || "Header dokumenta")}">
         ${showWorkOrderNumber && workOrderNumber ? `<div class="doc-header-number">RN ${escapeNativeHtml(workOrderNumber)}</div>` : ""}
       </header>
     `;
@@ -2836,7 +2869,7 @@ function renderExExcelTechnicalBody(model = {}) {
 
 function renderExExcelHeader(model = {}, serviceCode = "") {
   const provider = getExExcelProvider(model);
-  const headerImage = clean(model.headerImageDataUrl || "");
+  const headerImage = getDocumentHeaderImageSource(model).dataUrl;
   return `
     <header class="ex-header">
       <div class="ex-brand">
@@ -4482,7 +4515,8 @@ function normalizeSprRows(rows = [], model = {}) {
 
 async function appendDocumentationSprRecord(pdfDoc, model = {}, rows = [], fonts) {
   const startPageIndex = pdfDoc.getPageCount();
-  const headerImage = await embedHeaderImage(pdfDoc, model.headerImageDataUrl);
+  const headerSource = getDocumentHeaderImageSource(model);
+  const headerImage = await embedHeaderImage(pdfDoc, headerSource.dataUrl);
   const signatureImage = model.signatureMode === "scan"
     ? await embedPdfImage(pdfDoc, model.signatureImageUrl || model.signatureDataUrl)
     : null;

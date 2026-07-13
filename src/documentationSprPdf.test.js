@@ -41,10 +41,14 @@ async function withPdfFontFetch(callback) {
   }
 }
 
-function getFirstPageImageCount(pdfDoc) {
-  const resources = pdfDoc.getPage(0).node.Resources();
+function getPageImageCount(pdfDoc, pageIndex = 0) {
+  const resources = pdfDoc.getPage(pageIndex).node.Resources();
   const xObjects = resources?.lookup(PDFName.of("XObject"), PDFDict);
   return xObjects?.keys?.().length || 0;
+}
+
+function getFirstPageImageCount(pdfDoc) {
+  return getPageImageCount(pdfDoc, 0);
 }
 
 async function extractPdfText(bytes) {
@@ -377,5 +381,48 @@ test("SPR native PDF draws an uploaded WebP header on the first page", async () 
     const pdfDoc = await PDFDocument.load(result.bytes);
 
     assert.equal(getFirstPageImageCount(pdfDoc) > 0, true, "first page keeps uploaded header as a PDF image");
+  });
+});
+
+test("SPR native PDF can resolve the uploaded header from document settings", async () => {
+  await withPdfFontFetch(async () => {
+    const webpHeader = await sharp({
+      create: {
+        width: 520,
+        height: 92,
+        channels: 3,
+        background: "#134e8a",
+      },
+    }).webp().toBuffer();
+    const result = await generateDocumentationSprPdfBlob({
+      model: {
+        ...createDocumentationReportModelDefaults("SPR"),
+        providerName: "Adria Grupa d.o.o.",
+        providerAddress: "Heinzelova 53a, Zagreb",
+        providerOib: "12345678901",
+        companyName: "Petrol d.o.o.",
+        companyAddress: "Savska Opatovina 36, Zagreb",
+        companyOib: "75550985023",
+        workOrderNumber: "26-672",
+        recordNumber: "26-672-SPR",
+        inspectionPlace: "PM Zagreb Lucko",
+        inspectionObject: "Test objekt",
+        inspectionDate: "2026-07-05",
+        issueDate: "2026-07-05",
+        responsiblePerson: "Test Ispitivac",
+        documentStampSettings: {
+          documentationHeader: {
+            dataUrl: `data:image/webp;base64,${webpHeader.toString("base64")}`,
+            name: "global-header.webp",
+          },
+        },
+      },
+      rows: [],
+    });
+    const pdfDoc = await PDFDocument.load(result.bytes);
+
+    assert.equal(pdfDoc.getPageCount() > 1, true, "test PDF has continuation pages");
+    assert.equal(getPageImageCount(pdfDoc, 0) > 0, true, "cover page uses the uploaded global header");
+    assert.equal(getPageImageCount(pdfDoc, 1), 0, "continuation page keeps the simple report header");
   });
 });

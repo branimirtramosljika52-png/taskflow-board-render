@@ -35186,6 +35186,13 @@ function normalizeDocumentStampSettings(settings = {}) {
     pageMode: ["last", "all"].includes(String(raw.pageMode || raw.pages || "").trim().toLowerCase())
       ? String(raw.pageMode || raw.pages).trim().toLowerCase()
       : DEFAULT_DOCUMENT_STAMP_SETTINGS.pageMode,
+    documentationHeader: normalizeDocumentationSprGlobalHeader(
+      raw.documentationHeader
+      || raw.documentationSprHeader
+      || raw.documentationSprGlobalHeader
+      || raw.documentHeader
+      || {},
+    ),
   };
   if (
     Number(raw.offsetX) === LEGACY_DOCUMENT_STAMP_POSITION.offsetX
@@ -60157,6 +60164,22 @@ function normalizeDocumentationSprGlobalHeader(value = {}) {
   };
 }
 
+function getActiveOrganizationDocumentationHeader() {
+  const organization = getActiveOrganization();
+  const stampSettings = organization?.documentStampSettings && typeof organization.documentStampSettings === "object"
+    ? organization.documentStampSettings
+    : {};
+  return normalizeDocumentationSprGlobalHeader(
+    stampSettings.documentationHeader
+    || stampSettings.documentationSprHeader
+    || stampSettings.documentationSprGlobalHeader
+    || stampSettings.documentHeader
+    || organization?.documentationHeader
+    || organization?.documentationSprHeader
+    || {},
+  );
+}
+
 function hasStoredDocumentationSprGlobalHeader() {
   try {
     return window.localStorage.getItem(DOCUMENTATION_SPR_GLOBAL_HEADER_STORAGE_KEY) !== null;
@@ -60167,11 +60190,14 @@ function hasStoredDocumentationSprGlobalHeader() {
 
 function loadDocumentationSprGlobalHeader() {
   try {
-    return normalizeDocumentationSprGlobalHeader(
-      JSON.parse(window.localStorage.getItem(DOCUMENTATION_SPR_GLOBAL_HEADER_STORAGE_KEY) || "null"),
-    );
+    if (hasStoredDocumentationSprGlobalHeader()) {
+      return normalizeDocumentationSprGlobalHeader(
+        JSON.parse(window.localStorage.getItem(DOCUMENTATION_SPR_GLOBAL_HEADER_STORAGE_KEY) || "null"),
+      );
+    }
+    return getActiveOrganizationDocumentationHeader();
   } catch {
-    return normalizeDocumentationSprGlobalHeader();
+    return getActiveOrganizationDocumentationHeader();
   }
 }
 
@@ -60188,8 +60214,41 @@ function persistDocumentationSprGlobalHeader() {
   }
 }
 
+async function persistDocumentationSprGlobalHeaderToServer() {
+  const organization = getActiveOrganization();
+  if (!organization?.id) {
+    return false;
+  }
+  const header = normalizeDocumentationSprGlobalHeader(documentationSprGlobalHeader);
+  const currentStampSettings = organization.documentStampSettings && typeof organization.documentStampSettings === "object"
+    ? organization.documentStampSettings
+    : {};
+  try {
+    const payload = await apiRequest(`/organizations/${encodeURIComponent(organization.id)}`, {
+      method: "PATCH",
+      body: {
+        documentStampSettings: {
+          ...currentStampSettings,
+          documentationHeader: header,
+        },
+      },
+    });
+    if (payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, "storage")) {
+      applySnapshot(payload);
+    }
+    return true;
+  } catch (error) {
+    console.warn("Documentation header backend sync failed.", error);
+    return false;
+  }
+}
+
 function seedDocumentationSprGlobalHeaderFromLegacySources(model = documentationSprModel) {
   if (hasStoredDocumentationSprGlobalHeader()) {
+    return;
+  }
+  if (normalizeDocumentationSprGlobalHeader(documentationSprGlobalHeader).dataUrl) {
+    persistDocumentationSprGlobalHeader();
     return;
   }
   const legacySources = [
@@ -63114,9 +63173,13 @@ async function handleDocumentationSprHeaderUpload(file) {
       scheduleDocumentationSprSave();
     }
     persistDocumentationSprGlobalHeader();
+    const synced = await persistDocumentationSprGlobalHeaderToServer();
     syncDocumentationSprPreviewControls();
     renderDocumentationSprPreview();
-    setDocumentationSprStatus("Globalni header je spremljen", "saved");
+    setDocumentationSprStatus(
+      synced ? "Globalni header je spremljen" : "Header je spremljen u pregledniku",
+      synced ? "saved" : "saving",
+    );
   } catch {
     setDocumentationSprStatus("Header nije učitan", "saving");
   }
@@ -68159,6 +68222,9 @@ function initDocumentationSprWorkbench() {
   }
   documentationSprTemplateLibrary = loadDocumentationSprTemplateLibrary();
   documentationSprGlobalHeader = loadDocumentationSprGlobalHeader();
+  if (normalizeDocumentationSprGlobalHeader(documentationSprGlobalHeader).dataUrl) {
+    void persistDocumentationSprGlobalHeaderToServer();
+  }
   if (!documentationSprModel) {
     documentationSprModel = loadDocumentationSprModel();
     writeDocumentationSprModelToForm();
@@ -68266,6 +68332,7 @@ function initDocumentationSprWorkbench() {
         documentationSprModel.headerImageDataUrl = "";
         documentationSprModel.headerImageName = "";
       }
+      void persistDocumentationSprGlobalHeaderToServer();
       syncDocumentationSprPreviewControls();
       renderDocumentationSprPreview();
       setDocumentationSprStatus("Globalni header je maknut", "saved");

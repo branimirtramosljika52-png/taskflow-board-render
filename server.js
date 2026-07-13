@@ -12257,7 +12257,7 @@ function shouldUseFastTemplateRenderPdf(body = {}) {
     && engine !== "html";
 }
 
-async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot = {}) {
+async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot = {}, options = {}) {
   const documentTemplates = scopedSnapshot.documentTemplates ?? [];
   const workOrders = scopedSnapshot.workOrders ?? [];
   const referenceDocumentCache = new Map();
@@ -12279,6 +12279,7 @@ async function generatePdfBuffersForTemplateEntries(entries = [], scopedSnapshot
         scopedSnapshot,
         common: entry?.mobileCommon,
         fileName,
+        options,
       });
       pdfBuffers[entryIndex] = sprFile.buffer;
       continue;
@@ -33951,6 +33952,7 @@ function resolveMobileDocumentationHeaderImage({
   template = {},
   common = {},
   scopedSnapshot = {},
+  documentStampSettings = {},
 } = {}) {
   const candidates = [
     common,
@@ -33958,6 +33960,12 @@ function resolveMobileDocumentationHeaderImage({
     common.documentHeader,
     common.globalHeader,
     common.documentationHeader,
+    common.documentStampSettings?.documentationHeader,
+    common.documentStampSettings?.documentationSprHeader,
+    common.documentStampSettings?.documentHeader,
+    documentStampSettings?.documentationHeader,
+    documentStampSettings?.documentationSprHeader,
+    documentStampSettings?.documentHeader,
     template,
     template.model,
     template.header,
@@ -33970,8 +33978,14 @@ function resolveMobileDocumentationHeaderImage({
     scopedSnapshot.documentationSprGlobalHeader,
     scopedSnapshot.currentOrganization?.documentationHeader,
     scopedSnapshot.currentOrganization?.documentationSprHeader,
+    scopedSnapshot.currentOrganization?.documentStampSettings?.documentationHeader,
+    scopedSnapshot.currentOrganization?.documentStampSettings?.documentationSprHeader,
+    scopedSnapshot.currentOrganization?.documentStampSettings?.documentHeader,
     entry,
     entry.mobileCommon,
+    entry.documentStampSettings?.documentationHeader,
+    entry.documentStampSettings?.documentationSprHeader,
+    entry.documentStampSettings?.documentHeader,
     entry.documentRecord,
     entry.documentRecord?.fieldValues,
     entry.placeholders,
@@ -34104,6 +34118,7 @@ function buildMobileDocumentationSprModel({
   workOrder = {},
   scopedSnapshot = {},
   common = {},
+  documentStampSettings = {},
 } = {}) {
   const placeholders = entry?.placeholders && typeof entry.placeholders === "object" ? entry.placeholders : {};
   const organization = getWorkOrderTemplateOrganization(scopedSnapshot);
@@ -34147,6 +34162,7 @@ function buildMobileDocumentationSprModel({
     template,
     common,
     scopedSnapshot,
+    documentStampSettings,
   });
   const inspectionDate = normalizeDateOnlyValue(entry.inspectionDate || common.inspectionDate);
   const issuedDate = normalizeDateOnlyValue(entry.issuedDate || common.issuedDate || inspectionDate);
@@ -34411,6 +34427,7 @@ async function buildMobileDocumentationSprPdfFile({
     workOrder,
     scopedSnapshot,
     common: effectiveCommon,
+    documentStampSettings: options.documentStampSettings || options.stampSettings || entry.documentStampSettings || {},
   });
   const rows = getMobileSprRows(entry, template, effectiveCommon);
   const preparedEntry = prepareMobileDocumentationSprEntry(entry, model, scopedSnapshot);
@@ -43616,7 +43633,9 @@ async function handleApiRequest(request, response, url) {
           mergedPdf = null;
         }
         if (!mergedPdf) {
-          const pdfBuffers = await generatePdfBuffersForTemplateEntries(entries, scopedSnapshot);
+          const pdfBuffers = await generatePdfBuffersForTemplateEntries(entries, scopedSnapshot, {
+            documentStampSettings,
+          });
           mergedPdf = await mergePdfBuffers(pdfBuffers);
         }
       }
