@@ -59357,12 +59357,40 @@ function normalizeDocumentationSprModel(value) {
   const source = value && typeof value === "object" ? value : {};
   const normalizedServiceCode = getDocumentationSprServiceCode({ ...fallback, ...source });
   const serviceDefaults = createDocumentationReportModelDefaults(normalizedServiceCode);
-  const isVesService = String(serviceDefaults.serviceCode || normalizedServiceCode || "").trim().toUpperCase() === "VES";
-  const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(serviceDefaults.serviceCode || normalizedServiceCode);
-  const defaultTechnicalData = formatDocumentationTechnicalDataFields(serviceDefaults.technicalDataFields || []);
+  const vesIdentity = isDocumentationSprVesServiceIdentity([
+    source.serviceBinding?.serviceCode,
+    source.serviceBinding?.serviceName,
+    source.serviceCode,
+    source.serviceName,
+    source.templateCode,
+    source.reportTitle,
+    source.coverSubtitle,
+  ].join(" "));
+  const effectiveServiceCode = String(
+    (vesIdentity ? "VES" : "")
+    || serviceDefaults.serviceCode
+    || normalizedServiceCode
+    || source.serviceBinding?.serviceCode
+    || source.serviceCode
+    || fallback.serviceCode
+    || "",
+  ).trim();
+  const effectiveServiceDefaults = vesIdentity && serviceDefaults.serviceCode !== "VES"
+    ? createDocumentationReportModelDefaults("VES")
+    : serviceDefaults;
+  const effectiveServiceName = String(
+    effectiveServiceDefaults.serviceName
+    || source.serviceBinding?.serviceName
+    || source.serviceName
+    || fallback.serviceName
+    || "",
+  ).trim();
+  const isVesService = effectiveServiceCode.toUpperCase() === "VES";
+  const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(effectiveServiceCode);
+  const defaultTechnicalData = formatDocumentationTechnicalDataFields(effectiveServiceDefaults.technicalDataFields || []);
   const inspectorUserIds = normalizeDocumentationSprIdList(source.inspectorUserIds);
   const responsiblePersonUserId = String(source.responsiblePersonUserId || "").trim();
-  const hasCertificate = normalizeDocumentationSprBoolean(source.hasCertificate, serviceDefaults.hasCertificate === true || fallback.hasCertificate === true);
+  const hasCertificate = normalizeDocumentationSprBoolean(source.hasCertificate, effectiveServiceDefaults.hasCertificate === true || fallback.hasCertificate === true);
   const sourceRecordNumber = String(source.recordNumber || fallback.recordNumber || "").trim();
   const certificateNumber = String(source.certificateNumber || source.BROJ_UVJERENJA || "").trim()
     || (hasCertificate ? buildDocumentationNativeCertificateNumber(sourceRecordNumber) : "");
@@ -59373,26 +59401,26 @@ function normalizeDocumentationSprModel(value) {
     ...Object.fromEntries(Object.entries(source).filter(([key]) => key !== "gridlineModel")),
     companyId: String(source.companyId || fallback.companyId || "").trim(),
     locationId: String(source.locationId || fallback.locationId || "").trim(),
-    serviceCode: source.serviceCode || serviceDefaults.serviceCode || fallback.serviceCode,
-    serviceName: source.serviceName || serviceDefaults.serviceName || fallback.serviceName,
-    reportTitle: source.reportTitle || serviceDefaults.reportTitle || fallback.reportTitle,
-    coverSubtitle: source.coverSubtitle || serviceDefaults.coverSubtitle || fallback.coverSubtitle,
-    measurementTableTitle: isVesService ? "" : (source.measurementTableTitle || serviceDefaults.measurementTableTitle || fallback.measurementTableTitle),
+    serviceCode: effectiveServiceCode,
+    serviceName: effectiveServiceName,
+    reportTitle: source.reportTitle || effectiveServiceDefaults.reportTitle || fallback.reportTitle,
+    coverSubtitle: source.coverSubtitle || effectiveServiceDefaults.coverSubtitle || fallback.coverSubtitle,
+    measurementTableTitle: isVesService ? "" : (source.measurementTableTitle || effectiveServiceDefaults.measurementTableTitle || fallback.measurementTableTitle),
     hasCertificate,
     issueCertificate: hasCertificate
       ? normalizeDocumentationSprBoolean(source.issueCertificate ?? source.IZDAJE_UVJERENJE, source.issueCertificate ?? fallback.issueCertificate ?? true)
       : false,
     certificateNumber,
-    certificateTitle: source.certificateTitle || serviceDefaults.certificateTitle || fallback.certificateTitle || "",
-    certificateLead: source.certificateLead || serviceDefaults.certificateLead || fallback.certificateLead || "",
-    certificateResultText: source.certificateResultText || serviceDefaults.certificateResultText || fallback.certificateResultText || "",
+    certificateTitle: source.certificateTitle || effectiveServiceDefaults.certificateTitle || fallback.certificateTitle || "",
+    certificateLead: source.certificateLead || effectiveServiceDefaults.certificateLead || fallback.certificateLead || "",
+    certificateResultText: source.certificateResultText || effectiveServiceDefaults.certificateResultText || fallback.certificateResultText || "",
     certificateFactualNote: String(source.certificateFactualNote || source.NAPOMENA_BEZ_UVJERENJA || "").trim(),
-    systemDescription: sourceSystemDescription || (singleSystemDescription ? sourceTechnicalData : "") || serviceDefaults.systemDescription || fallback.systemDescription || "",
-    resultsText: singleSystemDescription || isVesService ? "" : (source.resultsText || source.OPIS_ISPITIVANJA || source.REZULTATI_ISPITIVANJA || serviceDefaults.resultsText || fallback.resultsText),
-    assessmentLabel: source.assessmentLabel || serviceDefaults.assessmentLabel || fallback.assessmentLabel,
-    conclusionLead: source.conclusionLead || serviceDefaults.conclusionLead || fallback.conclusionLead,
-    validitySentence: source.validitySentence || serviceDefaults.validitySentence || fallback.validitySentence,
-    conclusionSentence: String(source.conclusionSentence || source.ZAKLJUCNA_RECENICA || serviceDefaults.conclusionSentence || fallback.conclusionSentence || "").trim(),
+    systemDescription: sourceSystemDescription || (singleSystemDescription ? sourceTechnicalData : "") || effectiveServiceDefaults.systemDescription || fallback.systemDescription || "",
+    resultsText: singleSystemDescription || isVesService ? "" : (source.resultsText || source.OPIS_ISPITIVANJA || source.REZULTATI_ISPITIVANJA || effectiveServiceDefaults.resultsText || fallback.resultsText),
+    assessmentLabel: source.assessmentLabel || effectiveServiceDefaults.assessmentLabel || fallback.assessmentLabel,
+    conclusionLead: source.conclusionLead || effectiveServiceDefaults.conclusionLead || fallback.conclusionLead,
+    validitySentence: source.validitySentence || effectiveServiceDefaults.validitySentence || fallback.validitySentence,
+    conclusionSentence: String(source.conclusionSentence || source.ZAKLJUCNA_RECENICA || effectiveServiceDefaults.conclusionSentence || fallback.conclusionSentence || "").trim(),
     layoutPreset: normalizeDocumentationSprLayoutPreset(source.layoutPreset || fallback.layoutPreset),
     inspectionObjectId: String(source.inspectionObjectId || "").trim(),
     inspectionType: normalizeDocumentationSprInspectionType(source.inspectionType || fallback.inspectionType),
@@ -59415,12 +59443,12 @@ function normalizeDocumentationSprModel(value) {
     aiSources: normalizeDocumentationSprAiSources(source.aiSources),
     attachments: normalizeDocumentationSprAttachments(source.attachments),
     technicalData: singleSystemDescription ? "" : String(source.technicalData || defaultTechnicalData || fallback.technicalData || "").trim(),
-    projectDocumentation: isVesService ? "" : String(source.projectDocumentation || source.KORISTENA_DOKUMENTACIJA || serviceDefaults.projectDocumentation || fallback.projectDocumentation || "").trim(),
+    projectDocumentation: isVesService ? "" : String(source.projectDocumentation || source.KORISTENA_DOKUMENTACIJA || effectiveServiceDefaults.projectDocumentation || fallback.projectDocumentation || "").trim(),
     checklists: isVesService ? [] : normalizeDocumentationSprChecklists(source.checklists, { ...fallback, ...source }),
     measurementAssessments: isVesService ? [] : normalizeDocumentationSprMeasurementAssessments(source.measurementAssessments, { ...fallback, ...source }),
     measurementTables: isVesService ? [] : normalizeDocumentationSprMeasurementTables(source.measurementTables, { ...fallback, ...source }),
     formulaSheets: isVesService ? [] : normalizeDocumentationSprFormulaSheets(source.formulaSheets, { ...fallback, ...source }),
-    vesExerciseRows: normalizeDocumentationVesExerciseRows(source.vesExerciseRows || source.VES_EXERCISE_ROWS, serviceDefaults.vesExerciseRows || fallback.vesExerciseRows),
+    vesExerciseRows: normalizeDocumentationVesExerciseRows(source.vesExerciseRows || source.VES_EXERCISE_ROWS, effectiveServiceDefaults.vesExerciseRows || fallback.vesExerciseRows),
     previewHidden: Boolean(source.previewHidden),
     headerImageDataUrl: String(source.headerImageDataUrl || "").trim(),
     headerImageName: String(source.headerImageName || "").trim(),
@@ -59596,8 +59624,13 @@ function normalizeDocumentationSprAttachments(value = []) {
 function normalizeDocumentationSprServiceBinding(value = null) {
   const source = value && typeof value === "object" ? value : {};
   const serviceId = String(source.serviceId ?? source.serviceCatalogId ?? source.id ?? "").trim();
-  const serviceCode = String(source.serviceCode ?? source.code ?? "").trim();
-  const serviceName = String(source.serviceName ?? source.name ?? source.title ?? "").trim();
+  let serviceCode = String(source.serviceCode ?? source.code ?? "").trim();
+  let serviceName = String(source.serviceName ?? source.name ?? source.title ?? "").trim();
+  if (isDocumentationSprVesServiceIdentity([serviceCode, serviceName, source.title].join(" "))) {
+    serviceCode = "VES";
+    serviceName = serviceName.replace(/^\s*VS\s*[-–]\s*/i, "").trim()
+      || "Vjezba evakuacije i spasavanja";
+  }
   if (!serviceId && !serviceCode && !serviceName) {
     return null;
   }
@@ -59606,6 +59639,16 @@ function normalizeDocumentationSprServiceBinding(value = null) {
     serviceCode,
     serviceName,
   };
+}
+
+function isDocumentationSprVesServiceIdentity(value = "") {
+  const text = normalizeLooseName(value);
+  if (!text) {
+    return false;
+  }
+  const tokens = text.split(" ").filter(Boolean);
+  return tokens.includes("ves")
+    || (text.includes("vjezba") && (text.includes("evakuacij") || text.includes("spasav")));
 }
 
 function inferDocumentationSprServiceBindingFromTemplate(name = "", id = "") {
@@ -59849,6 +59892,7 @@ function buildDocumentationNativeTemplateModel(preset = {}) {
   const base = createDefaultDocumentationSprModel();
   const reportDefaults = createDocumentationReportModelDefaults(preset.serviceCode || base.serviceCode || "SRR");
   const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(reportDefaults.serviceCode || preset.serviceCode);
+  const isVesService = reportDefaults.serviceCode === "VES";
   return {
     ...base,
     templateCode: preset.name || base.templateCode,
@@ -59856,21 +59900,21 @@ function buildDocumentationNativeTemplateModel(preset = {}) {
     serviceName: preset.serviceName || reportDefaults.serviceName,
     reportTitle: preset.reportTitle || reportDefaults.reportTitle,
     coverSubtitle: preset.coverSubtitle || reportDefaults.coverSubtitle,
-    measurementTableTitle: preset.measurementTableTitle || reportDefaults.measurementTableTitle,
+    measurementTableTitle: isVesService ? "" : (preset.measurementTableTitle || reportDefaults.measurementTableTitle),
     systemDescription: preset.systemDescription || reportDefaults.systemDescription || "",
-    resultsText: singleSystemDescription ? "" : (preset.resultsText || reportDefaults.resultsText),
+    resultsText: (singleSystemDescription || isVesService) ? "" : (preset.resultsText || reportDefaults.resultsText),
     technicalData: singleSystemDescription ? "" : formatDocumentationTechnicalDataFields(preset.technicalDataFields || reportDefaults.technicalDataFields),
-    projectDocumentation: preset.projectDocumentation || reportDefaults.projectDocumentation || base.projectDocumentation,
+    projectDocumentation: isVesService ? "" : (preset.projectDocumentation || reportDefaults.projectDocumentation || base.projectDocumentation),
     eiNote: preset.eiNote || reportDefaults.eiNote,
     eiminNote: preset.eiminNote || reportDefaults.eiminNote,
     assessmentLabel: preset.assessmentLabel || reportDefaults.assessmentLabel,
     conclusionLead: preset.conclusionLead || reportDefaults.conclusionLead,
     validitySentence: preset.validitySentence || reportDefaults.validitySentence,
     conclusionSentence: preset.conclusionSentence || reportDefaults.conclusionSentence || "",
-    checklists: reportDefaults.checklists || [],
-    measurementAssessments: reportDefaults.measurementAssessments || [],
-    measurementTables: reportDefaults.measurementTables,
-    formulaSheets: reportDefaults.formulaSheets || [],
+    checklists: isVesService ? [] : (reportDefaults.checklists || []),
+    measurementAssessments: isVesService ? [] : (reportDefaults.measurementAssessments || []),
+    measurementTables: isVesService ? [] : reportDefaults.measurementTables,
+    formulaSheets: isVesService ? [] : (reportDefaults.formulaSheets || []),
     vesExerciseRows: normalizeDocumentationVesExerciseRows(preset.vesExerciseRows || reportDefaults.vesExerciseRows),
     gridlineModel: reportDefaults.serviceCode === "VES"
       ? buildDocumentationSprGridlineModelFromRows(getDocumentationSprBlankRows())
@@ -59919,7 +59963,18 @@ function isDocumentationNativeSeedLikeEntry(entry = {}, preset = {}) {
 }
 
 function refreshDocumentationNativeTemplateEntry(entry = {}) {
-  const code = entry.serviceBinding?.serviceCode || entry.model?.serviceCode || "";
+  const entryIdentity = [
+    entry.id,
+    entry.name,
+    entry.serviceBinding?.serviceCode,
+    entry.serviceBinding?.serviceName,
+    entry.model?.templateCode,
+    entry.model?.serviceCode,
+    entry.model?.serviceName,
+  ].join(" ");
+  const code = isDocumentationSprVesServiceIdentity(entryIdentity)
+    ? "VES"
+    : (entry.serviceBinding?.serviceCode || entry.model?.serviceCode || "");
   const preset = getDocumentationNativeTemplatePresetByCode(code);
   if (!preset || !isDocumentationNativeSeedLikeEntry(entry, preset)) {
     return entry;
@@ -59927,6 +59982,7 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
   const nativeModel = buildDocumentationNativeTemplateModel(preset);
   const currentModel = normalizeDocumentationSprModel(entry.model);
   const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(preset.serviceCode || nativeModel.serviceCode || currentModel.serviceCode);
+  const isVesService = preset.serviceCode === "VES";
   const seedCreatedAt = "2026-01-01T00:00:00.000Z";
   const isBuiltInSeed = normalizeLooseName(entry.id) === normalizeLooseName(preset.id);
   const rawEntryCode = String(entry.serviceBinding?.serviceCode || entry.model?.serviceCode || entry.serviceCode || "").trim().toUpperCase();
@@ -59942,16 +59998,16 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
   const refreshNativeBlocks = ["EXEI", "EXSE", "EXOV"].includes(String(preset.serviceCode || "").trim().toUpperCase())
     && isBuiltInSeed
     && !hasUserEdits;
-  const currentChecklists = !refreshNativeBlocks && Array.isArray(currentModel.checklists) && currentModel.checklists.length
+  const currentChecklists = !isVesService && !refreshNativeBlocks && Array.isArray(currentModel.checklists) && currentModel.checklists.length
     ? currentModel.checklists
     : nativeModel.checklists;
-  const currentAssessments = !refreshNativeBlocks && Array.isArray(currentModel.measurementAssessments) && currentModel.measurementAssessments.length
+  const currentAssessments = !isVesService && !refreshNativeBlocks && Array.isArray(currentModel.measurementAssessments) && currentModel.measurementAssessments.length
     ? currentModel.measurementAssessments
     : nativeModel.measurementAssessments;
-  const currentTables = !refreshNativeBlocks && Array.isArray(currentModel.measurementTables) && currentModel.measurementTables.length
+  const currentTables = !isVesService && !refreshNativeBlocks && Array.isArray(currentModel.measurementTables) && currentModel.measurementTables.length
     ? currentModel.measurementTables
     : nativeModel.measurementTables;
-  const currentFormulaSheets = !refreshNativeBlocks && Array.isArray(currentModel.formulaSheets) && currentModel.formulaSheets.length
+  const currentFormulaSheets = !isVesService && !refreshNativeBlocks && Array.isArray(currentModel.formulaSheets) && currentModel.formulaSheets.length
     ? currentModel.formulaSheets
     : nativeModel.formulaSheets;
   return {
@@ -59969,9 +60025,9 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
       serviceName: nativeModel.serviceName,
       reportTitle: currentModel.reportTitle || nativeModel.reportTitle,
       coverSubtitle: currentModel.coverSubtitle || nativeModel.coverSubtitle,
-      measurementTableTitle: currentModel.measurementTableTitle || nativeModel.measurementTableTitle,
+      measurementTableTitle: isVesService ? "" : (currentModel.measurementTableTitle || nativeModel.measurementTableTitle),
       systemDescription: currentModel.systemDescription || (singleSystemDescription ? currentModel.technicalData : "") || nativeModel.systemDescription,
-      resultsText: singleSystemDescription ? "" : (currentModel.resultsText || nativeModel.resultsText),
+      resultsText: (singleSystemDescription || isVesService) ? "" : (currentModel.resultsText || nativeModel.resultsText),
       technicalData: singleSystemDescription ? "" : (currentModel.technicalData || nativeModel.technicalData),
       eiNote: currentModel.eiNote || nativeModel.eiNote,
       eiminNote: currentModel.eiminNote || nativeModel.eiminNote,
@@ -59984,7 +60040,7 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
       measurementTables: currentTables,
       formulaSheets: currentFormulaSheets,
       vesExerciseRows: normalizeDocumentationVesExerciseRows(currentModel.vesExerciseRows, nativeModel.vesExerciseRows),
-      gridlineModel: currentModel.gridlineModel || nativeModel.gridlineModel,
+      gridlineModel: isVesService ? nativeModel.gridlineModel : (currentModel.gridlineModel || nativeModel.gridlineModel),
     }),
   };
 }
@@ -62843,9 +62899,19 @@ function applyDocumentationSprModel(nextModel, {
   templateId = documentationSprTemplateLibrary.activeTemplateId,
   statusText = "Predložak učitan",
 } = {}) {
-  documentationSprModel = normalizeDocumentationSprModel(nextModel);
+  const activeTemplate = getDocumentationSprTemplateById(templateId);
+  const activeTemplateBinding = getDocumentationSprTemplateServiceBinding(activeTemplate);
+  const modelWithTemplateBinding = activeTemplateBinding
+    ? {
+      ...nextModel,
+      serviceBinding: activeTemplateBinding,
+      serviceCode: activeTemplateBinding.serviceCode || nextModel?.serviceCode || "",
+      serviceName: activeTemplateBinding.serviceName || nextModel?.serviceName || "",
+    }
+    : nextModel;
+  documentationSprModel = normalizeDocumentationSprModel(modelWithTemplateBinding);
   documentationSprTemplateLibrary.activeTemplateId = String(templateId || "").trim();
-  documentationSprDraftServiceBinding = getDocumentationSprTemplateServiceBinding(getDocumentationSprTemplateById(templateId))
+  documentationSprDraftServiceBinding = activeTemplateBinding
     || normalizeDocumentationSprServiceBinding(documentationSprModel.serviceBinding)
     || documentationSprDraftServiceBinding;
   writeDocumentationSprModelToForm();
@@ -65717,6 +65783,18 @@ function renderDocumentationSprSectionTitle(number, title) {
 }
 
 function getDocumentationSprServiceCode(model = documentationSprModel) {
+  const identity = [
+    model?.serviceBinding?.serviceCode,
+    model?.serviceBinding?.serviceName,
+    model?.serviceCode,
+    model?.serviceName,
+    model?.templateCode,
+    model?.reportTitle,
+    model?.coverSubtitle,
+  ].join(" ");
+  if (isDocumentationSprVesServiceIdentity(identity)) {
+    return "VES";
+  }
   const bindingCode = String(model?.serviceBinding?.serviceCode || model?.serviceCode || "").trim();
   if (bindingCode) {
     return normalizeDocumentTemplateRuntimeServiceCode(bindingCode) || bindingCode;

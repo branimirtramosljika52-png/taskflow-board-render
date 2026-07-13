@@ -5368,6 +5368,50 @@ export function createDocumentationMeasurementAssessmentsForService(serviceCode 
 
 export function createDocumentationNativeAiFieldsForService(serviceCode = "") {
   const preset = getDocumentationNativeReportPreset(serviceCode);
+  if (preset.serviceCode === "VES") {
+    return [
+      {
+        id: "systemDescription",
+        key: "systemDescription",
+        label: "Opis vjezbe evakuacije i spasavanja",
+        type: "richtext",
+        fieldType: "richtext",
+        required: false,
+        ai: makeSystemDescriptionAi({
+          key: "systemDescription",
+          label: "Opis vjezbe evakuacije i spasavanja",
+          defaultValue: preset.systemDescription || "",
+        }),
+      },
+      {
+        id: "vesExerciseRows",
+        key: "vesExerciseRows",
+        label: "Zborna mjesta",
+        type: "ves_exercise_rows",
+        fieldType: "ves_exercise_rows",
+        required: false,
+      },
+      {
+        id: "conclusionSentence",
+        key: "conclusionSentence",
+        label: "Zakljucna recenica",
+        type: "text",
+        fieldType: "textarea",
+        required: false,
+        ai: makeAiConfig({
+          key: "conclusionSentence",
+          label: "Zakljucna recenica",
+          type: "text",
+          group: "Zakljucak",
+          aiDescription: "Predlozi jednu kratku zakljucnu recenicu za zapisnik o provedenoj vjezbi evakuacije i spasavanja.",
+          aiLookFor: ["vjezba evakuacije", "zborno mjesto", "vrijeme izlaska", "broj osoba", "tijek vjezbe"],
+          aiAvoid: "Ne koristi ocjene zadovoljava/ne zadovoljava i ne izmisljaj nedostatke.",
+          fallbackValue: preset.conclusionSentence || "",
+          confidenceRequired: "medium",
+        }),
+      },
+    ];
+  }
   const resultContext = DOCUMENTATION_RESULT_AI_CONTEXT_BY_SERVICE[preset.serviceCode]
     || DOCUMENTATION_RESULT_AI_CONTEXT_GENERIC;
   const technicalFields = (preset.technicalDataFields || [])
