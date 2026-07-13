@@ -30873,6 +30873,7 @@ private val DOCUMENTATION_FLOW_TAB_ORDER = listOf(
     "SZOM",
     "SZOMV",
     "TZIN",
+    "VES",
     "VS",
     "FC",
     "KC",
@@ -31282,7 +31283,6 @@ private fun normalizeDocumentationFlowTabCode(code: String): String {
         "STROJEVI" -> "NO"
         "ROF" -> "FC"
         "ROK" -> "KC"
-        "VES" -> "VS"
         "NNZDPETROL" -> "NNZD"
         "HMU", "HMV", "HMUV" -> "HM"
         "SPR", "PANIK" -> "SRR"
@@ -43121,7 +43121,11 @@ private fun DocumentationSprMobileWorkspace(
         }
     }
 
-    val standardChapterCount = 2
+    val isVesDocumentation = remember(templates) {
+        templates.any { template -> template.nativeDocumentationServiceCode() == "VES" }
+    }
+    val showMeasurementEquipmentChapter = !isVesDocumentation
+    val standardChapterCount = if (showMeasurementEquipmentChapter) 2 else 1
     val displayedChapterCount = menuEntries.size + standardChapterCount
     val standardChapterInsertPosition = remember(menuEntries, standardChapterCount) {
         if (standardChapterCount <= 0) {
@@ -43213,29 +43217,31 @@ private fun DocumentationSprMobileWorkspace(
                     if (menuEntries.isNotEmpty()) {
                         menuEntries.forEachIndexed { entryPosition, entry ->
                             if (standardChapterInsertPosition >= 0 && entryPosition == standardChapterInsertPosition) {
-                                DocumentationSprStandardResourceChapterPanel(
-                                    key = "spr_measurement_equipment",
-                                    index = chapterIndex,
-                                    icon = Icons.Rounded.Work,
-                                    title = "Mjerna i ispitna oprema",
-                                    subtitle = if (selectedMeasurementEquipmentOptions.isEmpty()) {
-                                        "Odaberi uređaje za zapisnik"
-                                    } else {
-                                        "${selectedMeasurementEquipmentOptions.size} uređaja u zapisniku"
-                                    },
-                                    summaryChips = measurementEquipmentSummaryChips,
-                                    enabled = enabled,
-                                ) {
-                                    DocumentationMultiSelectField(
-                                        label = "Uređaji za zapisnik",
-                                        options = standardControls.measurementEquipmentOptions,
-                                        selectedIds = standardControls.selectedEquipmentIds,
-                                        enabled = standardControls.enabled,
-                                        emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
-                                        onChange = standardControls.onSelectedEquipmentIdsChange,
-                                    )
+                                if (showMeasurementEquipmentChapter) {
+                                    DocumentationSprStandardResourceChapterPanel(
+                                        key = "spr_measurement_equipment",
+                                        index = chapterIndex,
+                                        icon = Icons.Rounded.Work,
+                                        title = "Mjerna i ispitna oprema",
+                                        subtitle = if (selectedMeasurementEquipmentOptions.isEmpty()) {
+                                            "Odaberi uređaje za zapisnik"
+                                        } else {
+                                            "${selectedMeasurementEquipmentOptions.size} uređaja u zapisniku"
+                                        },
+                                        summaryChips = measurementEquipmentSummaryChips,
+                                        enabled = enabled,
+                                    ) {
+                                        DocumentationMultiSelectField(
+                                            label = "Uređaji za zapisnik",
+                                            options = standardControls.measurementEquipmentOptions,
+                                            selectedIds = standardControls.selectedEquipmentIds,
+                                            enabled = standardControls.enabled,
+                                            emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
+                                            onChange = standardControls.onSelectedEquipmentIdsChange,
+                                        )
+                                    }
+                                    chapterIndex += 1
                                 }
-                                chapterIndex += 1
 
                                 DocumentationSprStandardResourceChapterPanel(
                                     key = "spr_legal_frameworks",
@@ -43286,29 +43292,31 @@ private fun DocumentationSprMobileWorkspace(
                             chapterIndex += 1
                         }
                         if (standardChapterInsertPosition >= 0 && standardChapterInsertPosition >= menuEntries.size) {
-                            DocumentationSprStandardResourceChapterPanel(
-                                key = "spr_measurement_equipment",
-                                index = chapterIndex,
-                                icon = Icons.Rounded.Work,
-                                title = "Mjerna i ispitna oprema",
-                                subtitle = if (selectedMeasurementEquipmentOptions.isEmpty()) {
-                                    "Odaberi uređaje za zapisnik"
-                                } else {
-                                    "${selectedMeasurementEquipmentOptions.size} uređaja u zapisniku"
-                                },
-                                summaryChips = measurementEquipmentSummaryChips,
-                                enabled = enabled,
-                            ) {
-                                DocumentationMultiSelectField(
-                                    label = "Uređaji za zapisnik",
-                                    options = standardControls.measurementEquipmentOptions,
-                                    selectedIds = standardControls.selectedEquipmentIds,
-                                    enabled = standardControls.enabled,
-                                    emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
-                                    onChange = standardControls.onSelectedEquipmentIdsChange,
-                                )
+                            if (showMeasurementEquipmentChapter) {
+                                DocumentationSprStandardResourceChapterPanel(
+                                    key = "spr_measurement_equipment",
+                                    index = chapterIndex,
+                                    icon = Icons.Rounded.Work,
+                                    title = "Mjerna i ispitna oprema",
+                                    subtitle = if (selectedMeasurementEquipmentOptions.isEmpty()) {
+                                        "Odaberi uređaje za zapisnik"
+                                    } else {
+                                        "${selectedMeasurementEquipmentOptions.size} uređaja u zapisniku"
+                                    },
+                                    summaryChips = measurementEquipmentSummaryChips,
+                                    enabled = enabled,
+                                ) {
+                                    DocumentationMultiSelectField(
+                                        label = "Uređaji za zapisnik",
+                                        options = standardControls.measurementEquipmentOptions,
+                                        selectedIds = standardControls.selectedEquipmentIds,
+                                        enabled = standardControls.enabled,
+                                        emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
+                                        onChange = standardControls.onSelectedEquipmentIdsChange,
+                                    )
+                                }
+                                chapterIndex += 1
                             }
-                            chapterIndex += 1
 
                             DocumentationSprStandardResourceChapterPanel(
                                 key = "spr_legal_frameworks",
@@ -43334,29 +43342,31 @@ private fun DocumentationSprMobileWorkspace(
                             }
                         }
                     } else if (fallbackFieldTemplates.isNotEmpty()) {
-                        DocumentationSprStandardResourceChapterPanel(
-                            key = "spr_measurement_equipment",
-                            index = chapterIndex,
-                            icon = Icons.Rounded.Work,
-                            title = "Mjerna i ispitna oprema",
-                            subtitle = if (selectedMeasurementEquipmentOptions.isEmpty()) {
-                                "Odaberi uređaje za zapisnik"
-                            } else {
-                                "${selectedMeasurementEquipmentOptions.size} uređaja u zapisniku"
-                            },
-                            summaryChips = measurementEquipmentSummaryChips,
-                            enabled = enabled,
-                        ) {
-                            DocumentationMultiSelectField(
-                                label = "Uređaji za zapisnik",
-                                options = standardControls.measurementEquipmentOptions,
-                                selectedIds = standardControls.selectedEquipmentIds,
-                                enabled = standardControls.enabled,
-                                emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
-                                onChange = standardControls.onSelectedEquipmentIdsChange,
-                            )
+                        if (showMeasurementEquipmentChapter) {
+                            DocumentationSprStandardResourceChapterPanel(
+                                key = "spr_measurement_equipment",
+                                index = chapterIndex,
+                                icon = Icons.Rounded.Work,
+                                title = "Mjerna i ispitna oprema",
+                                subtitle = if (selectedMeasurementEquipmentOptions.isEmpty()) {
+                                    "Odaberi uređaje za zapisnik"
+                                } else {
+                                    "${selectedMeasurementEquipmentOptions.size} uređaja u zapisniku"
+                                },
+                                summaryChips = measurementEquipmentSummaryChips,
+                                enabled = enabled,
+                            ) {
+                                DocumentationMultiSelectField(
+                                    label = "Uređaji za zapisnik",
+                                    options = standardControls.measurementEquipmentOptions,
+                                    selectedIds = standardControls.selectedEquipmentIds,
+                                    enabled = standardControls.enabled,
+                                    emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
+                                    onChange = standardControls.onSelectedEquipmentIdsChange,
+                                )
+                            }
+                            chapterIndex += 1
                         }
-                        chapterIndex += 1
 
                         DocumentationSprStandardResourceChapterPanel(
                             key = "spr_legal_frameworks",
@@ -43391,29 +43401,31 @@ private fun DocumentationSprMobileWorkspace(
                             )
                         }
                     } else {
-                        DocumentationSprStandardResourceChapterPanel(
-                            key = "spr_measurement_equipment",
-                            index = chapterIndex,
-                            icon = Icons.Rounded.Work,
-                            title = "Mjerna i ispitna oprema",
-                            subtitle = if (selectedMeasurementEquipmentOptions.isEmpty()) {
-                                "Odaberi uređaje za zapisnik"
-                            } else {
-                                "${selectedMeasurementEquipmentOptions.size} uređaja u zapisniku"
-                            },
-                            summaryChips = measurementEquipmentSummaryChips,
-                            enabled = enabled,
-                        ) {
-                            DocumentationMultiSelectField(
-                                label = "Uređaji za zapisnik",
-                                options = standardControls.measurementEquipmentOptions,
-                                selectedIds = standardControls.selectedEquipmentIds,
-                                enabled = standardControls.enabled,
-                                emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
-                                onChange = standardControls.onSelectedEquipmentIdsChange,
-                            )
+                        if (showMeasurementEquipmentChapter) {
+                            DocumentationSprStandardResourceChapterPanel(
+                                key = "spr_measurement_equipment",
+                                index = chapterIndex,
+                                icon = Icons.Rounded.Work,
+                                title = "Mjerna i ispitna oprema",
+                                subtitle = if (selectedMeasurementEquipmentOptions.isEmpty()) {
+                                    "Odaberi uređaje za zapisnik"
+                                } else {
+                                    "${selectedMeasurementEquipmentOptions.size} uređaja u zapisniku"
+                                },
+                                summaryChips = measurementEquipmentSummaryChips,
+                                enabled = enabled,
+                            ) {
+                                DocumentationMultiSelectField(
+                                    label = "Uređaji za zapisnik",
+                                    options = standardControls.measurementEquipmentOptions,
+                                    selectedIds = standardControls.selectedEquipmentIds,
+                                    enabled = standardControls.enabled,
+                                    emptyText = "Nema upisane mjerne i ispitne opreme za ovu organizaciju.",
+                                    onChange = standardControls.onSelectedEquipmentIdsChange,
+                                )
+                            }
+                            chapterIndex += 1
                         }
-                        chapterIndex += 1
 
                         DocumentationSprStandardResourceChapterPanel(
                             key = "spr_legal_frameworks",
@@ -47875,6 +47887,7 @@ private fun findTemplateFieldForBlock(
 private fun templateBlockIcon(type: String): ImageVector =
     when (type.lowercase(Locale.getDefault())) {
         "measurement_table" -> Icons.Rounded.Description
+        "ves_exercise_rows" -> Icons.Rounded.Groups
         "equipment_list" -> Icons.Rounded.Work
         "legal_list" -> Icons.Rounded.Lock
         "qualified_inspectors", "inspector_signature", "authorization_holder_signature", "digital_signature" -> Icons.Rounded.Fingerprint
@@ -47883,6 +47896,206 @@ private fun templateBlockIcon(type: String): ImageVector =
         "system_description" -> Icons.Rounded.InsertDriveFile
         else -> Icons.Rounded.Description
     }
+
+private data class DocumentationVesExerciseRow(
+    val assemblyPoint: String = "",
+    val personCount: String = "",
+    val evacuationTime: String = "",
+    val note: String = "",
+)
+
+private fun JSONObject.optCleanString(vararg keys: String): String {
+    keys.forEach { key ->
+        if (has(key) && !isNull(key)) {
+            return optString(key, "").trim()
+        }
+    }
+    return ""
+}
+
+private fun normalizeDocumentationVesExerciseRows(value: String): List<DocumentationVesExerciseRow> {
+    val raw = value.trim()
+    val parsedRows = mutableListOf<DocumentationVesExerciseRow>()
+    if (raw.isNotBlank()) {
+        runCatching {
+            val array = when {
+                raw.startsWith("[") -> JSONArray(raw)
+                raw.startsWith("{") -> JSONObject(raw).optJSONArray("rows") ?: JSONArray()
+                else -> JSONArray()
+            }
+            repeat(array.length()) { index ->
+                val item = array.optJSONObject(index) ?: return@repeat
+                parsedRows += DocumentationVesExerciseRow(
+                    assemblyPoint = item.optCleanString("assemblyPoint", "zbornoMjesto", "assembly_point", "place", "name"),
+                    personCount = item.optCleanString("personCount", "brojOsoba", "person_count", "persons", "count"),
+                    evacuationTime = item.optCleanString("evacuationTime", "vrijemeIzlaska", "evacuation_time", "time"),
+                    note = item.optCleanString("note", "napomena"),
+                )
+            }
+        }
+    }
+    return parsedRows.ifEmpty { listOf(DocumentationVesExerciseRow()) }
+}
+
+private fun serializeDocumentationVesExerciseRows(rows: List<DocumentationVesExerciseRow>): String {
+    val safeRows = rows.ifEmpty { listOf(DocumentationVesExerciseRow()) }
+    val array = JSONArray()
+    safeRows.forEach { row ->
+        array.put(
+            JSONObject()
+                .put("assemblyPoint", row.assemblyPoint)
+                .put("personCount", row.personCount)
+                .put("evacuationTime", row.evacuationTime)
+                .put("note", row.note),
+        )
+    }
+    return array.toString()
+}
+
+@Composable
+private fun DocumentationVesExerciseRowsField(
+    label: String,
+    value: String,
+    enabled: Boolean,
+    onChange: (String) -> Unit,
+) {
+    val rows = remember(value) { normalizeDocumentationVesExerciseRows(value) }
+    fun emit(nextRows: List<DocumentationVesExerciseRow>) {
+        onChange(serializeDocumentationVesExerciseRows(nextRows))
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.Groups, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(19.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(label, fontWeight = FontWeight.Black)
+                    Text(
+                        "${rows.size} ${if (rows.size == 1) "zborno mjesto" else "zbornih mjesta"}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                    )
+                }
+            }
+
+            rows.forEachIndexed { index, row ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "Zborno mjesto ${index + 1}",
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Black,
+                            )
+                            IconButton(
+                                onClick = { emit(rows.filterIndexed { rowIndex, _ -> rowIndex != index }) },
+                                enabled = enabled && rows.size > 1,
+                            ) {
+                                Icon(Icons.Rounded.Delete, contentDescription = "Ukloni zborno mjesto", tint = Color(0xFFDC2626))
+                            }
+                        }
+                        OutlinedTextField(
+                            value = row.assemblyPoint,
+                            onValueChange = { nextValue ->
+                                emit(rows.mapIndexed { rowIndex, item ->
+                                    if (rowIndex == index) item.copy(assemblyPoint = nextValue) else item
+                                })
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Zborno mjesto") },
+                            singleLine = true,
+                            enabled = enabled,
+                            shape = RoundedCornerShape(14.dp),
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedTextField(
+                                value = row.personCount,
+                                onValueChange = { nextValue ->
+                                    emit(rows.mapIndexed { rowIndex, item ->
+                                        if (rowIndex == index) item.copy(personCount = nextValue) else item
+                                    })
+                                },
+                                modifier = Modifier.weight(1f),
+                                label = { Text("Broj osoba") },
+                                singleLine = true,
+                                enabled = enabled,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                shape = RoundedCornerShape(14.dp),
+                            )
+                            OutlinedTextField(
+                                value = row.evacuationTime,
+                                onValueChange = { nextValue ->
+                                    emit(rows.mapIndexed { rowIndex, item ->
+                                        if (rowIndex == index) item.copy(evacuationTime = nextValue) else item
+                                    })
+                                },
+                                modifier = Modifier.weight(1f),
+                                label = { Text("Vrijeme") },
+                                singleLine = true,
+                                enabled = enabled,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                shape = RoundedCornerShape(14.dp),
+                            )
+                        }
+                        OutlinedTextField(
+                            value = row.note,
+                            onValueChange = { nextValue ->
+                                emit(rows.mapIndexed { rowIndex, item ->
+                                    if (rowIndex == index) item.copy(note = nextValue) else item
+                                })
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Napomena") },
+                            minLines = 1,
+                            maxLines = 3,
+                            enabled = enabled,
+                            shape = RoundedCornerShape(14.dp),
+                        )
+                    }
+                }
+            }
+
+            OutlinedButton(
+                onClick = { emit(rows + DocumentationVesExerciseRow()) },
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Dodaj zborno mjesto", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
 
 @Composable
 private fun TemplateFieldGroup(
@@ -48010,6 +48223,12 @@ private fun TemplateFieldInput(
                 maxLines = 7,
                 helperText = "Upiši / za naslov, listu, tablicu ili napomenu. NexAI može prepisati projekt ili stari zapisnik.",
                 onOpenAiSource = onOpenAiSource,
+            )
+            "ves_exercise_rows" -> DocumentationVesExerciseRowsField(
+                label = label,
+                value = value.ifBlank { field.defaultValue },
+                enabled = enabled,
+                onChange = onChange,
             )
             "spr_voice" -> DocumentationSprVoiceField(
                 label = label,

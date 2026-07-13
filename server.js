@@ -118,7 +118,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.436.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.437.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -26784,6 +26784,19 @@ function buildMobileDocumentRecordWizardDefaults(record = null, workOrder = {}) 
     "LOCATION_NAME",
     "LOKACIJA",
   ]);
+  const previousVesRows = normalizeMobileVesExerciseRows(
+    fieldValuesForDefaults.vesExerciseRows
+    || fieldValuesForDefaults.VES_EXERCISE_ROWS
+    || fieldValuesForDefaults.ZBORNA_MJESTA,
+  );
+  if (previousVesRows.length > 0) {
+    const adjustedRows = adjustMobileVesExerciseRowsForReuse(
+      previousVesRows,
+      `${inspectionDate || issuedDate || ""}:${normalizeInputValue(record.recordNumber || record.workOrderNumber || record.id)}`,
+    );
+    fieldValuesForDefaults.vesExerciseRows = JSON.stringify(adjustedRows);
+    fieldValuesForDefaults.VES_EXERCISE_ROWS = fieldValuesForDefaults.vesExerciseRows;
+  }
 
   return {
     inspectionDate,
@@ -28005,7 +28018,7 @@ const MOBILE_NATIVE_DOCUMENTATION_PRESETS_LEGACY = Object.freeze([
     documentType: "Vježba evakuacije i spašavanja",
     reportTitle: "IZVRŠENJE VJEŽBE EVAKUACIJE I SPAŠAVANJA",
     coverSubtitle: "O IZVRŠENJU VJEŽBE EVAKUACIJE I SPAŠAVANJA",
-    measurementTableTitle: "Tablica 1. - pregled vježbe evakuacije i spašavanja",
+    measurementTableTitle: "",
     signatureAreas: ["elektro"],
   }),
   Object.freeze({
@@ -28415,9 +28428,10 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
   const measurementAssessments = Array.isArray(reportDefaults.measurementAssessments)
     ? reportDefaults.measurementAssessments
     : [];
-  const includeProjectDocumentation = true;
+  const isVesNativeDocumentation = preset.serviceCode === "VES";
+  const includeProjectDocumentation = !isVesNativeDocumentation;
   const includeSystemDescription = singleSystemDescription || normalizeInputValue(reportDefaults.systemDescription).length > 0;
-  const includeResultsText = !singleSystemDescription && normalizeInputValue(reportDefaults.resultsText).length > 0;
+  const includeResultsText = !isVesNativeDocumentation && !singleSystemDescription && normalizeInputValue(reportDefaults.resultsText).length > 0;
   const serviceWithCode = {
     ...service,
     serviceCode: preset.serviceCode,
@@ -28631,9 +28645,19 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       }),
     ] : []),
     ...(includeSystemDescription ? [
-      buildMobileNativeDocumentationField("systemDescription", "Opis sustava", "richtext", {
+      buildMobileNativeDocumentationField("systemDescription", isVesNativeDocumentation ? "Opis" : "Opis sustava", "richtext", {
         defaultValue: reportDefaults.systemDescription || "",
-        helpText: "Slobodan opis sustava prije rezultata ispitivanja.",
+        helpText: isVesNativeDocumentation ? "Slobodan opis tijeka vjezbe evakuacije i spasavanja." : "Slobodan opis sustava prije rezultata ispitivanja.",
+      }),
+    ] : []),
+    ...(isVesNativeDocumentation ? [
+      buildMobileNativeDocumentationField("vesExerciseRows", "Zborna mjesta", "ves_exercise_rows", {
+        defaultValue: JSON.stringify(reportDefaults.vesExerciseRows || []),
+        helpText: "Dodaj zborno mjesto, broj osoba i vrijeme izlaska. Plus dodaje novi red.",
+      }),
+      buildMobileNativeDocumentationField("conclusionSentence", "Zakljucna recenica", "textarea", {
+        defaultValue: reportDefaults.conclusionSentence || "",
+        helpText: "Slobodna zakljucna recenica za kraj zapisnika.",
       }),
     ] : []),
     ...(includeResultsText ? [
@@ -28647,6 +28671,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
     ...measurementTableUseFields,
     ...measurementVoiceFields,
     ...assessmentFields,
+    ...(!isVesNativeDocumentation ? [
     buildMobileNativeDocumentationField("recommendations", "Preporuke", "textarea", {
       defaultValue: "Preporuke",
       helpText: "Napomene ili preporuke za korisnika.",
@@ -28664,6 +28689,7 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         { value: "false", label: "Ne zadovoljava" },
       ],
     }),
+    ] : []),
   ];
   const area = preset.signatureAreas?.[0] || "elektro";
   const measurementFieldBlocks = measurementTables.map((table, index) => {
@@ -28896,11 +28922,13 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       }),
       ...technicalFieldBlocks,
     ] : []),
+    ...(!isVesNativeDocumentation ? [
     buildMobileNativeDocumentationBlock("chapter-equipment", "Mjerna i ispitna oprema", "chapter", {
       typeLabel: "Poglavlje",
       summary: "Oprema se bira iz modula Mjerna oprema.",
     }),
     buildMobileNativeDocumentationBlock("equipment", "Mjerna oprema", "equipment_list", { group: "Mjerna i ispitna oprema" }),
+    ] : []),
     buildMobileNativeDocumentationBlock("chapter-legal", "Primijenjeni propisi", "chapter", {
       typeLabel: "Poglavlje",
       summary: "Propisi se biraju iz Legal framework modula.",
@@ -28919,15 +28947,27 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       }),
     ] : []),
     ...(includeSystemDescription ? [
-      buildMobileNativeDocumentationBlock("chapter-system-description", "Opis sustava", "chapter", {
+      buildMobileNativeDocumentationBlock("chapter-system-description", isVesNativeDocumentation ? "Opis" : "Opis sustava", "chapter", {
         typeLabel: "Poglavlje",
         summary: "Slobodan opis izvedenog stanja i dijelova sustava.",
       }),
-      buildMobileNativeDocumentationBlock("systemDescription", "Opis sustava", "richtext", {
-        group: "Opis sustava",
+      buildMobileNativeDocumentationBlock("systemDescription", isVesNativeDocumentation ? "Opis" : "Opis sustava", "richtext", {
+        group: isVesNativeDocumentation ? "Opis" : "Opis sustava",
         editable: true,
         summary: "Dodaj opis sustava, napomene, popise ili tablične podatke.",
         helpText: "Ovo poglavlje se ispisuje prije rezultata ispitivanja.",
+      }),
+    ] : []),
+    ...(isVesNativeDocumentation ? [
+      buildMobileNativeDocumentationBlock("chapter-ves-exercise", "Zborna mjesta", "chapter", {
+        typeLabel: "Poglavlje",
+        summary: "Zborno mjesto, broj osoba i vrijeme izlaska.",
+      }),
+      buildMobileNativeDocumentationBlock("vesExerciseRows", "Zborna mjesta", "ves_exercise_rows", {
+        group: "Zborna mjesta",
+        editable: true,
+        summary: "Dodaj red za svako zborno mjesto.",
+        helpText: "Plus dodaje novi red, a vrijednosti se spremaju uz zapisnik.",
       }),
     ] : []),
     ...(includeResultsText ? [
@@ -28970,6 +29010,13 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       typeLabel: "Poglavlje",
       summary: "Ocjena određuje prikaz nedostataka.",
     }),
+    ...(isVesNativeDocumentation ? [
+      buildMobileNativeDocumentationBlock("conclusionSentence", "Zakljucna recenica", "textarea", {
+        group: "Zakljucna recenica",
+        editable: true,
+        summary: reportDefaults.conclusionSentence || "",
+      }),
+    ] : [
     buildMobileNativeDocumentationBlock("recommendations", "Preporuke", "textarea", {
       group: "Preporuke i zaključna ocjena",
       editable: true,
@@ -28983,7 +29030,15 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
       group: "Preporuke i zaključna ocjena",
       editable: true,
     }),
+    ]),
   ];
+  if (isVesNativeDocumentation) {
+    const conclusionBlock = fieldBlocks.find((block) => block.id === "chapter-conclusion");
+    if (conclusionBlock) {
+      conclusionBlock.label = "Zakljucna recenica";
+      conclusionBlock.summary = "Slobodan zakljucni tekst zapisnika.";
+    }
+  }
   if (hasCertificate) {
     fieldBlocks.push(buildMobileNativeDocumentationBlock("certificateFactualNote", "Napomena kada se uvjerenje ne izdaje", "textarea", {
       group: "Preporuke i zakljucna ocjena",
@@ -33767,6 +33822,71 @@ function resolveMobileDocumentationInspectionType(common = {}, placeholders = {}
   return "Periodi\u010Dno ispitivanje";
 }
 
+function normalizeMobileVesExerciseRows(value = [], fallback = []) {
+  let source = value;
+  if (typeof source === "string") {
+    const trimmed = source.trim();
+    if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        source = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.rows) ? parsed.rows : []);
+      } catch {
+        source = [];
+      }
+    } else {
+      source = [];
+    }
+  }
+  if (!Array.isArray(source) || source.length === 0) {
+    source = Array.isArray(fallback) ? fallback : [];
+  }
+  return source.map((entry, index) => {
+    const item = entry && typeof entry === "object" ? entry : {};
+    return {
+      id: normalizeInputValue(item.id) || `ves-row-${index + 1}`,
+      assemblyPoint: normalizeInputValue(item.assemblyPoint || item.zbornoMjesto || item.place),
+      personCount: normalizeInputValue(item.personCount || item.brojOsoba || item.people),
+      evacuationTime: normalizeInputValue(item.evacuationTime || item.vrijemeIzlaska || item.time),
+      note: normalizeInputValue(item.note || item.napomena),
+    };
+  }).filter((row) => row.assemblyPoint || row.personCount || row.evacuationTime || row.note);
+}
+
+function getMobileVesTimeVariationFactor(seed = "", index = 0) {
+  const text = `${seed || ""}:${index + 1}`;
+  let hash = 0;
+  for (const char of text) {
+    hash = ((hash * 31) + char.charCodeAt(0)) % 9973;
+  }
+  const offset = ((hash % 9) - 4) / 100;
+  return offset === 0 ? 1.02 : 1 + offset;
+}
+
+function varyMobileVesExerciseTime(value = "", factor = 1) {
+  const text = normalizeInputValue(value);
+  const match = text.match(/(\d+(?:[,.]\d+)?)/);
+  if (!match) {
+    return text;
+  }
+  const numeric = Number(match[1].replace(",", "."));
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return text;
+  }
+  const varied = Math.max(1, Math.round(numeric * factor));
+  return `${text.slice(0, match.index)}${varied}${text.slice((match.index || 0) + match[1].length)}`;
+}
+
+function adjustMobileVesExerciseRowsForReuse(rows = [], seed = "") {
+  return normalizeMobileVesExerciseRows(rows).map((row, index) => ({
+    ...row,
+    id: `ves-row-${index + 1}`,
+    evacuationTime: varyMobileVesExerciseTime(
+      row.evacuationTime,
+      getMobileVesTimeVariationFactor(seed, index),
+    ),
+  }));
+}
+
 function buildMobileDocumentationSprModel({
   entry = {},
   template = {},
@@ -33808,6 +33928,7 @@ function buildMobileDocumentationSprModel({
     || getMobileSprFirstValue(placeholders, ["ODGOVORNA_OSOBA", "RESPONSIBLE_PERSON", "POTPISNIK"]);
   const signatureOib = getMobileSprSignatureOib(common, scopedSnapshot, signatureArea);
   const serviceCode = normalizeInputValue(entry.serviceCode || template.serviceCode || placeholders.SIFRA_USLUGE || "SRR");
+  const isVesNativeDocumentation = normalizeInputValue(serviceCode).toUpperCase() === "VES";
   const reportDefaults = createDocumentationReportModelDefaults(serviceCode);
   const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(serviceCode);
   const headerImage = resolveMobileDocumentationHeaderImage({
@@ -33890,7 +34011,7 @@ function buildMobileDocumentationSprModel({
     providerWebsite: normalizeInputValue(organization.website || organization.web),
     reportTitle: normalizeInputValue(template.reportTitle || entry.reportTitle || reportDefaults.reportTitle),
     coverSubtitle: normalizeInputValue(template.coverSubtitle || entry.coverSubtitle || reportDefaults.coverSubtitle),
-    measurementTableTitle: normalizeInputValue(template.measurementTableTitle || entry.measurementTableTitle || reportDefaults.measurementTableTitle),
+    measurementTableTitle: isVesNativeDocumentation ? "" : normalizeInputValue(template.measurementTableTitle || entry.measurementTableTitle || reportDefaults.measurementTableTitle),
     recordNumber: normalizeInputValue(entry.documentNumber || placeholders.BROJ_ZAPISNIKA || placeholders.DOCUMENT_NUMBER),
     hasCertificate,
     issueCertificate,
@@ -33913,11 +34034,11 @@ function buildMobileDocumentationSprModel({
     inspectionDate: formatMobileSprDate(inspectionDate),
     issueDate: formatMobileSprDate(issuedDate),
     validUntil: formatMobileSprDate(validUntil),
-    equipment: normalizeInputValue(common.equipment || common.fieldValues?.MEASUREMENT_EQUIPMENT || common.fieldValues?.MJERNA_OPREMA)
+    equipment: isVesNativeDocumentation ? "" : normalizeInputValue(common.equipment || common.fieldValues?.MEASUREMENT_EQUIPMENT || common.fieldValues?.MJERNA_OPREMA)
       || getMobileSprEquipmentText(template, scopedSnapshot, common),
     regulations: normalizeInputValue(common.regulations || common.fieldValues?.REGULATIONS || common.fieldValues?.PRIMIJENJENI_PROPISI)
       || getMobileSprRegulationsText(template, scopedSnapshot, common),
-    projectDocumentation: normalizeInputValue(
+    projectDocumentation: isVesNativeDocumentation ? "" : normalizeInputValue(
       common.projectDocumentation
       || common.fieldValues?.KORISTENA_DOKUMENTACIJA
       || common.fieldValues?.PROJECT_DOCUMENTATION
@@ -33934,6 +34055,8 @@ function buildMobileDocumentationSprModel({
       : (explicitTechnicalData || buildMobileDocumentationTechnicalDataText(template, reportDefaults, common, placeholders)),
     systemDescription: resolvedSystemDescription,
     resultsText: singleSystemDescription
+      ? ""
+      : isVesNativeDocumentation
       ? ""
       : getMobileDocumentationTemplateFieldValues(common, template, ["resultsText", "REZULTATI_TEKST", "RESULTS_TEXT", "OPIS_ISPITIVANJA", "REZULTATI_ISPITIVANJA"])
       || getMobileSprFirstValue(placeholders, ["OPIS_ISPITIVANJA", "REZULTATI_TEKST", "RESULTS_TEXT", "REZULTATI_ISPITIVANJA"])
@@ -33965,7 +34088,21 @@ function buildMobileDocumentationSprModel({
     ),
     headerImageDataUrl: headerImage.dataUrl,
     headerImageName: headerImage.name,
-    measurementEquipmentIds: common.selectedEquipmentIds || [],
+    conclusionSentence: normalizeInputValue(
+      getMobileDocumentationTemplateFieldValues(common, template, ["conclusionSentence", "ZAKLJUCNA_RECENICA", "VES_CONCLUSION_SENTENCE"])
+      || common.fieldValues?.conclusionSentence
+      || common.fieldValues?.CONCLUSION_SENTENCE
+      || common.fieldValues?.ZAKLJUCNA_RECENICA
+      || reportDefaults.conclusionSentence
+    ),
+    vesExerciseRows: normalizeMobileVesExerciseRows(
+      getMobileDocumentationTemplateFieldValues(common, template, ["vesExerciseRows", "VES_EXERCISE_ROWS", "ZBORNA_MJESTA"])
+      || common.fieldValues?.vesExerciseRows
+      || common.fieldValues?.VES_EXERCISE_ROWS
+      || common.fieldValues?.ZBORNA_MJESTA,
+      reportDefaults.vesExerciseRows || [],
+    ),
+    measurementEquipmentIds: isVesNativeDocumentation ? [] : (common.selectedEquipmentIds || []),
     legalFrameworkIds: common.selectedLegalFrameworkIds || [],
     customRegulations: [],
     customObjects: [],
@@ -33973,11 +34110,11 @@ function buildMobileDocumentationSprModel({
     responsiblePersonUserId: getMobileDocumentSignatureAuthorizationIds(common, signatureArea)[0] || "",
     fieldSettings: {},
     attachments: resolveMobileDocumentationAttachmentsForTemplate(common, template.id),
-    checklists: buildMobileDocumentationChecklists(template, reportDefaults, common),
-    measurementAssessments: buildMobileDocumentationMeasurementAssessments(template, reportDefaults, common),
-    measurementTables: buildMobileDocumentationMeasurementTables(entry, template, common, serviceCode),
+    checklists: isVesNativeDocumentation ? [] : buildMobileDocumentationChecklists(template, reportDefaults, common),
+    measurementAssessments: isVesNativeDocumentation ? [] : buildMobileDocumentationMeasurementAssessments(template, reportDefaults, common),
+    measurementTables: isVesNativeDocumentation ? [] : buildMobileDocumentationMeasurementTables(entry, template, common, serviceCode),
     formulaSheets: Array.isArray(template.formulaSheets) && template.formulaSheets.length
-      ? template.formulaSheets
+      ? (isVesNativeDocumentation ? [] : template.formulaSheets)
       : (Array.isArray(reportDefaults.formulaSheets) ? reportDefaults.formulaSheets : createDocumentationFormulaSheetsForService(serviceCode)),
   };
 }

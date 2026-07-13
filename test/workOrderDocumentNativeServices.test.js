@@ -41,7 +41,7 @@ test("documentation service codes normalize to the requested zapisnici tab label
   assert.equal(normalizeDocumentTemplateRuntimeServiceCode("ROK"), "KC");
   assert.equal(normalizeDocumentTemplateRuntimeServiceCode("NNZDPETROL"), "NNZD");
   assert.equal(normalizeDocumentTemplateRuntimeServiceCode("HMUV"), "HM");
-  assert.equal(normalizeDocumentTemplateRuntimeServiceCode("VES"), "VS");
+  assert.equal(normalizeDocumentTemplateRuntimeServiceCode("VES"), "VES");
   assert.equal(normalizeDocumentTemplateRuntimeServiceCode("SRR"), "SRR");
   assert.equal(normalizeDocumentTemplateRuntimeServiceCode("SPR"), "SRR");
   assert.equal(normalizeDocumentTemplateRuntimeServiceCode("PANIK"), "SRR");

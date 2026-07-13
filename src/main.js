@@ -4080,6 +4080,8 @@ const documentationSprRegulationsSection = document.querySelector("#documentatio
 const documentationSprProjectSection = document.querySelector("#documentation-spr-project-section");
 const documentationSprSystemSection = document.querySelector("#documentation-spr-system-section");
 const documentationSprResultsSection = document.querySelector("#documentation-spr-results-section");
+const documentationSprVesExerciseSection = document.querySelector("#documentation-spr-ves-exercise-section");
+const documentationSprVesExerciseRowsEditor = document.querySelector("#documentation-spr-ves-exercise-rows");
 const documentationSprChecklistsSection = document.querySelector("#documentation-spr-checklists-section");
 const documentationSprChecklistsEditor = document.querySelector("#documentation-spr-checklists-editor");
 const documentationSprNativeMeasurementsSection = document.querySelector("#documentation-spr-native-measurements-section");
@@ -58608,6 +58610,8 @@ const DOCUMENTATION_SPR_FIELD_LABELS = Object.freeze({
   projectDocumentation: "Korištena dokumentacija",
   systemDescription: "Opis sustava",
   resultsText: "Rezultati ispitivanja",
+  vesExerciseRows: "Zborna mjesta",
+  conclusionSentence: "Zaključna rečenica",
   measurementEquipmentIds: "Mjerna oprema",
   legalFrameworkIds: "Propisi",
   inspectorUserIds: "Ispitivači",
@@ -58744,6 +58748,7 @@ function createDefaultDocumentationSprModel() {
     assessmentLabel: "",
     conclusionLead: "",
     validitySentence: "",
+    conclusionSentence: "",
     inspectors: "",
     responsiblePerson: "",
     signatureClass: "UP/I-133-02/25-02/26",
@@ -58771,6 +58776,7 @@ function createDefaultDocumentationSprModel() {
     measurementAssessments: [],
     measurementTables: [],
     formulaSheets: [],
+    vesExerciseRows: [],
     gridlineModel: buildDocumentationSprGridlineModelFromRows(getDocumentationSprBlankRows()),
   };
 }
@@ -58822,6 +58828,7 @@ function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
     assessmentLabel: "",
     conclusionLead: "",
     validitySentence: "",
+    conclusionSentence: "",
     inspectors: "",
     responsiblePerson: "",
     signatureClass: "",
@@ -58846,6 +58853,7 @@ function createBlankDocumentationSprTemplateModel(name = "Novi predložak") {
     aiSources: [],
     attachments: [],
     measurementTables: [],
+    vesExerciseRows: [],
     gridlineModel: buildDocumentationSprGridlineModelFromRows(getDocumentationSprBlankRows()),
   };
 }
@@ -59270,11 +59278,86 @@ function normalizeDocumentationSprBoolean(value, defaultValue = false) {
   return Boolean(defaultValue);
 }
 
+function normalizeDocumentationVesExerciseRows(value = [], fallback = []) {
+  let source = value;
+  if (typeof source === "string") {
+    const trimmed = source.trim();
+    if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        source = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.rows) ? parsed.rows : []);
+      } catch {
+        source = [];
+      }
+    } else {
+      source = [];
+    }
+  }
+  if (!Array.isArray(source) || source.length === 0) {
+    source = Array.isArray(fallback) ? fallback : [];
+  }
+  const rows = source.map((entry, index) => {
+    const item = entry && typeof entry === "object" ? entry : {};
+    return {
+      id: String(item.id || `ves-row-${index + 1}`).trim(),
+      assemblyPoint: String(item.assemblyPoint || item.zbornoMjesto || item.place || "").trim(),
+      personCount: String(item.personCount || item.brojOsoba || item.people || "").trim(),
+      evacuationTime: String(item.evacuationTime || item.vrijemeIzlaska || item.time || "").trim(),
+      note: String(item.note || item.napomena || "").trim(),
+    };
+  }).filter((row) => (
+    row.assemblyPoint || row.personCount || row.evacuationTime || row.note
+  ));
+  return rows.length > 0 ? rows : [{
+    id: "ves-row-1",
+    assemblyPoint: "",
+    personCount: "",
+    evacuationTime: "",
+    note: "",
+  }];
+}
+
+function getDocumentationVesTimeVariationFactor(seed = "", index = 0) {
+  const text = `${seed || ""}:${index + 1}`;
+  let hash = 0;
+  for (const char of text) {
+    hash = ((hash * 31) + char.charCodeAt(0)) % 9973;
+  }
+  const offset = ((hash % 9) - 4) / 100;
+  return offset === 0 ? 1.02 : 1 + offset;
+}
+
+function varyDocumentationVesExerciseTime(value = "", factor = 1) {
+  const text = String(value || "").trim();
+  const match = text.match(/(\d+(?:[,.]\d+)?)/);
+  if (!match) {
+    return text;
+  }
+  const numeric = Number(match[1].replace(",", "."));
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return text;
+  }
+  const varied = Math.max(1, Math.round(numeric * factor));
+  return `${text.slice(0, match.index)}${varied}${text.slice((match.index || 0) + match[1].length)}`;
+}
+
+function adjustDocumentationVesExerciseRowsForReuse(rows = [], seed = "") {
+  return normalizeDocumentationVesExerciseRows(rows).map((row, index) => ({
+    ...row,
+    id: `ves-row-${index + 1}`,
+    evacuationTime: varyDocumentationVesExerciseTime(
+      row.evacuationTime,
+      getDocumentationVesTimeVariationFactor(seed, index),
+    ),
+  }));
+}
+
 function normalizeDocumentationSprModel(value) {
   const fallback = createDefaultDocumentationSprModel();
   const source = value && typeof value === "object" ? value : {};
   const normalizedServiceCode = getDocumentationSprServiceCode({ ...fallback, ...source });
   const serviceDefaults = createDocumentationReportModelDefaults(normalizedServiceCode);
+  const isVesService = String(serviceDefaults.serviceCode || normalizedServiceCode || "").trim().toUpperCase() === "VES";
   const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(serviceDefaults.serviceCode || normalizedServiceCode);
   const defaultTechnicalData = formatDocumentationTechnicalDataFields(serviceDefaults.technicalDataFields || []);
   const inspectorUserIds = normalizeDocumentationSprIdList(source.inspectorUserIds);
@@ -59294,7 +59377,7 @@ function normalizeDocumentationSprModel(value) {
     serviceName: source.serviceName || serviceDefaults.serviceName || fallback.serviceName,
     reportTitle: source.reportTitle || serviceDefaults.reportTitle || fallback.reportTitle,
     coverSubtitle: source.coverSubtitle || serviceDefaults.coverSubtitle || fallback.coverSubtitle,
-    measurementTableTitle: source.measurementTableTitle || serviceDefaults.measurementTableTitle || fallback.measurementTableTitle,
+    measurementTableTitle: isVesService ? "" : (source.measurementTableTitle || serviceDefaults.measurementTableTitle || fallback.measurementTableTitle),
     hasCertificate,
     issueCertificate: hasCertificate
       ? normalizeDocumentationSprBoolean(source.issueCertificate ?? source.IZDAJE_UVJERENJE, source.issueCertificate ?? fallback.issueCertificate ?? true)
@@ -59305,17 +59388,18 @@ function normalizeDocumentationSprModel(value) {
     certificateResultText: source.certificateResultText || serviceDefaults.certificateResultText || fallback.certificateResultText || "",
     certificateFactualNote: String(source.certificateFactualNote || source.NAPOMENA_BEZ_UVJERENJA || "").trim(),
     systemDescription: sourceSystemDescription || (singleSystemDescription ? sourceTechnicalData : "") || serviceDefaults.systemDescription || fallback.systemDescription || "",
-    resultsText: singleSystemDescription ? "" : (source.resultsText || source.OPIS_ISPITIVANJA || source.REZULTATI_ISPITIVANJA || serviceDefaults.resultsText || fallback.resultsText),
+    resultsText: singleSystemDescription || isVesService ? "" : (source.resultsText || source.OPIS_ISPITIVANJA || source.REZULTATI_ISPITIVANJA || serviceDefaults.resultsText || fallback.resultsText),
     assessmentLabel: source.assessmentLabel || serviceDefaults.assessmentLabel || fallback.assessmentLabel,
     conclusionLead: source.conclusionLead || serviceDefaults.conclusionLead || fallback.conclusionLead,
     validitySentence: source.validitySentence || serviceDefaults.validitySentence || fallback.validitySentence,
+    conclusionSentence: String(source.conclusionSentence || source.ZAKLJUCNA_RECENICA || serviceDefaults.conclusionSentence || fallback.conclusionSentence || "").trim(),
     layoutPreset: normalizeDocumentationSprLayoutPreset(source.layoutPreset || fallback.layoutPreset),
     inspectionObjectId: String(source.inspectionObjectId || "").trim(),
     inspectionType: normalizeDocumentationSprInspectionType(source.inspectionType || fallback.inspectionType),
     inspectionDate: formatDocumentationSprDateFromSource(source.inspectionDate || fallback.inspectionDate),
     issueDate: formatDocumentationSprDateFromSource(source.issueDate || fallback.issueDate),
     validUntil: formatDocumentationSprDateFromSource(source.validUntil || fallback.validUntil),
-    measurementEquipmentIds: normalizeDocumentationSprIdList(source.measurementEquipmentIds),
+    measurementEquipmentIds: isVesService ? [] : normalizeDocumentationSprIdList(source.measurementEquipmentIds),
     legalFrameworkIds: normalizeDocumentationSprIdList(source.legalFrameworkIds),
     customRegulations: normalizeDocumentationSprTextList(source.customRegulations),
     customObjects: normalizeDocumentationSprCustomObjects(source.customObjects),
@@ -59331,10 +59415,12 @@ function normalizeDocumentationSprModel(value) {
     aiSources: normalizeDocumentationSprAiSources(source.aiSources),
     attachments: normalizeDocumentationSprAttachments(source.attachments),
     technicalData: singleSystemDescription ? "" : String(source.technicalData || defaultTechnicalData || fallback.technicalData || "").trim(),
-    checklists: normalizeDocumentationSprChecklists(source.checklists, { ...fallback, ...source }),
-    measurementAssessments: normalizeDocumentationSprMeasurementAssessments(source.measurementAssessments, { ...fallback, ...source }),
-    measurementTables: normalizeDocumentationSprMeasurementTables(source.measurementTables, { ...fallback, ...source }),
-    formulaSheets: normalizeDocumentationSprFormulaSheets(source.formulaSheets, { ...fallback, ...source }),
+    projectDocumentation: isVesService ? "" : String(source.projectDocumentation || source.KORISTENA_DOKUMENTACIJA || serviceDefaults.projectDocumentation || fallback.projectDocumentation || "").trim(),
+    checklists: isVesService ? [] : normalizeDocumentationSprChecklists(source.checklists, { ...fallback, ...source }),
+    measurementAssessments: isVesService ? [] : normalizeDocumentationSprMeasurementAssessments(source.measurementAssessments, { ...fallback, ...source }),
+    measurementTables: isVesService ? [] : normalizeDocumentationSprMeasurementTables(source.measurementTables, { ...fallback, ...source }),
+    formulaSheets: isVesService ? [] : normalizeDocumentationSprFormulaSheets(source.formulaSheets, { ...fallback, ...source }),
+    vesExerciseRows: normalizeDocumentationVesExerciseRows(source.vesExerciseRows || source.VES_EXERCISE_ROWS, serviceDefaults.vesExerciseRows || fallback.vesExerciseRows),
     previewHidden: Boolean(source.previewHidden),
     headerImageDataUrl: String(source.headerImageDataUrl || "").trim(),
     headerImageName: String(source.headerImageName || "").trim(),
@@ -59780,11 +59866,15 @@ function buildDocumentationNativeTemplateModel(preset = {}) {
     assessmentLabel: preset.assessmentLabel || reportDefaults.assessmentLabel,
     conclusionLead: preset.conclusionLead || reportDefaults.conclusionLead,
     validitySentence: preset.validitySentence || reportDefaults.validitySentence,
+    conclusionSentence: preset.conclusionSentence || reportDefaults.conclusionSentence || "",
     checklists: reportDefaults.checklists || [],
     measurementAssessments: reportDefaults.measurementAssessments || [],
     measurementTables: reportDefaults.measurementTables,
     formulaSheets: reportDefaults.formulaSheets || [],
-    gridlineModel: buildDocumentationSprGridlineModelFromRows(createDocumentationGridlineRowsForService(reportDefaults.serviceCode)),
+    vesExerciseRows: normalizeDocumentationVesExerciseRows(preset.vesExerciseRows || reportDefaults.vesExerciseRows),
+    gridlineModel: reportDefaults.serviceCode === "VES"
+      ? buildDocumentationSprGridlineModelFromRows(getDocumentationSprBlankRows())
+      : buildDocumentationSprGridlineModelFromRows(createDocumentationGridlineRowsForService(reportDefaults.serviceCode)),
     recordNumber: `25-1287-${preset.serviceCode || "SRR"}`,
   };
 }
@@ -59888,10 +59978,12 @@ function refreshDocumentationNativeTemplateEntry(entry = {}) {
       assessmentLabel: currentModel.assessmentLabel || nativeModel.assessmentLabel,
       conclusionLead: currentModel.conclusionLead || nativeModel.conclusionLead,
       validitySentence: currentModel.validitySentence || nativeModel.validitySentence,
+      conclusionSentence: currentModel.conclusionSentence || nativeModel.conclusionSentence,
       checklists: currentChecklists,
       measurementAssessments: currentAssessments,
       measurementTables: currentTables,
       formulaSheets: currentFormulaSheets,
+      vesExerciseRows: normalizeDocumentationVesExerciseRows(currentModel.vesExerciseRows, nativeModel.vesExerciseRows),
       gridlineModel: currentModel.gridlineModel || nativeModel.gridlineModel,
     }),
   };
@@ -61431,6 +61523,7 @@ function applyDocumentationSprPreviousRecordToModel(model = {}, entry = {}, reco
   const previousMeasurementTables = getDocumentationSprPreviousRecordMeasurementTables(record, next);
   const previousAttachments = getDocumentationSprPreviousRecordAttachments(record);
   const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(getDocumentationSprServiceCode(next));
+  const isVesService = getDocumentationSprServiceCode(next) === "VES";
   if (previousMeasurementTables.length > 0) {
     next.measurementTables = previousMeasurementTables;
   }
@@ -61468,6 +61561,33 @@ function applyDocumentationSprPreviousRecordToModel(model = {}, entry = {}, reco
     || next.defects;
   next.recommendations = fieldText(["DOCUMENTATION_SPR_RECOMMENDATIONS", "SPR_RECOMMENDATIONS", "RECOMMENDATIONS", "PREPORUKE"])
     || next.recommendations;
+  if (isVesService) {
+    const previousRowsValue = getDocumentationSprPreviousRecordFieldValue(record, [
+      "VES_EXERCISE_ROWS",
+      "vesExerciseRows",
+      "ZBORNA_MJESTA",
+      "ZBORNO_MJESTO_ROWS",
+    ]);
+    const previousRows = normalizeDocumentationVesExerciseRows(previousRowsValue, []);
+    if (previousRows.some((row) => row.assemblyPoint || row.personCount || row.evacuationTime || row.note)) {
+      next.vesExerciseRows = adjustDocumentationVesExerciseRowsForReuse(
+        previousRows,
+        `${next.inspectionDate || ""}:${previousLabel}`,
+      );
+    }
+    next.conclusionSentence = fieldText([
+      "CONCLUSION_SENTENCE",
+      "ZAKLJUCNA_RECENICA",
+      "VES_CONCLUSION_SENTENCE",
+      "VES_ZAKLJUCNA_RECENICA",
+    ]) || next.conclusionSentence;
+    next.measurementEquipmentIds = [];
+    next.measurementAssessments = [];
+    next.measurementTables = [];
+    next.formulaSheets = [];
+    next.projectDocumentation = "";
+    next.resultsText = "";
+  }
   next.sourceType = "previous_inspection";
   next.sourceRecordId = String(record.id || "").trim();
   next.sourceRecordLabel = previousLabel;
@@ -63485,6 +63605,23 @@ function syncDocumentationSprConclusionUi() {
   const defectsTextarea = defectsField?.querySelector("[data-documentation-spr-field='defects']");
   const icon = documentationSprConclusionSection.querySelector(".documentation-spr-result-icon");
   const title = documentationSprConclusionSection.querySelector(".documentation-spr-section-title strong");
+  const conclusionGrid = documentationSprConclusionSection.querySelector(".documentation-spr-conclusion-grid");
+  const conclusionSentenceField = documentationSprConclusionSection.querySelector(".documentation-spr-conclusion-sentence-field");
+  const isVesService = getDocumentationSprIsVesService(documentationSprModel);
+  if (conclusionGrid instanceof HTMLElement) {
+    conclusionGrid.hidden = isVesService;
+  }
+  if (conclusionSentenceField instanceof HTMLElement) {
+    conclusionSentenceField.hidden = !isVesService;
+  }
+  if (isVesService) {
+    if (title) {
+      title.textContent = "Zaključna rečenica";
+    }
+    documentationSprConclusionSection.classList.remove("is-failing");
+    documentationSprConclusionSection.classList.add("is-passing");
+    return;
+  }
   documentationSprConclusionSection.classList.toggle("is-failing", failing);
   documentationSprConclusionSection.classList.toggle("is-passing", !failing);
   if (title) {
@@ -64578,6 +64715,99 @@ function renderDocumentationSprAssessmentsEditor() {
   `;
 }
 
+function getDocumentationSprIsVesService(model = documentationSprModel) {
+  return getDocumentationSprServiceCode(model) === "VES";
+}
+
+function createDocumentationVesExerciseInput(rowIndex, fieldName, label, value = "", inputMode = "text") {
+  const labelNode = document.createElement("label");
+  const span = document.createElement("span");
+  const input = document.createElement("input");
+  labelNode.className = "field documentation-spr-field";
+  span.textContent = label;
+  input.type = "text";
+  input.value = String(value || "");
+  input.dataset.documentationSprVesRowField = fieldName;
+  input.dataset.documentationSprVesRowIndex = String(rowIndex);
+  if (inputMode) {
+    input.inputMode = inputMode;
+  }
+  labelNode.append(span, input);
+  return labelNode;
+}
+
+function renderDocumentationSprVesExerciseRowsEditor() {
+  if (!(documentationSprVesExerciseRowsEditor instanceof HTMLElement) || !documentationSprModel) {
+    return;
+  }
+  const rows = normalizeDocumentationVesExerciseRows(documentationSprModel.vesExerciseRows);
+  documentationSprModel.vesExerciseRows = rows;
+  documentationSprVesExerciseRowsEditor.replaceChildren(...rows.map((row, index) => {
+    const card = document.createElement("section");
+    const head = document.createElement("div");
+    const title = document.createElement("strong");
+    const removeButton = document.createElement("button");
+    card.className = "documentation-spr-source-block";
+    head.className = "documentation-spr-source-head";
+    title.textContent = `Zborno mjesto ${index + 1}`;
+    removeButton.type = "button";
+    removeButton.className = "ghost-button";
+    removeButton.textContent = "Makni";
+    removeButton.dataset.documentationSprVesRowRemove = String(index);
+    removeButton.disabled = rows.length <= 1;
+    head.append(title, removeButton);
+    card.append(
+      head,
+      createDocumentationVesExerciseInput(index, "assemblyPoint", "Zborno mjesto", row.assemblyPoint),
+      createDocumentationVesExerciseInput(index, "personCount", "Broj osoba", row.personCount, "numeric"),
+      createDocumentationVesExerciseInput(index, "evacuationTime", "Vrijeme izlaska", row.evacuationTime, "decimal"),
+      createDocumentationVesExerciseInput(index, "note", "Napomena", row.note),
+    );
+    return card;
+  }));
+}
+
+function syncDocumentationSprVesExerciseRowsChange() {
+  renderDocumentationSprPreview();
+  scheduleDocumentationSprSave();
+}
+
+function handleDocumentationSprVesExerciseClick(event) {
+  if (!documentationSprModel) {
+    return false;
+  }
+  const target = event.target instanceof HTMLElement ? event.target : null;
+  const addButton = target?.closest?.("[data-documentation-spr-ves-row-add]");
+  if (addButton instanceof HTMLElement) {
+    event.preventDefault();
+    documentationSprModel.vesExerciseRows = normalizeDocumentationVesExerciseRows(documentationSprModel.vesExerciseRows);
+    documentationSprModel.vesExerciseRows.push({
+      id: `ves-row-${documentationSprModel.vesExerciseRows.length + 1}`,
+      assemblyPoint: "",
+      personCount: "",
+      evacuationTime: "",
+      note: "",
+    });
+    renderDocumentationSprVesExerciseRowsEditor();
+    syncDocumentationSprVesExerciseRowsChange();
+    return true;
+  }
+  const removeButton = target?.closest?.("[data-documentation-spr-ves-row-remove]");
+  if (removeButton instanceof HTMLElement) {
+    event.preventDefault();
+    const index = Number(removeButton.getAttribute("data-documentation-spr-ves-row-remove"));
+    const rows = normalizeDocumentationVesExerciseRows(documentationSprModel.vesExerciseRows);
+    if (Number.isInteger(index) && index >= 0 && rows.length > 1) {
+      rows.splice(index, 1);
+      documentationSprModel.vesExerciseRows = rows.map((row, rowIndex) => ({ ...row, id: `ves-row-${rowIndex + 1}` }));
+      renderDocumentationSprVesExerciseRowsEditor();
+      syncDocumentationSprVesExerciseRowsChange();
+    }
+    return true;
+  }
+  return false;
+}
+
 function updateDocumentationSprSectionNumbers() {
   if (!documentationSprForm) {
     return;
@@ -64590,6 +64820,7 @@ function updateDocumentationSprSectionNumbers() {
     ["project", documentationSprProjectSection],
     ["system", documentationSprSystemSection],
     ["results", documentationSprResultsSection],
+    ["vesExercise", documentationSprVesExerciseSection],
     ["checklists", documentationSprChecklistsSection],
     ["nativeMeasurements", documentationSprNativeMeasurementsSection],
     ["gridline", documentationSprPrimaryGridlineSection],
@@ -64631,19 +64862,44 @@ function renderDocumentationSprNativeEditors() {
   renderDocumentationSprTechnicalSection();
   const nativeMode = isDocumentationSprNativeMeasurementMode(documentationSprModel);
   const serviceCode = getDocumentationSprServiceCode(documentationSprModel);
+  const isVesService = serviceCode === "VES";
   const singleSystemDescription = isDocumentationNativeSingleSystemDescriptionService(serviceCode);
   const hasMeasurementTables = normalizeDocumentationSprMeasurementTables(
     documentationSprModel.measurementTables,
     documentationSprModel,
   ).length > 0 && serviceCode !== "EXOV";
+  if (documentationSprEquipmentSection instanceof HTMLElement) {
+    documentationSprEquipmentSection.hidden = isVesService;
+  }
+  if (documentationSprProjectSection instanceof HTMLElement) {
+    documentationSprProjectSection.hidden = isVesService;
+  }
   if (documentationSprPrimaryGridlineSection instanceof HTMLElement) {
-    documentationSprPrimaryGridlineSection.hidden = nativeMode || !hasMeasurementTables;
+    documentationSprPrimaryGridlineSection.hidden = isVesService || nativeMode || !hasMeasurementTables;
+  }
+  if (documentationSprVesExerciseSection instanceof HTMLElement) {
+    documentationSprVesExerciseSection.hidden = !isVesService;
   }
   renderDocumentationSprChecklistsEditor();
   renderDocumentationSprNativeMeasurementsEditor();
   renderDocumentationSprAssessmentsEditor();
+  renderDocumentationSprVesExerciseRowsEditor();
+  const systemTitle = documentationSprSystemSection?.querySelector?.(".documentation-spr-section-title strong");
+  const systemLabel = documentationSprSystemSection?.querySelector?.(".documentation-spr-field > span");
+  if (systemTitle) {
+    systemTitle.textContent = isVesService ? "Opis" : "Opis sustava";
+  }
+  if (systemLabel) {
+    systemLabel.textContent = isVesService ? "Opis vježbe evakuacije i spašavanja" : "Slobodan opis sustava";
+  }
   if (documentationSprResultsSection instanceof HTMLElement) {
-    documentationSprResultsSection.hidden = singleSystemDescription;
+    documentationSprResultsSection.hidden = isVesService || singleSystemDescription;
+  }
+  if (isVesService && documentationSprChecklistsSection instanceof HTMLElement) {
+    documentationSprChecklistsSection.hidden = true;
+  }
+  if (isVesService && documentationSprNativeMeasurementsSection instanceof HTMLElement) {
+    documentationSprNativeMeasurementsSection.hidden = true;
   }
   updateDocumentationSprSectionNumbers();
 }
@@ -64657,6 +64913,20 @@ function handleDocumentationSprNativeEditorChange(event) {
     setDocumentationSprTechnicalFieldValue(Number(target.getAttribute("data-documentation-spr-technical-index")), target.value || "");
     renderDocumentationSprPreview();
     scheduleDocumentationSprSave();
+    return true;
+  }
+  if (target.matches("[data-documentation-spr-ves-row-field]")) {
+    const index = Number(target.getAttribute("data-documentation-spr-ves-row-index"));
+    const field = String(target.getAttribute("data-documentation-spr-ves-row-field") || "").trim();
+    const rows = normalizeDocumentationVesExerciseRows(documentationSprModel.vesExerciseRows);
+    if (Number.isInteger(index) && rows[index] && ["assemblyPoint", "personCount", "evacuationTime", "note"].includes(field)) {
+      rows[index] = {
+        ...rows[index],
+        [field]: target.value || "",
+      };
+      documentationSprModel.vesExerciseRows = rows;
+      syncDocumentationSprVesExerciseRowsChange();
+    }
     return true;
   }
   if (target.matches("[data-documentation-spr-checklist-enabled]")) {
@@ -67872,6 +68142,9 @@ function initDocumentationSprWorkbench() {
       scheduleDocumentationSprSave();
     });
     documentationWorkbenchModule.addEventListener("click", (event) => {
+      if (handleDocumentationSprVesExerciseClick(event)) {
+        return;
+      }
       if (handleDocumentationSprDatePickerOpen(event)) {
         return;
       }

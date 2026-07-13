@@ -275,6 +275,10 @@ function getServiceCode(model = {}) {
   return recordMatch ? recordMatch[0].toUpperCase() : "SPR";
 }
 
+function isVesReport(model = {}) {
+  return clean(getServiceCode(model)).toUpperCase() === "VES";
+}
+
 function stampFooters(pdfDoc, model, fonts, {
   startPageIndex = 0,
   pageCount = null,
@@ -392,6 +396,39 @@ function getConclusionLead(model = {}) {
 
 function getValiditySentence(model = {}) {
   return clean(model.validitySentence || getReportPreset(model).validitySentence || "Zapisnik o ispitivanju vrijedi do");
+}
+
+function normalizeVesExerciseRows(value = []) {
+  let source = value;
+  if (typeof source === "string") {
+    const trimmed = source.trim();
+    if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        source = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.rows) ? parsed.rows : []);
+      } catch {
+        source = [];
+      }
+    } else {
+      source = [];
+    }
+  }
+  return (Array.isArray(source) ? source : [])
+    .map((entry, index) => {
+      const item = entry && typeof entry === "object" ? entry : {};
+      return {
+        id: clean(item.id || `ves-row-${index + 1}`),
+        assemblyPoint: clean(item.assemblyPoint || item.zbornoMjesto || item.place || ""),
+        personCount: clean(item.personCount || item.brojOsoba || item.people || ""),
+        evacuationTime: clean(item.evacuationTime || item.vrijemeIzlaska || item.time || ""),
+        note: clean(item.note || item.napomena || ""),
+      };
+    })
+    .filter((row) => row.assemblyPoint || row.personCount || row.evacuationTime || row.note);
+}
+
+function getVesConclusionSentence(model = {}) {
+  return cleanMultiline(model.conclusionSentence || model.ZAKLJUCNA_RECENICA || getReportPreset(model).conclusionSentence || "Vjezba evakuacije i spasavanja provedena je prema planu.");
 }
 
 function drawDefaultHeader(page, model, fonts, y = TOP_Y) {
@@ -999,6 +1036,7 @@ async function drawRichTextBlocks(pdfDoc, page, model, value, y, fonts) {
 
 function drawPageOne(pdfDoc, model, rows, fonts, headerImage) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  const vesReport = isVesReport(model);
   const hasTechnicalData = !usesSingleSystemDescription(model) && splitTextLines(model.technicalData).length > 0;
   const lineTop = PAGE_HEIGHT - 92;
   page.drawRectangle({
@@ -1047,26 +1085,32 @@ function drawPageOne(pdfDoc, model, rows, fonts, headerImage) {
       : drawPlainList(page, model.technicalData, y, fonts, { maxLines: 5, fontSize: 8.2, lineHeight: 10.4 });
     y -= 4;
   }
-  y = drawSectionTitle(page, hasTechnicalData ? 3 : 2, "MJERNA I ISPITNA OPREMA", y, fonts);
-  y = drawPlainList(page, model.equipment, y, fonts, { maxLines: 7, fontSize: 8.2, lineHeight: 10.4 });
-  y -= 4;
-  y = drawSectionTitle(page, hasTechnicalData ? 4 : 3, "PRIMJENJENI PROPISI", y, fonts);
+  let sectionNumber = hasTechnicalData ? 3 : 2;
+  if (!vesReport) {
+    y = drawSectionTitle(page, sectionNumber, "MJERNA I ISPITNA OPREMA", y, fonts);
+    y = drawPlainList(page, model.equipment, y, fonts, { maxLines: 7, fontSize: 8.2, lineHeight: 10.4 });
+    y -= 4;
+    sectionNumber += 1;
+  }
+  y = drawSectionTitle(page, sectionNumber, "PRIMJENJENI PROPISI", y, fonts);
   y = drawPlainList(page, model.regulations, y, fonts, { maxLines: 14, fontSize: 7.7, lineHeight: 9.4 });
   drawFooter(page, "SPR-1/4", fonts);
-  return { page, y: y - 5, sectionOffset: hasTechnicalData ? 1 : 0 };
+  return { page, y: y - 5, sectionOffset: (hasTechnicalData ? 1 : 0) - (vesReport ? 1 : 0) };
 }
 
 function drawPageTwo(pdfDoc, model, fonts) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  const vesReport = isVesReport(model);
   const showResultsText = !usesSingleSystemDescription(model);
   const sectionOffset = !usesSingleSystemDescription(model) && splitTextLines(model.technicalData).length > 0 ? 1 : 0;
+  let sectionNumber = 5 + sectionOffset;
   const systemDescription = cleanMultiline(model.systemDescription);
   let y = drawSimpleHeader(page, model, fonts);
   y = drawSectionTitle(page, 4 + sectionOffset, "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA", y, fonts);
   y = drawPlainList(page, model.projectDocumentation, y, fonts, { maxLines: 3, fontSize: 9, lineHeight: 12 });
   y -= 8;
   if (systemDescription) {
-    y = drawSectionTitle(page, 5 + sectionOffset, "OPIS SUSTAVA", y, fonts);
+    y = drawSectionTitle(page, sectionNumber, vesReport ? "OPIS" : "OPIS SUSTAVA", y, fonts);
     y = drawTextBlock(page, systemDescription, {
       x: MARGIN_X + 2,
       y,
@@ -1077,9 +1121,10 @@ function drawPageTwo(pdfDoc, model, fonts) {
       maxLines: 16,
     });
     y -= 8;
+    sectionNumber += 1;
   }
   if (showResultsText) {
-    y = drawSectionTitle(page, 5 + sectionOffset + (systemDescription ? 1 : 0), "REZULTATI ISPITIVANJA", y, fonts);
+    y = drawSectionTitle(page, sectionNumber, "REZULTATI ISPITIVANJA", y, fonts);
     y = drawTextBlock(page, cleanMultiline(model.resultsText), {
       x: MARGIN_X + 2,
       y,
@@ -1129,8 +1174,11 @@ function drawPageTwo(pdfDoc, model, fonts) {
 
 async function drawOpeningPages(pdfDoc, model, rows, fonts, headerImage) {
   let { page, y, sectionOffset } = drawPageOne(pdfDoc, model, rows, fonts, headerImage);
+  const vesReport = isVesReport(model);
+  const hasTechnicalData = !usesSingleSystemDescription(model) && splitTextLines(model.technicalData).length > 0;
   const systemDescription = String(model.systemDescription || "").trim();
-  const showResultsText = !usesSingleSystemDescription(model);
+  const showResultsText = !vesReport && !usesSingleSystemDescription(model);
+  let sectionNumber = hasTechnicalData ? (vesReport ? 4 : 5) : (vesReport ? 3 : 4);
   const ensureSpace = (neededHeight = 72) => {
     if (y - neededHeight >= BOTTOM_Y) {
       return;
@@ -1140,28 +1188,40 @@ async function drawOpeningPages(pdfDoc, model, rows, fonts, headerImage) {
     y = next.y;
   };
 
+  if (!vesReport) {
   ensureSpace(64);
   y = drawSectionTitle(page, 4 + sectionOffset, "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA", y, fonts);
   y = drawPlainList(page, model.projectDocumentation, y, fonts, { maxLines: 4, fontSize: 8.6, lineHeight: 11.2 });
   y -= 8;
+  sectionNumber += 1;
+  }
 
   if (systemDescription) {
     ensureSpace(96);
-    y = drawSectionTitle(page, 5 + sectionOffset, "OPIS SUSTAVA", y, fonts);
+    y = drawSectionTitle(page, sectionNumber, vesReport ? "OPIS" : "OPIS SUSTAVA", y, fonts);
     const richSystem = await drawRichTextBlocks(pdfDoc, page, model, systemDescription, y, fonts);
     page = richSystem.page;
     y = richSystem.y - 6;
+    sectionNumber += 1;
   }
 
   if (showResultsText) {
     ensureSpace(96);
-    y = drawSectionTitle(page, 5 + sectionOffset + (systemDescription ? 1 : 0), "REZULTATI ISPITIVANJA", y, fonts);
+    y = drawSectionTitle(page, sectionNumber, "REZULTATI ISPITIVANJA", y, fonts);
     const richResult = await drawRichTextBlocks(pdfDoc, page, model, model.resultsText, y, fonts);
     page = richResult.page;
     y = richResult.y - 6;
+    sectionNumber += 1;
   }
 
-  const noteLines = [clean(model.eiNote), clean(model.eiminNote)].filter(Boolean);
+  if (vesReport) {
+    const vesRows = normalizeVesExerciseRows(model.vesExerciseRows);
+    ensureSpace(64 + Math.max(1, vesRows.length) * 30);
+    y = drawSectionTitle(page, sectionNumber, "ZBORNA MJESTA", y, fonts);
+    y = drawVesExerciseRowsTable(page, vesRows, y, fonts);
+  }
+
+  const noteLines = vesReport ? [] : [clean(model.eiNote), clean(model.eiminNote)].filter(Boolean);
   if (noteLines.length) {
     ensureSpace(58);
     page.drawRectangle({
@@ -1231,6 +1291,64 @@ function drawCell(page, {
     });
     lineY -= fontSize + 2;
   });
+}
+
+function drawVesExerciseRowsTable(page, rows = [], y, fonts) {
+  const columns = [
+    { label: "Zborno mjesto", width: 205, align: "left" },
+    { label: "Broj osoba", width: 88, align: "center" },
+    { label: "Vrijeme izlaska", width: 112, align: "center" },
+    { label: "Napomena", width: PAGE_WIDTH - (MARGIN_X * 2) - 205 - 88 - 112, align: "left" },
+  ];
+  let cursorY = y;
+  let cellX = MARGIN_X;
+  columns.forEach((column) => {
+    drawCell(page, {
+      x: cellX,
+      y: cursorY,
+      width: column.width,
+      height: 24,
+      text: column.label,
+      fonts,
+      bold: true,
+      fill: TABLE_GRAY,
+      fontSize: 7.6,
+      align: "center",
+    });
+    cellX += column.width;
+  });
+  cursorY -= 24;
+  const safeRows = rows.length ? rows : [{ assemblyPoint: "", personCount: "", evacuationTime: "", note: "" }];
+  safeRows.slice(0, 16).forEach((row) => {
+    const values = [row.assemblyPoint, row.personCount, row.evacuationTime, row.note];
+    const rowHeight = 30;
+    cellX = MARGIN_X;
+    columns.forEach((column, index) => {
+      drawCell(page, {
+        x: cellX,
+        y: cursorY,
+        width: column.width,
+        height: rowHeight,
+        text: values[index] || "",
+        fonts,
+        fontSize: 7.3,
+        align: column.align,
+      });
+      cellX += column.width;
+    });
+    cursorY -= rowHeight;
+  });
+  if (safeRows.length > 16) {
+    drawTextLine(page, `Prikazano 16 od ${safeRows.length} zbornih mjesta.`, {
+      x: MARGIN_X,
+      y: cursorY - 10,
+      font: fonts.regular,
+      size: 7.4,
+      color: MUTED,
+    });
+    cursorY -= 18;
+  }
+  return cursorY - 8;
 }
 
 function normalizePdfChecklists(model = {}) {
@@ -1793,7 +1911,7 @@ function mapLegacyRowsToSheet(legacyRows = [], table = {}) {
 }
 
 function normalizePdfMeasurementTables(model = {}, legacyRows = []) {
-  if (String(getServiceCode(model) || "").trim().toUpperCase() === "EXOV") {
+  if (["EXOV", "VES"].includes(String(getServiceCode(model) || "").trim().toUpperCase())) {
     return [];
   }
   const sourceTables = resolvePdfMeasurementSourceTables(model);
@@ -2117,6 +2235,36 @@ function renderNativeHtmlMeasurementTables(model = {}, rows = []) {
   return tables.map((table) => renderNativeHtmlMeasurementTable(table, model)).join("");
 }
 
+function renderNativeHtmlVesExerciseRows(model = {}) {
+  const rows = normalizeVesExerciseRows(model.vesExerciseRows);
+  const body = rows.length
+    ? rows.map((row) => `
+      <tr>
+        <td>${escapeNativeHtml(row.assemblyPoint || "")}</td>
+        <td>${escapeNativeHtml(row.personCount || "")}</td>
+        <td>${escapeNativeHtml(row.evacuationTime || "")}</td>
+        <td>${escapeNativeHtml(row.note || "")}</td>
+      </tr>
+    `).join("")
+    : `<tr><td colspan="4" class="muted">Nema upisanih zbornih mjesta.</td></tr>`;
+  return `
+    <section class="sn-ex-section">
+      <div class="section-label">Zborna mjesta</div>
+      <table class="ves-exercise-table">
+        <thead>
+          <tr>
+            <th>Zborno mjesto</th>
+            <th>Broj osoba</th>
+            <th>Vrijeme izlaska</th>
+            <th>Napomena</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </section>
+  `;
+}
+
 function getNativeHtmlProvider(model = {}) {
   const name = clean(model.providerName || model.executorName || "SafeNexus");
   const address = clean(model.providerAddress || model.executorAddress || "");
@@ -2241,6 +2389,19 @@ function renderNativeHtmlConclusionPage(model = {}, serviceCode = "", {
         <section class="sn-ex-section">
           <div class="section-label">Napomena</div>
           <div class="text-box">${formatNativeRichTextHtml(factualNote)}</div>
+        </section>
+        <p class="issued">U ${escapeNativeHtml(issuedText || "Zagrebu")}</p>
+        ${renderNativeHtmlSignature(model)}
+      </section>
+    `;
+  }
+  if (isVesReport(model)) {
+    return `
+      <section class="conclusion-page">
+        ${renderNativeHtmlDocumentHeader(model, serviceCode, { subtitle: serviceCode })}
+        <section class="sn-ex-section">
+          <div class="section-label">Zakljucna recenica</div>
+          <div class="text-box">${formatNativeRichTextHtml(getVesConclusionSentence(model))}</div>
         </section>
         <p class="issued">U ${escapeNativeHtml(issuedText || "Zagrebu")}</p>
         ${renderNativeHtmlSignature(model)}
@@ -2978,9 +3139,10 @@ export function buildDocumentationNativeHtml({
     return buildExExcelDocumentationHtml({ model, rows });
   }
   const serviceCode = clean(getServiceCode(model)).toUpperCase() || "ZAPISNIK";
+  const vesReport = serviceCode === "VES";
   const title = clean(model.reportTitle || getReportServiceTitle(model));
   const singleSystemDescription = usesSingleSystemDescription(model);
-  const hasTechnicalData = !singleSystemDescription && splitTextLines(model.technicalData).length > 0;
+  const hasTechnicalData = !vesReport && !singleSystemDescription && splitTextLines(model.technicalData).length > 0;
   const metaRows = [
     ["Narucitelj", `${clean(model.companyName)}; ${clean(model.companyAddress)}; OIB: ${clean(model.companyOib)}`],
     ["Korisnik prostora", model.spaceUser],
@@ -3052,11 +3214,11 @@ export function buildDocumentationNativeHtml({
     .sn-ex-table-section.landscape { page: sn-ex-landscape; }
     .table-heading { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 7px; }
     .table-heading span { color: #475569; font-weight: 700; }
-    .sn-ex-grid { table-layout: fixed; font-size: 7.5px; }
+    .sn-ex-grid, .ves-exercise-table { table-layout: fixed; font-size: 7.5px; }
     .sn-ex-grid.dense { font-size: 6.2px; }
-    .sn-ex-grid thead { display: table-header-group; }
-    .sn-ex-grid th, .sn-ex-grid td { border: 1px solid #334155; padding: 3px 4px; vertical-align: middle; word-break: break-word; overflow-wrap: anywhere; }
-    .sn-ex-grid th { background: #d9dde3; font-weight: 700; text-align: center; }
+    .sn-ex-grid thead, .ves-exercise-table thead { display: table-header-group; }
+    .sn-ex-grid th, .sn-ex-grid td, .ves-exercise-table th, .ves-exercise-table td { border: 1px solid #334155; padding: 3px 4px; vertical-align: middle; word-break: break-word; overflow-wrap: anywhere; }
+    .sn-ex-grid th, .ves-exercise-table th { background: #d9dde3; font-weight: 700; text-align: center; }
     .sn-ex-grid .grid-subheader th, .sn-ex-grid .grid-subheader td { background: #eef2f7; font-weight: 700; }
     .status { text-align: center; font-weight: 700; }
     .status-pass { color: #166534; }
@@ -3098,7 +3260,12 @@ export function buildDocumentationNativeHtml({
             : `<div class="text-box">${formatNativeRichTextHtml(model.technicalData)}</div>`}
         </section>
       ` : ""}
-      <div class="two-column">
+      ${vesReport ? `
+        <section class="sn-ex-section">
+          <div class="section-label">${hasTechnicalData ? "3" : "2"}. Primijenjeni propisi</div>
+          <div class="text-box">${formatNativeRichTextHtml(model.regulations)}</div>
+        </section>
+      ` : `<div class="two-column">
         <section class="sn-ex-section">
           <div class="section-label">${hasTechnicalData ? "3" : "2"}. Mjerna i ispitna oprema</div>
           <div class="text-box">${formatNativeRichTextHtml(model.equipment)}</div>
@@ -3107,26 +3274,27 @@ export function buildDocumentationNativeHtml({
           <div class="section-label">${hasTechnicalData ? "4" : "3"}. Primijenjeni propisi</div>
           <div class="text-box">${formatNativeRichTextHtml(model.regulations)}</div>
         </section>
-      </div>
+      </div>`}
     </section>
 
-    <section class="sn-ex-section">
+    ${vesReport ? "" : `<section class="sn-ex-section">
       <div class="section-label">${hasTechnicalData ? "5" : "4"}. Koristena dokumentacija</div>
       <div class="text-box">${formatNativeRichTextHtml(model.projectDocumentation)}</div>
-    </section>
+    </section>`}
     ${cleanMultiline(model.systemDescription) ? `
       <section class="sn-ex-section">
-        <div class="section-label">${hasTechnicalData ? "6" : "5"}. Opis sustava</div>
+        <div class="section-label">${vesReport ? (hasTechnicalData ? "4" : "3") : (hasTechnicalData ? "6" : "5")}. ${vesReport ? "Opis" : "Opis sustava"}</div>
         <div class="text-box">${formatNativeRichTextHtml(model.systemDescription)}</div>
       </section>
     ` : ""}
-    ${singleSystemDescription ? "" : `
+    ${singleSystemDescription || vesReport ? "" : `
       <section class="sn-ex-section">
         <div class="section-label">${hasTechnicalData ? "7" : "6"}. Rezultati ispitivanja</div>
         <div class="text-box">${formatNativeRichTextHtml(model.resultsText)}</div>
       </section>
     `}
 
+    ${vesReport ? renderNativeHtmlVesExerciseRows(model) : ""}
     ${renderNativeHtmlChecklists(model)}
     ${renderNativeHtmlMeasurementTables(model, rows)}
 
@@ -3772,6 +3940,60 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
     drawFooter(page, "SPR-4/4", fonts);
     return page;
   }
+  if (isVesReport(model)) {
+    y = drawSectionTitle(page, 6, "ZAKLJUCNA RECENICA", y, fonts);
+    y = drawTextBlock(page, getVesConclusionSentence(model), {
+      x: MARGIN_X + 2,
+      y,
+      width: PAGE_WIDTH - (MARGIN_X * 2) - 4,
+      font: fonts.regular,
+      size: 9,
+      lineHeight: 12,
+      maxLines: 9,
+    });
+    drawTextLine(page, `U Zagrebu, ${formatDocumentDate(model.issueDate)}`, {
+      x: MARGIN_X,
+      y: y - 40,
+      width: PAGE_WIDTH - (MARGIN_X * 2),
+      align: "right",
+      font: fonts.bold,
+      size: 8.6,
+    });
+    drawTextLine(page, "M.P.", {
+      x: MARGIN_X,
+      y: 134,
+      width: PAGE_WIDTH - (MARGIN_X * 2),
+      align: "center",
+      font: fonts.bold,
+      size: 9.2,
+    });
+    if (clean(model.responsiblePerson)) {
+      const fieldName = model.signatureMode === "digital" ? signatureFieldName(model) : "";
+      drawTextLine(page, "Zapisnik izradio:", {
+        x: PAGE_WIDTH - MARGIN_X - 230,
+        y: 154,
+        width: 230,
+        align: "center",
+        font: fonts.regular,
+        size: 8,
+      });
+      drawSignatureText(page, model, fonts, PAGE_WIDTH - MARGIN_X - 230, 140, 230, {
+        includeFieldLabel: true,
+        fieldName,
+        signatureImage,
+      });
+      if (fieldName) {
+        addSignatureWidget(pdfDoc, page, {
+          x: PAGE_WIDTH - MARGIN_X - 200,
+          y: 34,
+          width: 170,
+          height: 38,
+        }, fieldName);
+      }
+    }
+    drawFooter(page, "VES-4/4", fonts);
+    return page;
+  }
   if (isFailingResult(model)) {
   y = drawSectionTitle(page, 6, "NEDOSTATCI", y, fonts);
   y = drawPlainList(page, model.defects || "Nema utvrđenih nedostataka.", y, fonts, { maxLines: 4, fontSize: 8.5, lineHeight: 11.2 });
@@ -4081,6 +4303,9 @@ function getDefaultSprRows(model = {}) {
 }
 
 function normalizeSprRows(rows = [], model = {}) {
+  if (isVesReport(model)) {
+    return [];
+  }
   return Array.isArray(rows) && rows.length ? rows : getDefaultSprRows(model);
 }
 

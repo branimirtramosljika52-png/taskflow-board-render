@@ -214,6 +214,64 @@ test("SPR native documentation export restores SRR Gridline table when a linked 
   assert.doesNotMatch(html, /Mjerenje hidrantske mreze/, "foreign HM table label is not exported for SRR");
 });
 
+test("VES native documentation uses evacuation rows without measurement equipment or VS tables", async () => {
+  const vesTables = createDocumentationMeasurementTablesForService("VES");
+  const [vsTable] = createDocumentationMeasurementTablesForService("VS");
+  const model = {
+    ...createDocumentationReportModelDefaults("VES"),
+    serviceCode: "VES",
+    recordNumber: "26-672-VES",
+    workOrderNumber: "26-672",
+    companyName: "Petrol d.o.o.",
+    companyAddress: "Primjer adrese 1, Zagreb",
+    companyOib: "00000000000",
+    inspectionPlace: "PM Zagreb Lucko",
+    inspectionObject: "Test objekt",
+    inspectionType: "Periodično ispitivanje",
+    inspectionDate: "2026-07-05",
+    issueDate: "2026-07-05",
+    responsiblePerson: "Test Ispitivac",
+    equipment: "Eurotest 61557",
+    projectDocumentation: "Ovaj tekst ne smije biti u VES zapisu.",
+    resultsText: "Ovaj tekst rezultata ne smije biti u VES zapisu.",
+    measurementTables: [vsTable],
+    vesExerciseRows: [
+      {
+        assemblyPoint: "Zborno mjesto dvoriste",
+        personCount: "18",
+        evacuationTime: "2,35 min",
+        note: "Bez zastoja",
+      },
+    ],
+    conclusionSentence: "Vjezba evakuacije i spasavanja provedena je uredno.",
+  };
+  const html = buildDocumentationNativeHtml({ model, rows: [] });
+
+  assert.equal(vesTables.length, 0, "VES preset has no Gridline measurement tables");
+  assert.match(html, /Zborna mjesta/, "VES renders evacuation row section");
+  assert.match(html, /Zborno mjesto dvoriste/, "VES renders assembly point");
+  assert.match(html, /2,35 min/, "VES renders evacuation time");
+  assert.match(html, /Zakljucna recenica/, "VES renders free conclusion sentence");
+  assert.equal((html.match(/class="sn-ex-grid/g) || []).length, 0, "VES does not render Gridline measurement tables");
+  assert.doesNotMatch(html, /Mjerna i ispitna oprema/, "VES does not render measurement equipment");
+  assert.doesNotMatch(html, /Koristena dokumentacija/, "VES does not render technical documentation");
+  assert.doesNotMatch(html, /Rezultati ispitivanja/, "VES does not render testing results chapter");
+  assert.doesNotMatch(html, /Ventilacija prostora|Sustav ventilacije/, "VES does not export a VS measurement table");
+
+  await withPdfFontFetch(async () => {
+    const result = await generateDocumentationSprPdfBlob({ model, rows: [] });
+    const text = await extractPdfText(result.bytes);
+
+    assert.match(text, /ZBORNA MJESTA/, "VES PDF renders assembly point section");
+    assert.match(text, /Zborno mjesto\s+dvoriste/, "VES PDF renders assembly point value");
+    assert.match(text, /2,35 min/, "VES PDF renders evacuation time");
+    assert.match(text, /ZAKLJUCNA RECENICA/, "VES PDF renders conclusion sentence section");
+    assert.doesNotMatch(text, /MJERNA I ISPITNA OPREMA/, "VES PDF omits measurement equipment");
+    assert.doesNotMatch(text, /KORI[ŠS]TENA TEHNI/, "VES PDF omits technical documentation");
+    assert.doesNotMatch(text, /Ventilacija prostora|Sustav ventilacije/, "VES PDF omits VS table");
+  });
+});
+
 test("SPR vector PDF export keeps the SRR Gridline table when cached data carries a foreign table", async () => {
   const [srrTable] = createDocumentationMeasurementTablesForService("SRR");
   const [hydrantTable] = createDocumentationMeasurementTablesForService("HM");

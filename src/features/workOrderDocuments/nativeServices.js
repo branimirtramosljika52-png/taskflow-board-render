@@ -18,6 +18,7 @@ const DOCUMENTATION_NATIVE_TAB_ORDER = Object.freeze([
   "SZOM",
   "SZOMV",
   "TZIN",
+  "VES",
   "VS",
   "FC",
   "KC",
@@ -96,9 +97,6 @@ export function normalizeDocumentTemplateRuntimeServiceCode(value = "") {
   }
   if (["HMU", "HMV", "HMUV"].includes(token)) {
     return "HM";
-  }
-  if (["VES"].includes(token)) {
-    return "VS";
   }
   if (["TIPKALO"].includes(token)) {
     return "TZIN";

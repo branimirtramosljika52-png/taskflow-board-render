@@ -456,6 +456,17 @@ const VES_COLUMNS = [
   makeColumn("note", "Napomena", 220),
 ];
 
+const VES_DEFAULT_EXERCISE_ROWS = Object.freeze([
+  Object.freeze({
+    assemblyPoint: "",
+    personCount: "",
+    evacuationTime: "",
+    note: "",
+  }),
+]);
+
+const VES_DEFAULT_CONCLUSION_SENTENCE = "Vjezba evakuacije i spasavanja provedena je prema planu, a sudionici su upoznati s postupkom napustanja objekta i zbornim mjestom.";
+
 const EMM_COLUMNS = [
   makeColumn("number", "R.br.", 58),
   makeColumn("testPoint1", "Ispitno mjesto 1", 190),
@@ -3443,16 +3454,7 @@ const CISTA_NATIVE_TABLE_BLUEPRINTS = Object.freeze({
       ],
     },
   ],
-  VES: [
-    {
-      id: "ves-cista-exercise",
-      label: "Podaci o vjezbi evakuacije",
-      summary: "Zborno mjesto, broj osoba, vrijeme napustanja objekta i opis tijeka vjezbe",
-      sourceSheet: "VES1.1",
-      columns: ["Zborno mjesto", "Broj osoba", "Vrijeme napustanja objekta [sek]", "Opis tijeka vjezbe", "Napomena"],
-      rows: [["", "", "", "Prakticna vjezba evakuacije provedena je prema planu evakuacije i spasavanja.", ""]],
-    },
-  ],
+  VES: [],
   SZOM: [
     {
       id: "szom-cista-measurements",
@@ -4591,26 +4593,17 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     documentType: "Vjezba evakuacije i spasavanja",
     reportTitle: "IZVRSENJE VJEZBE EVAKUACIJE I SPASAVANJA",
     coverSubtitle: "O IZVRSENJU VJEZBE EVAKUACIJE I SPASAVANJA",
-    measurementTableTitle: "Podaci o vjezbi evakuacije i spasavanja",
-    resultsText: [
-      "Prakticna vjezba evakuacije provodi se prema planu evakuacije i spasavanja za slucaj izvanrednog dogadaja.",
-      "U zapisniku se evidentira tijek vjezbe, zborno mjesto, broj osoba i vrijeme napustanja objekta.",
-    ].join("\n\n"),
+    measurementTableTitle: "",
+    systemDescription: "Prakticna vjezba evakuacije i spasavanja provodi se prema planu evakuacije i spasavanja za slucaj izvanrednog dogadaja.",
+    resultsText: "",
     notes: [],
     assessmentLabel: "Vjezba evakuacije i spasavanja",
     conclusionLead: "Temeljem provedenog opisa tijeka vjezbe moze se zakljuciti da provedena vjezba evakuacije i spasavanja",
     validitySentence: "Vjezbu evakuacije potrebno je ponoviti najkasnije do",
+    vesExerciseRows: VES_DEFAULT_EXERCISE_ROWS,
+    conclusionSentence: VES_DEFAULT_CONCLUSION_SENTENCE,
     signatureAreas: ["elektro"],
-    tables: [
-      tableSpec({
-        id: "ves-exercise",
-        label: "Podaci o vjezbi evakuacije",
-        summary: "Zborno mjesto, broj osoba i vrijeme napustanja objekta",
-        columns: VES_COLUMNS,
-        blankRowCount: 1,
-        blankSeed: {},
-      }),
-    ],
+    tables: [],
   }),
   EMM: createNativeReportPreset({
     serviceCode: "EMM",
@@ -5599,6 +5592,10 @@ export function createDocumentationReportModelDefaults(serviceCode = "") {
     conclusionLead: preset.conclusionLead,
     validitySentence: preset.validitySentence,
     projectDocumentation: preset.projectDocumentation || "",
+    vesExerciseRows: Array.isArray(preset.vesExerciseRows)
+      ? preset.vesExerciseRows.map((row) => ({ ...row }))
+      : [],
+    conclusionSentence: preset.conclusionSentence || "",
     hasCertificate: preset.hasCertificate === true,
     issueCertificate: preset.hasCertificate === true,
     certificateTitle: preset.certificateTitle || "",
@@ -5633,6 +5630,10 @@ export function getDocumentationNativeTemplateSeedPresets() {
     conclusionLead: preset.conclusionLead,
     validitySentence: preset.validitySentence,
     projectDocumentation: preset.projectDocumentation || "",
+    vesExerciseRows: Array.isArray(preset.vesExerciseRows)
+      ? preset.vesExerciseRows.map((row) => ({ ...row }))
+      : [],
+    conclusionSentence: preset.conclusionSentence || "",
     hasCertificate: preset.hasCertificate === true,
     issueCertificate: preset.hasCertificate === true,
     certificateTitle: preset.certificateTitle || "",
