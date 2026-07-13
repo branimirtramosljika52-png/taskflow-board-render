@@ -58705,6 +58705,7 @@ let documentationSprSystemRichControl = null;
 let documentationSprResultsRichControl = null;
 let documentationSprInitialized = false;
 let documentationSprSaveTimer = 0;
+let documentationSprHasUnsavedChanges = false;
 let documentationSprGridlineRetryTimer = 0;
 let documentationSprSectionTagsTimer = 0;
 let documentationSprPreviewRenderTimer = 0;
@@ -60543,7 +60544,6 @@ function openDocumentationSprTemplateFromLibrary(templateId = "") {
   documentationSprTemplateOpenToken = openToken;
   documentationSprTemplateLibrary.activeTemplateId = template.id;
   documentationSprDraftServiceBinding = getDocumentationSprTemplateServiceBinding(template);
-  scheduleDocumentationSprTemplateLibraryPersist();
   setDocumentationSprWorkbenchMode("editor", { renderLibrary: false });
   setDocumentationSprStatus("Otvaram predložak...", "saving");
   requestAnimationFrame(() => {
@@ -63025,6 +63025,7 @@ function persistDocumentationSprModelNow(statusText = "Spremljeno lokalno") {
       DOCUMENTATION_SPR_STORAGE_KEY,
       JSON.stringify(cloneDocumentationSprModelForLocalDraft(documentationSprModel)),
     );
+    documentationSprHasUnsavedChanges = false;
     setDocumentationSprStatus(statusText, "saved");
     return true;
   } catch {
@@ -63039,11 +63040,10 @@ function scheduleDocumentationSprModelPersist(statusText = "Spremljeno lokalno",
   }
   if (documentationSprSaveTimer) {
     window.clearTimeout(documentationSprSaveTimer);
-  }
-  documentationSprSaveTimer = window.setTimeout(() => {
     documentationSprSaveTimer = 0;
-    persistDocumentationSprModelNow(statusText);
-  }, Math.max(0, Number(delayMs) || 0));
+  }
+  documentationSprHasUnsavedChanges = false;
+  setDocumentationSprStatus(statusText, "saved");
   return true;
 }
 
@@ -63059,17 +63059,12 @@ function scheduleDocumentationSprSave() {
   if (!documentationSprModel) {
     return;
   }
-  syncDocumentationSprActiveBatchEntryModel({ readForm: false });
-  renderDocumentationSprBatchDock();
-  renderDocumentationSprRecordSourceCard();
-  setDocumentationSprStatus("Lokalna izmjena", "saving");
   if (documentationSprSaveTimer) {
     window.clearTimeout(documentationSprSaveTimer);
-  }
-  documentationSprSaveTimer = window.setTimeout(() => {
     documentationSprSaveTimer = 0;
-    persistDocumentationSprModelNow("Spremljeno lokalno");
-  }, 350);
+  }
+  documentationSprHasUnsavedChanges = true;
+  setDocumentationSprStatus("Nespremljene izmjene", "saving");
 }
 
 function syncDocumentationSprGridlineIntoModel() {
@@ -63085,7 +63080,7 @@ function syncDocumentationSprGridlineIntoModel() {
 function applyDocumentationSprModel(nextModel, {
   templateId = documentationSprTemplateLibrary.activeTemplateId,
   statusText = "Predložak učitan",
-  persistDraft = "sync",
+  persistDraft = false,
 } = {}) {
   const activeTemplate = getDocumentationSprTemplateById(templateId);
   const activeTemplateBinding = getDocumentationSprTemplateServiceBinding(activeTemplate);
@@ -63113,14 +63108,12 @@ function applyDocumentationSprModel(nextModel, {
     mountDocumentationSprGridline();
   }
   renderDocumentationSprPreview();
-  if (persistDraft === "defer") {
-    setDocumentationSprStatus(statusText, "saved");
-    scheduleDocumentationSprModelPersist(statusText);
-  } else if (persistDraft !== false) {
-    persistDocumentationSprModelNow(statusText);
-  } else {
-    setDocumentationSprStatus(statusText, "saved");
+  documentationSprHasUnsavedChanges = false;
+  if (documentationSprSaveTimer) {
+    window.clearTimeout(documentationSprSaveTimer);
+    documentationSprSaveTimer = 0;
   }
+  setDocumentationSprStatus(statusText, "saved");
   syncDocumentationSprTemplateManager();
 }
 
@@ -63230,7 +63223,6 @@ function loadSelectedDocumentationSprTemplate() {
   }
   documentationSprTemplateLibrary.activeTemplateId = template.id;
   documentationSprDraftServiceBinding = getDocumentationSprTemplateServiceBinding(template);
-  scheduleDocumentationSprTemplateLibraryPersist();
   applyDocumentationSprModel(template.model, {
     templateId: template.id,
     statusText: "Predložak učitan",
@@ -64634,32 +64626,6 @@ function mountDocumentationSprNativeMeasurementGridline(shell, table = {}, table
     organizationId: state.activeOrganizationId || "",
     workOrderNumber: documentationSprModel.workOrderNumber || "",
     onAiPrefill: runDocumentationSprGridlineAiPrefill,
-    onFormulaReady: () => {
-      syncDocumentationSprNativeMeasurementTablesIntoModel();
-      renderDocumentationSprPreview();
-    },
-    onChange: (nextModel) => {
-      const currentTable = documentationSprModel.measurementTables?.[tableIndex];
-      if (!currentTable) {
-        return;
-      }
-      const gridlineModel = normalizeDocumentationSprGridlineModel({
-        ...nextModel,
-        pageOrientation: nextModel?.pageOrientation || currentTable.pageOrientation || currentTable.sheet?.pageOrientation || "",
-      });
-      const title = String(gridlineModel.title || currentTable.label || "").trim();
-      const subtitle = String(gridlineModel.subtitle || currentTable.summary || currentTable.chapterTitle || "").trim();
-      documentationSprModel.measurementTables[tableIndex] = {
-        ...currentTable,
-        label: title || currentTable.label,
-        summary: subtitle || currentTable.summary,
-        gridlineModel,
-        sheet: buildDocumentationSprMeasurementSheetFromGridlineModel({ gridlineModel }, currentTable),
-      };
-      syncDocumentationSprSectionTags();
-      renderDocumentationSprPreview();
-      scheduleDocumentationSprSave();
-    },
   });
   documentationSprNativeMeasurementGridlineApis.set(String(tableIndex), { api, shell });
 }
@@ -66900,8 +66866,6 @@ function renderDocumentationSprPreview() {
     return;
   }
   syncDocumentationSprDerivedSourceFields();
-  const activeGridlineModel = getDocumentationSprActiveGridlineModel();
-  const rows = documentationSprGridSummary ? getDocumentationSprMeasurementRows() : [];
 
   if (!shouldRenderDocumentationSprPreviewPages()) {
     if (documentationSprPreviewSummary) {
@@ -66911,11 +66875,13 @@ function renderDocumentationSprPreview() {
       documentationSprInlineDocumentSummary.textContent = "Preview sakriven";
     }
     if (documentationSprGridSummary) {
-      documentationSprGridSummary.textContent = `${rows.length} redaka iz aktivne Gridline tablice`;
+      documentationSprGridSummary.textContent = "Gridline tablica";
     }
     return;
   }
 
+  const activeGridlineModel = getDocumentationSprActiveGridlineModel();
+  const rows = documentationSprGridSummary ? getDocumentationSprMeasurementRows() : [];
   const tables = getDocumentationSprMeasurementTablesForModel({
     ...documentationSprModel,
     gridlineModel: activeGridlineModel,
@@ -68812,15 +68778,6 @@ function mountDocumentationSprGridline() {
     templateId: getDocumentationSprTemplateById()?.id || "",
     workOrderNumber: documentationSprModel.workOrderNumber || "",
     onAiPrefill: runDocumentationSprGridlineAiPrefill,
-    onFormulaReady: () => {
-      scheduleDocumentationSprPreviewRender(420);
-    },
-    onChange: (nextModel) => {
-      documentationSprModel.gridlineModel = normalizeDocumentationSprGridlineModel(nextModel);
-      scheduleDocumentationSprSectionTags();
-      scheduleDocumentationSprPreviewRender(420);
-      scheduleDocumentationSprSave();
-    },
   });
 }
 

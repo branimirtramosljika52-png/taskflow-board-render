@@ -1899,6 +1899,15 @@
         pendingExternalChange = false;
         emitChange();
       }
+      if (!storageKey && !onChange) {
+        pendingExternalChange = false;
+        if (saveTimer) {
+          window.clearTimeout(saveTimer);
+          saveTimer = 0;
+        }
+        setStatus("Spremno", "is-saved");
+        return;
+      }
       if (saveTimer) {
         window.clearTimeout(saveTimer);
       }
