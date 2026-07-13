@@ -34143,6 +34143,17 @@ private fun WorkOrderDocumentationWizardDialog(
             templateAttachments = documentationAttachmentFilesByTemplate
                 .filterKeys { it != DOCUMENTATION_COMMON_ATTACHMENT_KEY }
                 .filterValues { it.isNotEmpty() },
+            generationServices = serviceFlowItems.map { item ->
+                WorkOrderDocumentationAdditionalRecord(
+                    serviceKey = item.serviceKey,
+                    serviceIndex = item.serviceIndex,
+                    serviceCode = item.nativeDocumentationServiceCode().ifBlank { item.serviceCode },
+                    serviceName = item.serviceName,
+                    objectId = selectedObject?.id.orEmpty(),
+                    objectName = selectedObject?.name.orEmpty(),
+                    objectSequence = 1,
+                )
+            },
             additionalRecords = additionalRecords.map { record ->
                 WorkOrderDocumentationAdditionalRecord(
                     serviceKey = record.serviceKey,

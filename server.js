@@ -118,7 +118,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.440.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.441.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -23216,6 +23216,29 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
     pdfBridgeUrl: normalizeInputValue(workEnvironmentSubmitSource.pdfBridgeUrl || workEnvironmentSubmitSource.isznrPdfBridgeUrl),
   };
   const executors = normalizeMobileDocumentWizardArray(source.executors);
+  const generationServiceSource = Array.isArray(source.generationServices)
+    ? source.generationServices
+    : Array.isArray(source.selectedServices)
+      ? source.selectedServices
+      : Array.isArray(source.serviceFlowItems)
+        ? source.serviceFlowItems
+        : [];
+  const generationServices = generationServiceSource
+    .map((entry, index) => ({
+      serviceKey: normalizeInputValue(entry?.serviceKey || entry?.key || entry?.id),
+      serviceIndex: Number.isFinite(Number(entry?.serviceIndex)) ? Number(entry.serviceIndex) : -1,
+      serviceCode: normalizeInputValue(entry?.serviceCode || entry?.code || entry?.shortCode),
+      serviceName: normalizeInputValue(entry?.serviceName || entry?.name || entry?.title || entry?.label),
+      objectId: normalizeInputValue(entry?.objectId || entry?.locationObjectId),
+      objectName: normalizeInputValue(entry?.objectName || entry?.locationObjectName),
+      objectSequence: Number.isFinite(Number(entry?.objectSequence)) ? Number(entry.objectSequence) : index + 1,
+    }))
+    .filter((entry) => (
+      entry.serviceKey
+      || entry.serviceCode
+      || entry.serviceName
+      || entry.serviceIndex >= 0
+    ));
   const additionalRecords = Array.isArray(source.additionalRecords)
     ? source.additionalRecords.map((entry, index) => ({
       serviceKey: normalizeInputValue(entry?.serviceKey),
@@ -23357,6 +23380,7 @@ function normalizeMobileWorkOrderDocumentWizardInput(input = {}) {
         .filter(([key, value]) => key && value))
       : {},
     executors,
+    generationServices,
     additionalRecords,
     inspectorUserIds,
     inspectorUserId: normalizeInputValue(source.inspectorUserId) || inspectorUserIds[0] || "",
@@ -34994,6 +35018,138 @@ function buildMobileHandoverExportEntry(workOrder = {}, scopedSnapshot = {}, com
   };
 }
 
+function getMobileGenerationServiceNativeCode(service = {}) {
+  const directCode = normalizeMobileNativeMeasurementServiceCode(
+    service?.serviceCode
+    || service?.code
+    || service?.shortCode
+    || service?.serviceKey
+    || service?.key
+    || "",
+  );
+  if (directCode) {
+    return directCode;
+  }
+  return inferMobileNativeDocumentationServiceCode([
+    service?.serviceName,
+    service?.name,
+    service?.title,
+    service?.label,
+    service?.displayName,
+    service?.displayService,
+    service?.serviceLine,
+  ].filter(Boolean).join(" "));
+}
+
+function getMobileGenerationServiceLookupKeys(service = {}) {
+  return [
+    service?.serviceId,
+    service?.id,
+    service?.serviceKey,
+    service?.key,
+    service?.serviceCode,
+    service?.code,
+    service?.shortCode,
+    service?.serviceName,
+    service?.name,
+    service?.title,
+    service?.label,
+    service?.displayName,
+    service?.displayService,
+    service?.serviceLine,
+  ].map(normalizeMobileTemplateLookupKey).filter(Boolean);
+}
+
+function buildMobileGenerationServiceFromRecord(record = {}, fallbackIndex = 0) {
+  const nativeCode = getMobileGenerationServiceNativeCode(record);
+  const serviceCode = normalizeInputValue(record?.serviceCode || record?.code || record?.shortCode || nativeCode);
+  const serviceName = normalizeInputValue(
+    record?.serviceName
+    || record?.name
+    || record?.title
+    || record?.label
+    || serviceCode
+    || `Usluga ${fallbackIndex + 1}`,
+  );
+  return {
+    serviceId: normalizeInputValue(record?.serviceId || record?.id),
+    serviceKey: normalizeInputValue(record?.serviceKey || record?.key),
+    key: normalizeInputValue(record?.serviceKey || record?.key),
+    serviceCode,
+    code: serviceCode,
+    shortCode: serviceCode,
+    serviceName,
+    name: serviceName,
+    title: serviceName,
+  };
+}
+
+function resolveMobileGenerationServiceRecord(record = {}, services = [], fallbackIndex = 0) {
+  const serviceIndex = Number.isFinite(Number(record?.serviceIndex)) ? Number(record.serviceIndex) : -1;
+  if (serviceIndex >= 0 && services[serviceIndex]) {
+    return { service: services[serviceIndex], serviceIndex };
+  }
+
+  const recordKeys = getMobileGenerationServiceLookupKeys(record);
+  const recordNativeCode = getMobileGenerationServiceNativeCode(record);
+  const matchedIndex = services.findIndex((service) => {
+    const serviceKeys = getMobileGenerationServiceLookupKeys(service);
+    if (recordKeys.length && serviceKeys.length && recordKeys.some((key) => serviceKeys.includes(key))) {
+      return true;
+    }
+    const serviceNativeCode = getMobileGenerationServiceNativeCode(service);
+    return Boolean(recordNativeCode && serviceNativeCode && recordNativeCode === serviceNativeCode);
+  });
+  if (matchedIndex >= 0) {
+    return { service: services[matchedIndex], serviceIndex: matchedIndex };
+  }
+
+  const fallbackService = buildMobileGenerationServiceFromRecord(record, fallbackIndex);
+  if (!getMobileGenerationServiceLookupKeys(fallbackService).length && !getMobileGenerationServiceNativeCode(fallbackService)) {
+    return null;
+  }
+  return {
+    service: fallbackService,
+    serviceIndex: serviceIndex >= 0 ? serviceIndex : services.length + fallbackIndex,
+  };
+}
+
+function mobileDocumentTemplateMatchesGenerationService(template = {}, service = {}, serviceIndex = -1) {
+  const serviceNativeCode = getMobileGenerationServiceNativeCode(service);
+  if (serviceNativeCode) {
+    return getMobileTemplateNativeDocumentationServiceCode(template) === serviceNativeCode;
+  }
+
+  const templateServiceIndex = Number.isFinite(Number(template?.serviceIndex)) ? Number(template.serviceIndex) : -1;
+  if (serviceIndex >= 0 && templateServiceIndex >= 0 && serviceIndex === templateServiceIndex) {
+    return true;
+  }
+
+  const serviceKeys = getMobileGenerationServiceLookupKeys(service);
+  if (!serviceKeys.length) {
+    return false;
+  }
+  const templateKeys = [
+    template?.serviceCode,
+    template?.code,
+    template?.serviceName,
+    template?.documentType,
+    template?.title,
+    template?.documentName,
+    template?.serviceBinding?.serviceCode,
+    template?.serviceBinding?.serviceName,
+    template?.model?.serviceCode,
+    template?.model?.serviceName,
+  ].map(normalizeMobileTemplateLookupKey).filter(Boolean);
+  return serviceKeys.some((key) => templateKeys.includes(key));
+}
+
+function findMobileDocumentTemplatesForGenerationService(service = {}, serviceIndex = -1, documentTemplates = []) {
+  return documentTemplates
+    .filter(isActiveMobileDocumentTemplate)
+    .filter((template) => mobileDocumentTemplateMatchesGenerationService(template, service, serviceIndex));
+}
+
 function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnapshot = {}, wizardInput = {}) {
   const common = normalizeMobileWorkOrderDocumentWizardInput(wizardInput);
   const documentTemplates = Array.isArray(scopedSnapshot.documentTemplates) ? scopedSnapshot.documentTemplates : [];
@@ -35008,7 +35164,9 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
     const linkedTemplates = getMobileWorkOrderServiceTemplateIds(service, scopedSnapshot)
       .map((templateId) => templateById.get(String(templateId)))
       .filter(isActiveMobileDocumentTemplate);
-    const templatesForService = linkedTemplates;
+    const templatesForService = linkedTemplates.length
+      ? linkedTemplates
+      : findMobileDocumentTemplatesForGenerationService(service, serviceIndex, documentTemplates);
 
     templatesForService.forEach((template) => {
       const objectId = getMobileWorkOrderLocationObjectId(generationWorkOrder);
@@ -35140,6 +35298,28 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
     appendEntriesForService(service, serviceIndex, workOrder);
   });
 
+  (common.generationServices || []).forEach((record, index) => {
+    const resolved = resolveMobileGenerationServiceRecord(record, services, index);
+    if (!resolved?.service) {
+      return;
+    }
+    let generationWorkOrder = workOrder;
+    if (record.objectId || record.objectName) {
+      try {
+        generationWorkOrder = applyMobileSelectedObjectToWorkOrder(workOrder, scopedSnapshot, {
+          objectId: record.objectId,
+          objectName: record.objectName,
+          executors: common.executors,
+        });
+      } catch (error) {
+        console.warn("Preskacem odabrani objekt za mobilnu uslugu.", error?.message || error);
+      }
+    }
+    appendEntriesForService(resolved.service, resolved.serviceIndex, generationWorkOrder, {
+      objectSequence: Number.isFinite(Number(record.objectSequence)) ? Number(record.objectSequence) : 1,
+    });
+  });
+
   const additionalRecords = [...(common.additionalRecords || [])];
   if (common.addAllObjects) {
     const currentObjectId = getMobileWorkOrderLocationObjectId(workOrder);
@@ -35188,12 +35368,8 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
   }
 
   additionalRecords.forEach((record, index) => {
-    const serviceIndex = Number.isFinite(Number(record.serviceIndex)) ? Number(record.serviceIndex) : -1;
-    const service = services[serviceIndex] || services.find((item) => (
-      normalizeInputValue(item?.serviceCode || item?.code).toLowerCase() === normalizeInputValue(record.serviceCode).toLowerCase()
-      || normalizeInputValue(item?.name || item?.serviceName || item?.title).toLowerCase() === normalizeInputValue(record.serviceName).toLowerCase()
-    ));
-    if (!service) {
+    const resolved = resolveMobileGenerationServiceRecord(record, services, index);
+    if (!resolved?.service) {
       return;
     }
     try {
@@ -35202,11 +35378,11 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
         objectName: record.objectName,
         executors: common.executors,
       });
-      appendEntriesForService(service, serviceIndex >= 0 ? serviceIndex : services.indexOf(service), generationWorkOrder, {
+      appendEntriesForService(resolved.service, resolved.serviceIndex, generationWorkOrder, {
         objectSequence: Number.isFinite(Number(record.objectSequence)) ? Number(record.objectSequence) : index + 2,
       });
     } catch (error) {
-      console.warn("Preskačem dodatni mobilni zapisnik za objekt.", error?.message || error);
+      console.warn("Preskacem dodatni mobilni zapisnik za objekt.", error?.message || error);
     }
   });
 

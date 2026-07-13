@@ -416,6 +416,7 @@ data class WorkOrderDocumentationDraft(
     val includedMeasurementTableKeys: List<String> = emptyList(),
     val attachments: List<WorkOrderDocumentationAiFile> = emptyList(),
     val templateAttachments: Map<String, List<WorkOrderDocumentationAiFile>> = emptyMap(),
+    val generationServices: List<WorkOrderDocumentationAdditionalRecord> = emptyList(),
     val additionalRecords: List<WorkOrderDocumentationAdditionalRecord> = emptyList(),
     val includeHandoverProtocol: Boolean = true,
 )

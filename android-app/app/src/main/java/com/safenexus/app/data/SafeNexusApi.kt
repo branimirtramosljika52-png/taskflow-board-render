@@ -70,6 +70,19 @@ fun WorkOrderDocumentationDraft.toDocumentationJsonPayload(
     this.manualWorkEquipments.forEach { manualWorkEquipments.put(it.toJsonObject()) }
     val executors = JSONArray()
     this.executors.forEach { executors.put(it) }
+    val generationServices = JSONArray()
+    this.generationServices.forEach { record ->
+        generationServices.put(
+            JSONObject()
+                .put("serviceKey", record.serviceKey)
+                .put("serviceIndex", record.serviceIndex)
+                .put("serviceCode", record.serviceCode)
+                .put("serviceName", record.serviceName)
+                .put("objectId", record.objectId)
+                .put("objectName", record.objectName)
+                .put("objectSequence", record.objectSequence),
+        )
+    }
     val additionalRecords = JSONArray()
     this.additionalRecords.forEach { record ->
         additionalRecords.put(
@@ -137,6 +150,7 @@ fun WorkOrderDocumentationDraft.toDocumentationJsonPayload(
         .put("includedMeasurementTableKeys", JSONArray(includedMeasurementTableKeys.map { it.trim() }.filter { it.isNotBlank() }))
         .put("attachments", attachments.toDocumentationAiFilesJsonArray())
         .put("templateAttachments", templateAttachments.toNestedDocumentationAiFilesJsonObject())
+        .put("generationServices", generationServices)
         .put("additionalRecords", additionalRecords)
         .put("includeHandoverProtocol", includeHandoverProtocol)
         .put("async", async)
