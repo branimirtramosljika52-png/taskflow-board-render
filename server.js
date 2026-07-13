@@ -5,7 +5,7 @@ import { createHash, createSign, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
-import { brotliCompressSync, constants as zlibConstants, gzipSync } from "node:zlib";
+import { gzipSync } from "node:zlib";
 import JSZip from "jszip";
 import { PDFDocument, PDFName, PDFString, rgb } from "pdf-lib";
 import { getDocument as getPdfJsDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
@@ -11059,24 +11059,7 @@ function sendJson(response, statusCode, payload) {
   let body = jsonBuffer;
   let contentEncoding = "";
 
-  if (request && jsonBuffer.length >= 1536 && acceptsEncoding(request, "br")) {
-    try {
-      const compressed = brotliCompressSync(jsonBuffer, {
-        params: {
-          [zlibConstants.BROTLI_PARAM_QUALITY]: 4,
-        },
-      });
-      if (compressed.length + 128 < jsonBuffer.length) {
-        body = compressed;
-        contentEncoding = "br";
-      }
-    } catch {
-      body = jsonBuffer;
-      contentEncoding = "";
-    }
-  }
-
-  if (!contentEncoding && request && jsonBuffer.length >= 1536 && acceptsEncoding(request, "gzip")) {
+  if (request && jsonBuffer.length >= 1536 && acceptsEncoding(request, "gzip")) {
     try {
       const compressed = gzipSync(jsonBuffer, { level: 6 });
       if (compressed.length + 128 < jsonBuffer.length) {
