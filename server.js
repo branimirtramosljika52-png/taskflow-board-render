@@ -12194,11 +12194,35 @@ function assertHandoverUsesWordTemplate(entry = {}, template = {}) {
 
 function resolveMobileTemplateForExportEntry(documentTemplates = [], entry = {}, scopedSnapshot = {}) {
   const normalizedTemplateId = normalizeInputValue(entry?.templateId);
+  const inlineTemplate = entry?.runtimeTemplate && typeof entry.runtimeTemplate === "object" && !Array.isArray(entry.runtimeTemplate)
+    ? entry.runtimeTemplate
+    : null;
+  if (inlineTemplate && (!normalizedTemplateId || normalizeInputValue(inlineTemplate?.id) === normalizedTemplateId)) {
+    return inlineTemplate;
+  }
 
   const scopedTemplate = (Array.isArray(documentTemplates) ? documentTemplates : [])
     .find((template) => normalizeInputValue(template?.id) === normalizedTemplateId);
   if (scopedTemplate) {
     return scopedTemplate;
+  }
+
+  const nativeTemplate = parseMobileNativeDocumentationTemplateId(normalizedTemplateId);
+  if (nativeTemplate) {
+    const workOrder = (Array.isArray(scopedSnapshot.workOrders) ? scopedSnapshot.workOrders : [])
+      .find((item) => normalizeInputValue(item?.id) === normalizeInputValue(entry?.workOrderId)) || {};
+    const service = {
+      serviceCode: normalizeInputValue(entry?.serviceCode) || nativeTemplate.serviceCode,
+      code: normalizeInputValue(entry?.serviceCode) || nativeTemplate.serviceCode,
+      shortCode: normalizeInputValue(entry?.serviceCode) || nativeTemplate.serviceCode,
+      serviceName: normalizeInputValue(entry?.serviceName) || nativeTemplate.serviceCode,
+      name: normalizeInputValue(entry?.serviceName) || nativeTemplate.serviceCode,
+      serviceIndex: nativeTemplate.serviceIndex,
+    };
+    const rebuiltTemplate = buildMobileNativeDocumentationTemplate(service, nativeTemplate.serviceIndex, workOrder, scopedSnapshot);
+    if (rebuiltTemplate) {
+      return rebuiltTemplate;
+    }
   }
 
   return assertInScope(
@@ -35380,6 +35404,7 @@ function buildMobileWorkOrderGeneratedDocumentEntries(workOrder = {}, scopedSnap
       };
       entries.push({
         templateId: String(template.id),
+        ...(isMobileNativeDocumentationRuntimeTemplate(template) ? { runtimeTemplate: template } : {}),
         workOrderId: String(workOrder.id),
         numberGroupKey: `${String(workOrder.id)}::${serviceIndex}::${String(template.id)}`,
         baseDocumentNumber,
