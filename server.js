@@ -26505,15 +26505,10 @@ function getMobileDocumentRecordNativeDocumentationServiceCode(record = {}) {
     fieldValues.SERVICE_SUMMARY,
     fieldValues.USLUGA,
     fieldValues.NAZIV_USLUGE,
-    fieldValues.INSPECTION_TYPE,
-    fieldValues.VRSTA_ISPITIVANJA,
   ].filter(Boolean).join(" "));
 }
 
 function getMobileDocumentRecordTitleNativeDocumentationServiceCode(record = {}) {
-  const fieldValues = record?.fieldValues && typeof record.fieldValues === "object" && !Array.isArray(record.fieldValues)
-    ? record.fieldValues
-    : {};
   return inferMobileNativeDocumentationServiceCodeFromExplicitToken([
     record?.templateTitle,
     record?.documentType,
@@ -26521,8 +26516,6 @@ function getMobileDocumentRecordTitleNativeDocumentationServiceCode(record = {})
     record?.documentName,
     record?.title,
     record?.fileName,
-    fieldValues.INSPECTION_TYPE,
-    fieldValues.VRSTA_ISPITIVANJA,
   ].filter(Boolean).join(" "));
 }
 
@@ -33755,19 +33748,18 @@ function resolveMobileDocumentationHeaderImage({
 }
 
 function resolveMobileDocumentationInspectionType(common = {}, placeholders = {}, serviceCode = "") {
-  const serviceNativeCode = normalizeMobileNativeMeasurementServiceCode(serviceCode);
   const candidates = [
     common.inspectionType,
-    placeholders.VRSTA_ISPITIVANJA,
+    placeholders.WORK_ORDER_INSPECTION_TYPE,
     placeholders.INSPECTION_TYPE,
+    placeholders.VRSTA_ISPITIVANJA,
   ];
   for (const candidate of candidates) {
     const value = normalizeInputValue(candidate);
     if (!value) {
       continue;
     }
-    const candidateNativeCode = inferMobileNativeDocumentationServiceCode(value);
-    if (serviceNativeCode && candidateNativeCode && candidateNativeCode !== serviceNativeCode) {
+    if (inferMobileNativeDocumentationServiceCode(value)) {
       continue;
     }
     return value;
@@ -34239,7 +34231,10 @@ function buildMobileGeneratedDocumentPlaceholders(workOrder = {}, service = {}, 
   const serviceName = normalizeInputValue(service?.name || service?.serviceName || service?.title || service?.serviceCode);
   const serviceCode = normalizeInputValue(service?.serviceCode || service?.code || service?.shortCode);
   const serviceLabel = serviceName || serviceCode || normalizeInputValue(workOrder.serviceLine);
-  const inspectionType = common.inspectionType || serviceLabel;
+  const rawInspectionType = normalizeInputValue(common.inspectionType || workOrder.inspectionType || service.inspectionType);
+  const inspectionType = rawInspectionType && !inferMobileNativeDocumentationServiceCode(rawInspectionType)
+    ? rawInspectionType
+    : "Periodi\u010Dno ispitivanje";
   const testingLocation = resolveMobileWorkOrderTestingLocation(workOrder, common);
   const signatureGroup = buildMobileSignatureGroup(common, scopedSnapshot);
 

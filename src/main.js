@@ -81701,6 +81701,7 @@ function buildDocumentTemplateSystemPlaceholderValues(template = buildDocumentTe
     .filter(Boolean)
     .join(", ");
   const serviceSummary = lookup("SERVICE_SUMMARY") || serviceNames || serviceName || serviceCode;
+  const inspectionType = lookup("WORK_ORDER_INSPECTION_TYPE") || lookup("INSPECTION_TYPE") || "Periodično ispitivanje";
   const companyName = lookup("COMPANY_NAME") || String(context.company?.name || "").trim();
   const companyHeadquarters = lookup("COMPANY_HEADQUARTERS") || String(context.company?.headquarters || "").trim();
   const companyOib = lookup("COMPANY_OIB") || String(context.company?.oib || "").trim();
@@ -81756,7 +81757,9 @@ function buildDocumentTemplateSystemPlaceholderValues(template = buildDocumentTe
     SERVICE_NAME: serviceName || serviceSummary,
     USLUGA: serviceName || serviceSummary,
     SERVICE_SUMMARY: serviceSummary,
-    VRSTA_ISPITIVANJA: serviceName || serviceSummary,
+    WORK_ORDER_INSPECTION_TYPE: inspectionType,
+    INSPECTION_TYPE: inspectionType,
+    VRSTA_ISPITIVANJA: inspectionType,
     WORK_ORDER_DOCUMENT_NUMBER: documentNumber,
     WORK_ORDER_STATUS: lookup("WORK_ORDER_STATUS"),
     STATUS_RN: lookup("WORK_ORDER_STATUS"),
@@ -81856,7 +81859,7 @@ function getDocumentTemplateSystemPlaceholderDefinitions(template = buildDocumen
     },
     {
       token: "{{VRSTA_ISPITIVANJA}}",
-      label: "Vrsta ispitivanja / usluga",
+      label: "Vrsta ispitivanja",
       value: values.VRSTA_ISPITIVANJA,
     },
     {
