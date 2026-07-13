@@ -82596,10 +82596,21 @@ function createDocumentTemplateRuntimeRichTextControl({
     createDocumentTemplateRuntimeRichTableToolbar(editor, persist),
     editor,
   );
-  void enhanceDocumentTemplateRuntimeRichTextControlWithTiptap(editor, {
-    placeholder,
-    persist,
-  });
+
+  let tiptapEnhancementStarted = false;
+  const startTiptapEnhancement = () => {
+    if (tiptapEnhancementStarted || editor.__safeNexusTiptapEditor) {
+      return;
+    }
+    tiptapEnhancementStarted = true;
+    void enhanceDocumentTemplateRuntimeRichTextControlWithTiptap(editor, {
+      placeholder,
+      persist,
+    });
+  };
+  editor.addEventListener("focusin", startTiptapEnhancement, { once: true });
+  editor.addEventListener("pointerdown", startTiptapEnhancement, { once: true });
+  editor.addEventListener("keydown", startTiptapEnhancement, { once: true });
   return shell;
 }
 
