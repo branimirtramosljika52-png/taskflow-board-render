@@ -352,6 +352,7 @@ if (includeCadSpike) {
 }
 await copyOptionalDirectory(resolve(rootDir, "assets", "exports"), resolve(distDir, "assets", "exports"));
 await copyOptionalDirectory(resolve(rootDir, "assets", "ozo"), resolve(distDir, "assets", "ozo"));
+await copyOptionalDirectory(resolve(rootDir, "assets", "screenshots"), resolve(distDir, "assets", "screenshots"));
 await cp(resolve(rootDir, "node_modules", "three", "build", "three.module.js"), resolve(distDir, "assets", "vendor", "three.module.js"));
 await cp(resolve(rootDir, "node_modules", "leaflet", "dist", "leaflet.js"), resolve(distDir, "assets", "vendor", "leaflet.js"));
 await cp(resolve(rootDir, "node_modules", "leaflet", "dist", "leaflet.css"), resolve(distDir, "assets", "vendor", "leaflet.css"));
