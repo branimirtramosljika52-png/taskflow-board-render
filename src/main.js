@@ -58706,6 +58706,11 @@ let documentationSprResultsRichControl = null;
 let documentationSprInitialized = false;
 let documentationSprSaveTimer = 0;
 let documentationSprGridlineRetryTimer = 0;
+let documentationSprSectionTagsTimer = 0;
+let documentationSprPreviewRenderTimer = 0;
+let documentationSprTemplateLibraryPersistTimer = 0;
+let documentationSprTemplateLibraryPersistToken = 0;
+let documentationSprTemplateOpenToken = 0;
 let documentationSprWorkbenchMode = "library";
 let documentationSprDraftServiceBinding = null;
 let documentationSprFieldContextMenu = null;
@@ -60212,6 +60217,11 @@ function loadDocumentationSprTemplateLibrary() {
 }
 
 function persistDocumentationSprTemplateLibrary() {
+  documentationSprTemplateLibraryPersistToken += 1;
+  if (documentationSprTemplateLibraryPersistTimer) {
+    window.clearTimeout(documentationSprTemplateLibraryPersistTimer);
+    documentationSprTemplateLibraryPersistTimer = 0;
+  }
   try {
     window.localStorage.setItem(
       DOCUMENTATION_SPR_TEMPLATE_LIBRARY_STORAGE_KEY,
@@ -60222,6 +60232,28 @@ function persistDocumentationSprTemplateLibrary() {
     setDocumentationSprStatus("Predlošci nisu spremljeni", "saving");
     return false;
   }
+}
+
+function scheduleDocumentationSprTemplateLibraryPersist(delayMs = 900) {
+  documentationSprTemplateLibraryPersistToken += 1;
+  const token = documentationSprTemplateLibraryPersistToken;
+  if (documentationSprTemplateLibraryPersistTimer) {
+    window.clearTimeout(documentationSprTemplateLibraryPersistTimer);
+  }
+  documentationSprTemplateLibraryPersistTimer = window.setTimeout(() => {
+    documentationSprTemplateLibraryPersistTimer = 0;
+    const persistWhenIdle = () => {
+      if (token !== documentationSprTemplateLibraryPersistToken) {
+        return;
+      }
+      persistDocumentationSprTemplateLibrary();
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(persistWhenIdle, { timeout: 1500 });
+      return;
+    }
+    persistWhenIdle();
+  }, Math.max(0, Number(delayMs) || 0));
 }
 
 function normalizeDocumentationSprGlobalHeader(value = {}) {
@@ -60507,16 +60539,27 @@ function openDocumentationSprTemplateFromLibrary(templateId = "") {
     setDocumentationSprStatus("Predložak nije pronađen", "saving");
     return false;
   }
+  const openToken = documentationSprTemplateOpenToken + 1;
+  documentationSprTemplateOpenToken = openToken;
   documentationSprTemplateLibrary.activeTemplateId = template.id;
   documentationSprDraftServiceBinding = getDocumentationSprTemplateServiceBinding(template);
-  persistDocumentationSprTemplateLibrary();
+  scheduleDocumentationSprTemplateLibraryPersist();
   setDocumentationSprWorkbenchMode("editor", { renderLibrary: false });
-  applyDocumentationSprModel(template.model, {
-    templateId: template.id,
-    statusText: "Predložak učitan",
-  });
+  setDocumentationSprStatus("Otvaram predložak...", "saving");
   requestAnimationFrame(() => {
-    documentationSprTemplateNameInput?.focus({ preventScroll: true });
+    if (openToken !== documentationSprTemplateOpenToken) {
+      return;
+    }
+    applyDocumentationSprModel(template.model, {
+      templateId: template.id,
+      statusText: "Predložak učitan",
+      persistDraft: "defer",
+    });
+    requestAnimationFrame(() => {
+      if (openToken === documentationSprTemplateOpenToken) {
+        documentationSprTemplateNameInput?.focus({ preventScroll: true });
+      }
+    });
   });
   return true;
 }
@@ -60560,7 +60603,9 @@ function syncDocumentationSprTemplateManager() {
       ? `${label} · ${activeTemplate.name}`
       : label;
   }
-  renderDocumentationSprLibrary();
+  if (documentationSprWorkbenchMode === "library") {
+    renderDocumentationSprLibrary();
+  }
 }
 
 function getDocumentationSprSelectValues(select) {
@@ -62988,6 +63033,20 @@ function persistDocumentationSprModelNow(statusText = "Spremljeno lokalno") {
   }
 }
 
+function scheduleDocumentationSprModelPersist(statusText = "Spremljeno lokalno", delayMs = 250) {
+  if (!documentationSprModel) {
+    return false;
+  }
+  if (documentationSprSaveTimer) {
+    window.clearTimeout(documentationSprSaveTimer);
+  }
+  documentationSprSaveTimer = window.setTimeout(() => {
+    documentationSprSaveTimer = 0;
+    persistDocumentationSprModelNow(statusText);
+  }, Math.max(0, Number(delayMs) || 0));
+  return true;
+}
+
 function setDocumentationSprStatus(text, tone = "saved") {
   if (!documentationSprStatus) {
     return;
@@ -63026,6 +63085,7 @@ function syncDocumentationSprGridlineIntoModel() {
 function applyDocumentationSprModel(nextModel, {
   templateId = documentationSprTemplateLibrary.activeTemplateId,
   statusText = "Predložak učitan",
+  persistDraft = "sync",
 } = {}) {
   const activeTemplate = getDocumentationSprTemplateById(templateId);
   const activeTemplateBinding = getDocumentationSprTemplateServiceBinding(activeTemplate);
@@ -63053,7 +63113,14 @@ function applyDocumentationSprModel(nextModel, {
     mountDocumentationSprGridline();
   }
   renderDocumentationSprPreview();
-  persistDocumentationSprModelNow(statusText);
+  if (persistDraft === "defer") {
+    setDocumentationSprStatus(statusText, "saved");
+    scheduleDocumentationSprModelPersist(statusText);
+  } else if (persistDraft !== false) {
+    persistDocumentationSprModelNow(statusText);
+  } else {
+    setDocumentationSprStatus(statusText, "saved");
+  }
   syncDocumentationSprTemplateManager();
 }
 
@@ -63163,10 +63230,11 @@ function loadSelectedDocumentationSprTemplate() {
   }
   documentationSprTemplateLibrary.activeTemplateId = template.id;
   documentationSprDraftServiceBinding = getDocumentationSprTemplateServiceBinding(template);
-  persistDocumentationSprTemplateLibrary();
+  scheduleDocumentationSprTemplateLibraryPersist();
   applyDocumentationSprModel(template.model, {
     templateId: template.id,
     statusText: "Predložak učitan",
+    persistDraft: "defer",
   });
 }
 
@@ -64075,6 +64143,10 @@ function syncDocumentationSprSectionTags() {
   if (!documentationSprModel || !documentationWorkbenchModule) {
     return;
   }
+  if (documentationSprSectionTagsTimer) {
+    window.clearTimeout(documentationSprSectionTagsTimer);
+    documentationSprSectionTagsTimer = 0;
+  }
   const selectedEquipment = getDocumentationSprEquipmentByIds();
   const selectedLegal = getDocumentationSprLegalFrameworksByIds();
   const technicalEntries = parseDocumentationSprTechnicalData(
@@ -64127,6 +64199,16 @@ function syncDocumentationSprSectionTags() {
   setDocumentationSprSectionTags(documentationSprConclusionSection, [
     { label: "Ocjena", value: documentationSprModel.resultStatus, tone: isDocumentationSprFailingResult() ? "amber" : "green" },
   ]);
+}
+
+function scheduleDocumentationSprSectionTags(delayMs = 240) {
+  if (documentationSprSectionTagsTimer) {
+    window.clearTimeout(documentationSprSectionTagsTimer);
+  }
+  documentationSprSectionTagsTimer = window.setTimeout(() => {
+    documentationSprSectionTagsTimer = 0;
+    syncDocumentationSprSectionTags();
+  }, Math.max(0, Number(delayMs) || 0));
 }
 
 function buildDocumentationSprGridlineStyleFromMeasurementFormat(format = {}) {
@@ -66796,23 +66878,57 @@ function renderDocumentationSprPages(model) {
   ];
 }
 
+function isDocumentationSprPreviewTargetVisible(element) {
+  return element instanceof HTMLElement
+    && !element.hidden
+    && element.offsetParent !== null;
+}
+
+function shouldRenderDocumentationSprPreviewPages() {
+  const previewVisible = isDocumentationSprPreviewTargetVisible(documentationSprPreview)
+    && !(documentationSprPreviewPanel instanceof HTMLElement && documentationSprPreviewPanel.hidden);
+  const inlinePreviewVisible = isDocumentationSprPreviewTargetVisible(documentationSprInlineDocumentBody);
+  return previewVisible || inlinePreviewVisible;
+}
+
 function renderDocumentationSprPreview() {
-  if (!documentationSprPreview || !documentationSprModel) {
+  if (documentationSprPreviewRenderTimer) {
+    window.clearTimeout(documentationSprPreviewRenderTimer);
+    documentationSprPreviewRenderTimer = 0;
+  }
+  if (!documentationSprModel) {
     return;
   }
   syncDocumentationSprDerivedSourceFields();
-  const rows = getDocumentationSprMeasurementRows();
+  const activeGridlineModel = getDocumentationSprActiveGridlineModel();
+  const rows = documentationSprGridSummary ? getDocumentationSprMeasurementRows() : [];
+
+  if (!shouldRenderDocumentationSprPreviewPages()) {
+    if (documentationSprPreviewSummary) {
+      documentationSprPreviewSummary.textContent = "Preview sakriven";
+    }
+    if (documentationSprInlineDocumentSummary) {
+      documentationSprInlineDocumentSummary.textContent = "Preview sakriven";
+    }
+    if (documentationSprGridSummary) {
+      documentationSprGridSummary.textContent = `${rows.length} redaka iz aktivne Gridline tablice`;
+    }
+    return;
+  }
+
   const tables = getDocumentationSprMeasurementTablesForModel({
     ...documentationSprModel,
-    gridlineModel: getDocumentationSprActiveGridlineModel(),
+    gridlineModel: activeGridlineModel,
   });
   const tableRowCount = tables.reduce((sum, table) => sum + getDocumentationSprMeasurementTableRowsForRender(table).length, 0);
   const pages = renderDocumentationSprPages({
     ...documentationSprModel,
-    gridlineModel: getDocumentationSprActiveGridlineModel(),
+    gridlineModel: activeGridlineModel,
   });
-  documentationSprPreview.innerHTML = pages.join("");
-  if (documentationSprInlineDocumentBody instanceof HTMLElement) {
+  if (isDocumentationSprPreviewTargetVisible(documentationSprPreview)) {
+    documentationSprPreview.innerHTML = pages.join("");
+  }
+  if (isDocumentationSprPreviewTargetVisible(documentationSprInlineDocumentBody)) {
     documentationSprInlineDocumentBody.innerHTML = pages.join("");
   }
 
@@ -66825,6 +66941,16 @@ function renderDocumentationSprPreview() {
   if (documentationSprGridSummary) {
     documentationSprGridSummary.textContent = `${rows.length} redaka iz aktivne Gridline tablice`;
   }
+}
+
+function scheduleDocumentationSprPreviewRender(delayMs = 260) {
+  if (documentationSprPreviewRenderTimer) {
+    window.clearTimeout(documentationSprPreviewRenderTimer);
+  }
+  documentationSprPreviewRenderTimer = window.setTimeout(() => {
+    documentationSprPreviewRenderTimer = 0;
+    renderDocumentationSprPreview();
+  }, Math.max(0, Number(delayMs) || 0));
 }
 
 function getDocumentationSprPdfFileName(model = documentationSprModel) {
@@ -68687,12 +68813,12 @@ function mountDocumentationSprGridline() {
     workOrderNumber: documentationSprModel.workOrderNumber || "",
     onAiPrefill: runDocumentationSprGridlineAiPrefill,
     onFormulaReady: () => {
-      renderDocumentationSprPreview();
+      scheduleDocumentationSprPreviewRender(420);
     },
     onChange: (nextModel) => {
       documentationSprModel.gridlineModel = normalizeDocumentationSprGridlineModel(nextModel);
-      syncDocumentationSprSectionTags();
-      renderDocumentationSprPreview();
+      scheduleDocumentationSprSectionTags();
+      scheduleDocumentationSprPreviewRender(420);
       scheduleDocumentationSprSave();
     },
   });
