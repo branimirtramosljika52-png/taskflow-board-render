@@ -51,7 +51,7 @@ function getFirstPageImageCount(pdfDoc) {
   return getPageImageCount(pdfDoc, 0);
 }
 
-async function extractPdfText(bytes) {
+async function extractPdfPagesText(bytes) {
   const loadingTask = getDocument({
     data: bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes),
     disableWorker: true,
@@ -64,10 +64,14 @@ async function extractPdfText(bytes) {
       const content = await page.getTextContent();
       pages.push(content.items.map((item) => item.str || "").join("\n"));
     }
-    return pages.join("\n");
+    return pages;
   } finally {
     await pdf.destroy();
   }
+}
+
+async function extractPdfText(bytes) {
+  return (await extractPdfPagesText(bytes)).join("\n");
 }
 
 test("native documentation HTML renders every XLSM-backed report preset", () => {
@@ -424,5 +428,53 @@ test("SPR native PDF can resolve the uploaded header from document settings", as
     assert.equal(pdfDoc.getPageCount() > 1, true, "test PDF has continuation pages");
     assert.equal(getPageImageCount(pdfDoc, 0) > 0, true, "cover page uses the uploaded global header");
     assert.equal(getPageImageCount(pdfDoc, 1), 0, "continuation page keeps the simple report header");
+  });
+});
+
+test("SPR vector PDF uses a standalone cover before numbered report chapters", async () => {
+  await withPdfFontFetch(async () => {
+    const result = await generateDocumentationSprPdfBlob({
+      model: {
+        ...createDocumentationReportModelDefaults("SPR"),
+        serviceCode: "SPR",
+        providerName: "Adria Grupa d.o.o.",
+        providerAddress: "Heinzelova 53a, Zagreb",
+        providerOib: "12345678901",
+        companyName: "Petrol d.o.o.",
+        companyAddress: "Savska Opatovina 36, Zagreb",
+        companyOib: "75550985023",
+        workOrderNumber: "26-672",
+        recordNumber: "26-672-SPR",
+        inspectionPlace: "PM Zagreb Lucko",
+        inspectionObject: "Test objekt",
+        inspectionType: "Periodično ispitivanje",
+        inspectionDate: "2026-07-05",
+        issueDate: "2026-07-06",
+        validUntil: "2027-07-05",
+        responsiblePerson: "Test Ispitivac",
+        equipment: "Eurotest 61557",
+        regulations: "Zakon o zaštiti od požara",
+        projectDocumentation: "Zapisnik od prethodnog ispitivanja.",
+        systemDescription: "Predmetni sustav je pregledan.",
+        resultsText: "Mjerenja su provedena.",
+        resultStatus: "ZADOVOLJAVA",
+      },
+      rows: [],
+    });
+    const pages = await extractPdfPagesText(result.bytes);
+    const firstPage = pages[0] || "";
+    const secondPage = pages[1] || "";
+
+    assert.match(firstPage, /ZAPISNIK/, "first page renders the cover title");
+    assert.match(firstPage, /26-672-SPR/, "first page renders the record number");
+    assert.match(firstPage, /Ispitivanje obavili/, "first page renders inspector row");
+    assert.match(firstPage, /Test Ispitivac/, "first page renders inspector value");
+    assert.match(firstPage, /Vrijedi do/, "first page renders validity row");
+    assert.match(firstPage, /ZADOVOLJAVA/, "first page renders assessment status");
+    assert.doesNotMatch(firstPage, /MJERNA I ISPITNA OPREMA/, "cover does not contain numbered report chapters");
+    assert.doesNotMatch(firstPage, /PRIMJENJENI PROPISI/, "cover does not contain regulations chapter");
+    assert.match(secondPage, /ISPITNI IZVJE/, "second page starts the report header");
+    assert.match(secondPage, /1\./, "second page starts chapter numbering at 1");
+    assert.match(secondPage, /MJERNA I ISPITNA OPREMA/, "second page contains the first report chapter");
   });
 });

@@ -26,6 +26,12 @@ const DARK = rgb(0.05, 0.06, 0.08);
 const MUTED = rgb(0.34, 0.38, 0.44);
 const LIGHT_GRAY = rgb(0.79, 0.80, 0.81);
 const TABLE_GRAY = rgb(0.75, 0.76, 0.77);
+const COVER_BLUE_LIGHT = rgb(0.56, 0.76, 0.94);
+const COVER_TABLE_LINE = rgb(0.85, 0.87, 0.90);
+const COVER_LABEL_BG = rgb(0.95, 0.965, 0.98);
+const COVER_VALUE_BG = rgb(0.99, 0.995, 1);
+const COVER_GREEN = rgb(0.09, 0.53, 0.29);
+const COVER_GREEN_BG = rgb(0.95, 0.98, 0.965);
 const PDF_NATIVE_MEASUREMENT_SERVICE_CODES = new Set(
   getDocumentationNativeTemplateSeedPresets()
     .map((preset) => clean(preset?.serviceCode).toUpperCase())
@@ -428,6 +434,154 @@ function getConclusionLead(model = {}) {
 
 function getValiditySentence(model = {}) {
   return clean(model.validitySentence || getReportPreset(model).validitySentence || "Zapisnik o ispitivanju vrijedi do");
+}
+
+function getCoverProviderName(model = {}) {
+  return clean(
+    model.providerName
+    || model.executorName
+    || model.inspectionCompany
+    || model.organizationName
+    || model.signerOrganization
+    || "",
+  );
+}
+
+function getCoverProviderAddress(model = {}) {
+  return clean(
+    model.providerAddress
+    || model.executorAddress
+    || model.inspectionCompanyAddress
+    || model.organizationAddress
+    || "",
+  );
+}
+
+function getCoverInspectors(model = {}) {
+  return clean(
+    model.inspectors
+    || model.inspectorNames
+    || model.inspectionPerformedBy
+    || model.responsiblePerson
+    || "",
+  );
+}
+
+function joinCoverDetails(parts = [], separator = ", ") {
+  return parts.map((part) => clean(part)).filter(Boolean).join(separator);
+}
+
+function getCoverIssueText(model = {}) {
+  return joinCoverDetails([
+    model.issuePlace || "Zagreb",
+    formatDocumentDate(model.issueDate || model.inspectionDate),
+  ]);
+}
+
+function getCoverAssessmentNote(model = {}) {
+  if (isVesReport(model)) {
+    return getVesConclusionSentence(model);
+  }
+  const explicit = cleanMultiline(model.coverAssessmentNote || model.assessmentNote || model.conclusionSentence || "");
+  if (explicit) {
+    return explicit;
+  }
+  return isFailingResult(model)
+    ? "Prema provedenom pregledu i ispitivanju, predmetni sustav ne zadovoljava zahtjeve važećih propisa i normi."
+    : "Prema provedenom pregledu i ispitivanju, predmetni sustav zadovoljava zahtjeve važećih propisa i normi.";
+}
+
+function getCoverInfoRows(model = {}) {
+  const companySecondary = joinCoverDetails([
+    model.companyAddress,
+    clean(model.companyOib) ? `OIB: ${clean(model.companyOib)}` : "",
+  ], "; ");
+  const providerSecondary = joinCoverDetails([
+    getCoverProviderAddress(model),
+    clean(model.providerOib || model.executorOib) ? `OIB: ${clean(model.providerOib || model.executorOib)}` : "",
+  ], "; ");
+  const vesReport = isVesReport(model);
+  return [
+    {
+      label: "Naručitelj",
+      primary: clean(model.companyName),
+      secondary: companySecondary,
+      primaryBold: true,
+    },
+    {
+      label: "Korisnik prostora",
+      primary: clean(model.spaceUser),
+    },
+    {
+      label: "Mjesto ispitivanja",
+      primary: clean(model.inspectionPlace),
+      primaryBold: true,
+    },
+    {
+      label: "Objekt ispitivanja",
+      primary: clean(model.inspectionObject),
+    },
+    {
+      label: "Vrsta ispitivanja",
+      primary: clean(model.inspectionType),
+    },
+    {
+      label: "Ispitivanje obavili",
+      primary: getCoverInspectors(model),
+    },
+    {
+      label: "Tvrtka ispitivač",
+      primary: getCoverProviderName(model),
+      secondary: providerSecondary,
+    },
+    {
+      label: "Datum ispitivanja",
+      primary: formatDocumentDate(model.inspectionDate),
+      primaryBold: true,
+    },
+    {
+      label: "Vrijedi do",
+      primary: formatDocumentDate(model.validUntil),
+      primaryBold: true,
+    },
+    {
+      label: vesReport ? "Zaključna rečenica" : "Zaključna ocjena",
+      primary: vesReport ? getCoverAssessmentNote(model) : clean(model.resultStatus || "ZADOVOLJAVA"),
+      secondary: vesReport ? "" : getCoverAssessmentNote(model),
+      primaryBold: true,
+      accent: true,
+      maxPrimaryLines: vesReport ? 4 : 1,
+      maxSecondaryLines: 3,
+    },
+  ];
+}
+
+function getOpeningReportSectionCount(model = {}) {
+  const vesReport = isVesReport(model);
+  const hasTechnicalData = !usesSingleSystemDescription(model) && splitTextLines(model.technicalData).length > 0;
+  const systemDescription = cleanMultiline(model.systemDescription);
+  const showResultsText = !vesReport && !usesSingleSystemDescription(model);
+  let count = 0;
+  if (hasTechnicalData) {
+    count += 1;
+  }
+  if (!vesReport) {
+    count += 1;
+  }
+  count += 1;
+  if (!vesReport) {
+    count += 1;
+  }
+  if (systemDescription) {
+    count += 1;
+  }
+  if (showResultsText) {
+    count += 1;
+  }
+  if (vesReport) {
+    count += 1;
+  }
+  return count;
 }
 
 function normalizeVesExerciseRows(value = []) {
@@ -1093,6 +1247,167 @@ async function drawRichTextBlocks(pdfDoc, page, model, value, y, fonts) {
   return { page: currentPage, y: cursorY };
 }
 
+function drawCoverInfoTable(page, rows = [], y, fonts, {
+  x = MARGIN_X,
+  width = PAGE_WIDTH - (MARGIN_X * 2),
+} = {}) {
+  const labelWidth = Math.round(width * 0.30);
+  const valueWidth = width - labelWidth;
+  const labelPaddingX = 10;
+  const valuePaddingX = 11;
+  let cursorY = y;
+  rows.forEach((row) => {
+    const labelLines = wrapText(row.label || "", fonts.bold, 8.6, labelWidth - (labelPaddingX * 2)).slice(0, 2);
+    const primaryFont = row.primaryBold === false ? fonts.regular : fonts.bold;
+    const primarySize = row.accent ? 9.3 : 8.9;
+    const primaryLines = wrapText(row.primary || "-", primaryFont, primarySize, valueWidth - (valuePaddingX * 2))
+      .slice(0, row.maxPrimaryLines || 2);
+    const secondaryLines = row.secondary
+      ? wrapText(row.secondary, fonts.regular, 7.8, valueWidth - (valuePaddingX * 2)).slice(0, row.maxSecondaryLines || 2)
+      : [];
+    const labelHeight = labelLines.length * 10.5;
+    const valueHeight = (primaryLines.length * 11.2) + (secondaryLines.length ? 3 + (secondaryLines.length * 9.8) : 0);
+    const rowHeight = Math.max(27, labelHeight + 14, valueHeight + 14);
+    const rowY = cursorY;
+    const fill = row.accent ? COVER_GREEN_BG : COVER_VALUE_BG;
+
+    page.drawRectangle({
+      x,
+      y: rowY - rowHeight,
+      width: labelWidth,
+      height: rowHeight,
+      color: COVER_LABEL_BG,
+      borderColor: COVER_TABLE_LINE,
+      borderWidth: 0.6,
+    });
+    page.drawRectangle({
+      x: x + labelWidth,
+      y: rowY - rowHeight,
+      width: valueWidth,
+      height: rowHeight,
+      color: fill,
+      borderColor: COVER_TABLE_LINE,
+      borderWidth: 0.6,
+    });
+
+    let labelY = rowY - 8;
+    labelLines.forEach((line) => {
+      drawTextLine(page, line, {
+        x: x + labelPaddingX,
+        y: labelY,
+        width: labelWidth - (labelPaddingX * 2),
+        font: fonts.bold,
+        size: 8.6,
+        color: DARK,
+      });
+      labelY -= 10.5;
+    });
+
+    let valueY = rowY - 8;
+    primaryLines.forEach((line) => {
+      drawTextLine(page, line, {
+        x: x + labelWidth + valuePaddingX,
+        y: valueY,
+        width: valueWidth - (valuePaddingX * 2),
+        font: primaryFont,
+        size: primarySize,
+        color: row.accent ? COVER_GREEN : DARK,
+      });
+      valueY -= 11.2;
+    });
+    if (secondaryLines.length) {
+      valueY -= 2;
+      secondaryLines.forEach((line) => {
+        drawTextLine(page, line, {
+          x: x + labelWidth + valuePaddingX,
+          y: valueY,
+          width: valueWidth - (valuePaddingX * 2),
+          font: fonts.regular,
+          size: 7.8,
+          color: MUTED,
+        });
+        valueY -= 9.8;
+      });
+    }
+    cursorY -= rowHeight;
+  });
+  return cursorY;
+}
+
+function drawCoverPage(pdfDoc, model, fonts, headerImage) {
+  const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  const contentX = MARGIN_X + 28;
+  const contentWidth = PAGE_WIDTH - MARGIN_X - contentX;
+  page.drawRectangle({
+    x: contentX - 14,
+    y: BOTTOM_Y,
+    width: 4.5,
+    height: 520,
+    color: COVER_BLUE_LIGHT,
+  });
+
+  let y = headerImage
+    ? drawUploadedHeader(page, model, headerImage, fonts, TOP_Y, { showWorkOrderNumber: false })
+    : TOP_Y - 86;
+  drawTextLine(page, "ZAPISNIK", {
+    x: contentX,
+    y: y - 8,
+    width: contentWidth,
+    align: "center",
+    font: fonts.bold,
+    size: 24,
+  });
+  drawTextBlock(page, getReportCoverSubtitle(model), {
+    x: contentX,
+    y: y - 40,
+    width: contentWidth,
+    align: "center",
+    font: fonts.bold,
+    size: 10.2,
+    lineHeight: 13.2,
+    maxLines: 2,
+  });
+  drawTextLine(page, clean(model.recordNumber), {
+    x: contentX,
+    y: y - 73,
+    width: contentWidth,
+    align: "center",
+    font: fonts.bold,
+    size: 10.4,
+    color: BLUE,
+  });
+
+  y -= 100;
+  y = drawCoverInfoTable(page, getCoverInfoRows(model), y, fonts, {
+    x: contentX,
+    width: contentWidth,
+  });
+
+  const issueText = getCoverIssueText(model);
+  if (issueText) {
+    const issueY = Math.max(BOTTOM_Y + 52, y - 34);
+    drawTextLine(page, "Mjesto i vrijeme izdavanja", {
+      x: contentX + contentWidth - 165,
+      y: issueY,
+      width: 165,
+      align: "right",
+      font: fonts.regular,
+      size: 7.8,
+      color: MUTED,
+    });
+    drawTextLine(page, issueText, {
+      x: contentX + contentWidth - 165,
+      y: issueY - 15,
+      width: 165,
+      align: "right",
+      font: fonts.bold,
+      size: 9.2,
+      color: DARK,
+    });
+  }
+  return page;
+}
+
 function drawPageOne(pdfDoc, model, rows, fonts, headerImage) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   const vesReport = isVesReport(model);
@@ -1229,6 +1544,113 @@ function drawPageTwo(pdfDoc, model, fonts) {
   });
   drawFooter(page, "SPR-2/4", fonts);
   return page;
+}
+
+async function drawCoverAndOpeningReportPages(pdfDoc, model, rows, fonts, headerImage) {
+  void rows;
+  drawCoverPage(pdfDoc, model, fonts, headerImage);
+  const vesReport = isVesReport(model);
+  const hasTechnicalData = !usesSingleSystemDescription(model) && splitTextLines(model.technicalData).length > 0;
+  const systemDescription = String(model.systemDescription || "").trim();
+  const showResultsText = !vesReport && !usesSingleSystemDescription(model);
+  let sectionNumber = 1;
+  let { page, y } = createContinuationPage(pdfDoc, model, fonts);
+  const ensureSpace = (neededHeight = 72) => {
+    if (y - neededHeight >= BOTTOM_Y) {
+      return;
+    }
+    const next = createContinuationPage(pdfDoc, model, fonts);
+    page = next.page;
+    y = next.y;
+  };
+
+  if (hasTechnicalData) {
+    ensureSpace(74);
+    y = drawSectionTitle(page, sectionNumber, getPdfTechnicalSectionTitle(model), y, fonts);
+    const technicalEntries = getPdfTechnicalDataEntries(model.technicalData);
+    y = technicalEntries.some(([, value]) => value)
+      ? drawKeyValueTable(page, technicalEntries, y, fonts, { keyWidth: 150, fontSize: 8.1, lineHeight: 10.1, minRowHeight: 15 })
+      : drawPlainList(page, model.technicalData, y, fonts, { maxLines: 5, fontSize: 8.2, lineHeight: 10.4 });
+    y -= 6;
+    sectionNumber += 1;
+  }
+
+  if (!vesReport) {
+    ensureSpace(64);
+    y = drawSectionTitle(page, sectionNumber, "MJERNA I ISPITNA OPREMA", y, fonts);
+    y = drawPlainList(page, model.equipment, y, fonts, { maxLines: 7, fontSize: 8.2, lineHeight: 10.4 });
+    y -= 6;
+    sectionNumber += 1;
+  }
+
+  ensureSpace(74);
+  y = drawSectionTitle(page, sectionNumber, "PRIMJENJENI PROPISI", y, fonts);
+  y = drawPlainList(page, model.regulations, y, fonts, { maxLines: vesReport ? 10 : 14, fontSize: 7.7, lineHeight: 9.4 });
+  y -= 8;
+  sectionNumber += 1;
+
+  if (!vesReport) {
+    ensureSpace(64);
+    y = drawSectionTitle(page, sectionNumber, "KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA", y, fonts);
+    y = drawPlainList(page, model.projectDocumentation, y, fonts, { maxLines: 4, fontSize: 8.6, lineHeight: 11.2 });
+    y -= 8;
+    sectionNumber += 1;
+  }
+
+  if (systemDescription) {
+    ensureSpace(96);
+    y = drawSectionTitle(page, sectionNumber, vesReport ? "OPIS" : "OPIS SUSTAVA", y, fonts);
+    const richSystem = await drawRichTextBlocks(pdfDoc, page, model, systemDescription, y, fonts);
+    page = richSystem.page;
+    y = richSystem.y - 6;
+    sectionNumber += 1;
+  }
+
+  if (showResultsText) {
+    ensureSpace(96);
+    y = drawSectionTitle(page, sectionNumber, "REZULTATI ISPITIVANJA", y, fonts);
+    const richResult = await drawRichTextBlocks(pdfDoc, page, model, model.resultsText, y, fonts);
+    page = richResult.page;
+    y = richResult.y - 6;
+    sectionNumber += 1;
+  }
+
+  if (vesReport) {
+    const vesRows = normalizeVesExerciseRows(model.vesExerciseRows);
+    ensureSpace(64 + Math.max(1, vesRows.length) * 30);
+    y = drawSectionTitle(page, sectionNumber, "ZBORNA MJESTA", y, fonts);
+    y = drawVesExerciseRowsTable(page, vesRows, y, fonts);
+    sectionNumber += 1;
+  }
+
+  const noteLines = vesReport ? [] : [clean(model.eiNote), clean(model.eiminNote)].filter(Boolean);
+  if (noteLines.length) {
+    ensureSpace(58);
+    page.drawRectangle({
+      x: MARGIN_X,
+      y: y - 18,
+      width: PAGE_WIDTH - (MARGIN_X * 2),
+      height: 18,
+      color: LIGHT_GRAY,
+    });
+    drawTextLine(page, "Značenje oznaka:", {
+      x: MARGIN_X + 5,
+      y: y - 4,
+      font: fonts.bold,
+      size: 9,
+    });
+    y -= 28;
+    for (const note of noteLines) {
+      const noteResult = drawPaginatedTextBlock(pdfDoc, page, model, note, y, fonts, {
+        x: MARGIN_X + 4,
+        width: PAGE_WIDTH - (MARGIN_X * 2) - 8,
+        size: 8.2,
+        lineHeight: 10.8,
+      });
+      page = noteResult.page;
+      y = noteResult.y - 2;
+    }
+  }
 }
 
 async function drawOpeningPages(pdfDoc, model, rows, fonts, headerImage) {
@@ -4107,8 +4529,9 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
   const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   let y = drawSimpleHeader(page, model, fonts);
   y -= 8;
+  let sectionNumber = getOpeningReportSectionCount(model) + 1;
   if (isCertificateCapableReport(model) && !shouldIssueCertificate(model)) {
-    y = drawSectionTitle(page, 6, "NAPOMENA", y, fonts);
+    y = drawSectionTitle(page, sectionNumber, "NAPOMENA", y, fonts);
     y = drawPlainList(page, getCertificateFactualNote(model) || "Upisati utvrdjeno cinjenicno stanje.", y, fonts, { maxLines: 8, fontSize: 8.5, lineHeight: 11.2 });
     drawTextLine(page, `U Zagrebu, ${formatDocumentDate(model.issueDate)}`, {
       x: MARGIN_X,
@@ -4145,7 +4568,7 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
     return page;
   }
   if (isVesReport(model)) {
-    y = drawSectionTitle(page, 6, "ZAKLJUCNA RECENICA", y, fonts);
+    y = drawSectionTitle(page, sectionNumber, "ZAKLJUCNA RECENICA", y, fonts);
     y = drawTextBlock(page, getVesConclusionSentence(model), {
       x: MARGIN_X + 2,
       y,
@@ -4199,14 +4622,16 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
     return page;
   }
   if (isFailingResult(model)) {
-  y = drawSectionTitle(page, 6, "NEDOSTATCI", y, fonts);
+  y = drawSectionTitle(page, sectionNumber, "NEDOSTATCI", y, fonts);
   y = drawPlainList(page, model.defects || "Nema utvrđenih nedostataka.", y, fonts, { maxLines: 4, fontSize: 8.5, lineHeight: 11.2 });
   y -= 6;
+  sectionNumber += 1;
   }
-  y = drawSectionTitle(page, 7, "PREPORUKE", y, fonts);
+  y = drawSectionTitle(page, sectionNumber, "PREPORUKE", y, fonts);
   y = drawPlainList(page, model.recommendations || "Redovito održavati i provjeravati predmetni sustav.", y, fonts, { maxLines: 4, fontSize: 8.5, lineHeight: 11.2 });
   y -= 8;
-  y = drawSectionTitle(page, 8, "OCJENA REZULTATA ISPITIVANJA", y, fonts);
+  sectionNumber += 1;
+  y = drawSectionTitle(page, sectionNumber, "OCJENA REZULTATA ISPITIVANJA", y, fonts);
   y = drawTextBlock(page, "Na temelju usporedbe rezultata mjerenja i ispitivanja s propisanim odnosno dopuštenim parametrima utvrđeno je slijedeće:", {
     x: MARGIN_X + 2,
     y,
@@ -4223,7 +4648,8 @@ function drawPageFour(pdfDoc, model, fonts, signatureImage = null) {
     : [[getAssessmentLabel(model), clean(model.resultStatus), true]],
   y, fonts, { keyWidth: 310, fontSize: 8.5, lineHeight: 11, valueAlign: "right" });
   y -= 8;
-  y = drawSectionTitle(page, 9, "ZAKLJUČAK", y, fonts);
+  sectionNumber += 1;
+  y = drawSectionTitle(page, sectionNumber, "ZAKLJUČAK", y, fonts);
   y = drawTextBlock(page, getConclusionLead(model), {
     x: MARGIN_X + 2,
     y,
@@ -4527,7 +4953,7 @@ async function appendDocumentationSprRecord(pdfDoc, model = {}, rows = [], fonts
   if (shouldIssueCertificate(model)) {
     drawCertificatePage(pdfDoc, model, fonts, signatureImage);
   }
-  await drawOpeningPages(pdfDoc, model, safeRows, fonts, headerImage);
+  await drawCoverAndOpeningReportPages(pdfDoc, model, safeRows, fonts, headerImage);
   drawChecklistPages(pdfDoc, model, fonts);
   drawMeasurementTablePages(pdfDoc, model, safeRows, fonts);
   drawPageFour(pdfDoc, model, fonts, signatureImage);

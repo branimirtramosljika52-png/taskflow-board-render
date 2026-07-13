@@ -65922,6 +65922,109 @@ function getDocumentationSprValiditySentence(model = documentationSprModel) {
   return String(model?.validitySentence || preset.validitySentence || "Zapisnik o ispitivanju vrijedi do").trim();
 }
 
+function getDocumentationSprCoverProviderName(model = documentationSprModel) {
+  return String(
+    model?.providerName
+    || model?.executorName
+    || model?.inspectionCompany
+    || model?.organizationName
+    || model?.signerOrganization
+    || "",
+  ).trim();
+}
+
+function getDocumentationSprCoverProviderAddress(model = documentationSprModel) {
+  return String(
+    model?.providerAddress
+    || model?.executorAddress
+    || model?.inspectionCompanyAddress
+    || model?.organizationAddress
+    || "",
+  ).trim();
+}
+
+function getDocumentationSprCoverInspectors(model = documentationSprModel) {
+  return String(
+    model?.inspectors
+    || model?.inspectorNames
+    || model?.inspectionPerformedBy
+    || model?.responsiblePerson
+    || "",
+  ).trim();
+}
+
+function joinDocumentationSprCoverDetails(parts = [], separator = ", ") {
+  return parts.map((part) => String(part || "").trim()).filter(Boolean).join(separator);
+}
+
+function getDocumentationSprCoverIssueText(model = documentationSprModel) {
+  return joinDocumentationSprCoverDetails([
+    model?.issuePlace || "Zagreb",
+    formatDocumentationSprDateForDocument(model?.issueDate || model?.inspectionDate),
+  ]);
+}
+
+function getDocumentationSprCoverAssessmentNote(model = documentationSprModel) {
+  const isVes = getDocumentationSprServiceCode(model) === "VES";
+  if (isVes) {
+    const preset = getDocumentationNativeReportPreset("VES");
+    return String(model?.conclusionSentence || model?.ZAKLJUCNA_RECENICA || preset.conclusionSentence || "Vježba evakuacije i spašavanja provedena je prema planu.").trim();
+  }
+  const explicit = String(model?.coverAssessmentNote || model?.assessmentNote || model?.conclusionSentence || "").trim();
+  if (explicit) {
+    return explicit;
+  }
+  return isDocumentationSprFailingModel(model)
+    ? "Prema provedenom pregledu i ispitivanju, predmetni sustav ne zadovoljava zahtjeve važećih propisa i normi."
+    : "Prema provedenom pregledu i ispitivanju, predmetni sustav zadovoljava zahtjeve važećih propisa i normi.";
+}
+
+function getDocumentationSprCoverRows(model = documentationSprModel) {
+  const isVes = getDocumentationSprServiceCode(model) === "VES";
+  const companySecondary = joinDocumentationSprCoverDetails([
+    model?.companyAddress,
+    model?.companyOib ? `OIB: ${model.companyOib}` : "",
+  ], "; ");
+  const providerSecondary = joinDocumentationSprCoverDetails([
+    getDocumentationSprCoverProviderAddress(model),
+    model?.providerOib || model?.executorOib ? `OIB: ${model.providerOib || model.executorOib}` : "",
+  ], "; ");
+  return [
+    { label: "Naručitelj", primary: model?.companyName || "", secondary: companySecondary, bold: true },
+    { label: "Korisnik prostora", primary: model?.spaceUser || "" },
+    { label: "Mjesto ispitivanja", primary: model?.inspectionPlace || "", bold: true },
+    { label: "Objekt ispitivanja", primary: model?.inspectionObject || "" },
+    { label: "Vrsta ispitivanja", primary: model?.inspectionType || "" },
+    { label: "Ispitivanje obavili", primary: getDocumentationSprCoverInspectors(model) },
+    { label: "Tvrtka ispitivač", primary: getDocumentationSprCoverProviderName(model), secondary: providerSecondary },
+    { label: "Datum ispitivanja", primary: formatDocumentationSprDateForDocument(model?.inspectionDate), bold: true },
+    { label: "Vrijedi do", primary: formatDocumentationSprDateForDocument(model?.validUntil), bold: true },
+    {
+      label: isVes ? "Zaključna rečenica" : "Zaključna ocjena",
+      primary: isVes ? getDocumentationSprCoverAssessmentNote(model) : (model?.resultStatus || "ZADOVOLJAVA"),
+      secondary: isVes ? "" : getDocumentationSprCoverAssessmentNote(model),
+      bold: true,
+      accent: true,
+    },
+  ];
+}
+
+function getDocumentationSprOpeningSectionCount(model = documentationSprModel) {
+  const isVes = getDocumentationSprServiceCode(model) === "VES";
+  const hasTechnicalData = Boolean(getDocumentationSprTechnicalData(model));
+  const systemDescription = String(model?.systemDescription || "").trim();
+  const showResultsText = !isVes && !isDocumentationNativeSingleSystemDescriptionService(getDocumentationSprServiceCode(model));
+  let count = 0;
+  if (hasTechnicalData) count += 1;
+  if (!isVes) count += 1;
+  count += 1;
+  if (!isVes) count += 1;
+  if (systemDescription) count += 1;
+  if (showResultsText) count += 1;
+  if (isVes) count += 1;
+  return count;
+}
+
 function getDocumentationSprTechnicalData(model = documentationSprModel) {
   if (isDocumentationNativeSingleSystemDescriptionService(getDocumentationSprServiceCode(model))) {
     return "";
@@ -66417,6 +66520,194 @@ function renderDocumentationSprAttachmentPreviewPages(model, startPageNumber = 5
   });
 }
 
+function renderDocumentationSprCoverInfoRows(model) {
+  return getDocumentationSprCoverRows(model).map((row) => `
+    <tr class="${row.accent ? "is-assessment-row" : ""}">
+      <th>${escapeHtml(row.label)}</th>
+      <td>
+        <strong>${escapeHtml(row.primary || "-")}</strong>
+        ${row.secondary ? `<small>${escapeHtml(row.secondary)}</small>` : ""}
+      </td>
+    </tr>
+  `).join("");
+}
+
+function renderDocumentationSprCoverHeader(model) {
+  if (model?.headerImageDataUrl) {
+    return renderDocumentationSprPaperHeader(model, { useUploadedHeader: true, showWorkOrderNumber: false });
+  }
+  return '<div class="documentation-spr-cover-header-placeholder"></div>';
+}
+
+function renderDocumentationSprCoverPage(model, pageNumber = 1, totalPages = 4) {
+  return `
+    <section class="documentation-spr-paper documentation-spr-paper-first is-cover-page">
+      ${renderDocumentationSprCoverHeader(model)}
+      <div class="documentation-spr-cover-content">
+        <div class="documentation-spr-cover-title">
+          <h2>ZAPISNIK</h2>
+          <strong>${escapeHtml(getDocumentationSprCoverSubtitle(model))}</strong>
+          <span>${escapeHtml(model.recordNumber || "")}</span>
+        </div>
+        <table class="documentation-spr-cover-info">
+          <tbody>${renderDocumentationSprCoverInfoRows(model)}</tbody>
+        </table>
+        <div class="documentation-spr-cover-issue">
+          <span>Mjesto i vrijeme izdavanja</span>
+          <strong>${escapeHtml(getDocumentationSprCoverIssueText(model))}</strong>
+        </div>
+      </div>
+      ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
+    </section>
+  `;
+}
+
+function renderDocumentationSprVesExercisePreviewRows(model) {
+  const rows = normalizeDocumentationVesExerciseRows(model?.vesExerciseRows);
+  const safeRows = rows.length ? rows : [{ assemblyPoint: "", personCount: "", evacuationTime: "", note: "" }];
+  return `
+    <table class="documentation-spr-paper-measure-table is-regular documentation-spr-ves-exercise-table">
+      <thead>
+        <tr>
+          <th>Zborno mjesto</th>
+          <th>Broj osoba</th>
+          <th>Vrijeme izlaska</th>
+          <th>Napomena</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${safeRows.map((row) => `
+          <tr>
+            <td>${escapeHtml(row.assemblyPoint || "")}</td>
+            <td>${escapeHtml(row.personCount || "")}</td>
+            <td>${escapeHtml(row.evacuationTime || "")}</td>
+            <td>${escapeHtml(row.note || "")}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderDocumentationSprOpeningReportPage(model, pageNumber = 2, totalPages = 4) {
+  const isVes = getDocumentationSprServiceCode(model) === "VES";
+  const technicalData = getDocumentationSprTechnicalData(model);
+  const systemDescription = String(model.systemDescription || "").trim();
+  const showResultsText = !isVes && !isDocumentationNativeSingleSystemDescriptionService(getDocumentationSprServiceCode(model));
+  let sectionNumber = 1;
+  const sections = [];
+  const nextSection = (title, body) => {
+    if (body === null || body === undefined || body === "") {
+      return;
+    }
+    sections.push(`${renderDocumentationSprSectionTitle(sectionNumber, title)}${body}`);
+    sectionNumber += 1;
+  };
+
+  if (technicalData) {
+    nextSection(getDocumentationSprTechnicalSectionTitle(model), `<div class="documentation-spr-paper-list">${renderDocumentationSprLineList(technicalData)}</div>`);
+  }
+  if (!isVes) {
+    nextSection("MJERNA I ISPITNA OPREMA", `<div class="documentation-spr-paper-list">${renderDocumentationSprLineList(model.equipment)}</div>`);
+  }
+  nextSection("PRIMJENJENI PROPISI", `<div class="documentation-spr-paper-list">${renderDocumentationSprLineList(model.regulations)}</div>`);
+  if (!isVes) {
+    nextSection("KORIŠTENA TEHNIČKO-PROJEKTNA DOKUMENTACIJA", `<div class="documentation-spr-paper-list">${renderDocumentationSprLineList(model.projectDocumentation)}</div>`);
+  }
+  if (systemDescription) {
+    nextSection(isVes ? "OPIS" : "OPIS SUSTAVA", `<div class="documentation-spr-paper-text">${renderDocumentationSprRichTextBlock(systemDescription)}</div>`);
+  }
+  if (showResultsText) {
+    nextSection("REZULTATI ISPITIVANJA", `<div class="documentation-spr-paper-text">${renderDocumentationSprRichTextBlock(model.resultsText)}</div>`);
+  }
+  if (isVes) {
+    nextSection("ZBORNA MJESTA", renderDocumentationSprVesExercisePreviewRows(model));
+  }
+
+  return `
+    <section class="documentation-spr-paper">
+      ${renderDocumentationSprSimpleHeader(model)}
+      ${sections.join("")}
+      ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
+    </section>
+  `;
+}
+
+function renderDocumentationSprConclusionReportPage(model, pageNumber = 4, totalPages = 4) {
+  const isVes = getDocumentationSprServiceCode(model) === "VES";
+  const responsiblePerson = String(model.responsiblePerson || "").trim();
+  let sectionNumber = getDocumentationSprOpeningSectionCount(model) + 1;
+  if (isVes) {
+    return `
+      <section class="documentation-spr-paper documentation-spr-paper-conclusion-page">
+        ${renderDocumentationSprSimpleHeader(model)}
+        ${renderDocumentationSprSectionTitle(sectionNumber, "ZAKLJUČNA REČENICA")}
+        <div class="documentation-spr-paper-text">${escapeHtml(getDocumentationSprCoverAssessmentNote(model))}</div>
+        <p class="documentation-spr-paper-right">U Zagrebu, <strong>${escapeHtml(formatDocumentationSprDateForDocument(model.issueDate))}</strong></p>
+        <div class="documentation-spr-paper-signature-area is-bottom">
+          <div class="documentation-spr-paper-center documentation-spr-paper-stamp"><strong>M.P.</strong></div>
+          <div>
+            ${responsiblePerson ? `
+              <span>Zapisnik izradio:</span>
+              <strong>${escapeHtml(responsiblePerson)}</strong>
+              <span>KLASA: ${escapeHtml(model.signatureClass)}</span>
+              <span>${escapeHtml(model.signatureNumber)}</span>
+              <i aria-hidden="true"></i>
+            ` : ""}
+          </div>
+        </div>
+        ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
+      </section>
+    `;
+  }
+
+  const showDefects = isDocumentationSprFailingModel(model);
+  const defects = showDefects ? renderDocumentationSprLineList(model.defects) : "";
+  const recommendations = renderDocumentationSprLineList(model.recommendations);
+  const assessmentRows = getDocumentationSprMeasurementAssessmentsForModel(model);
+  const defectsSection = showDefects
+    ? `${renderDocumentationSprSectionTitle(sectionNumber++, "NEDOSTATCI")}<div class="documentation-spr-paper-list">${defects}</div>`
+    : "";
+  const recommendationsNumber = sectionNumber++;
+  const assessmentNumber = sectionNumber++;
+  const conclusionNumber = sectionNumber;
+  return `
+    <section class="documentation-spr-paper documentation-spr-paper-conclusion-page">
+      ${renderDocumentationSprSimpleHeader(model)}
+      ${defectsSection}
+      ${renderDocumentationSprSectionTitle(recommendationsNumber, "PREPORUKE")}
+      <div class="documentation-spr-paper-list">${recommendations}</div>
+      ${renderDocumentationSprSectionTitle(assessmentNumber, "OCJENA REZULTATA ISPITIVANJA")}
+      <p>Na temelju usporedbe rezultata mjerenja i ispitivanja s propisanim odnosno dopuštenim parametrima utvrđeno je slijedeće:</p>
+      <table class="documentation-spr-paper-kv documentation-spr-paper-assessment-table">
+        ${assessmentRows.length > 0
+          ? assessmentRows.map((entry) => `<tr><td>${escapeHtml(entry.label)}</td><td><strong>${escapeHtml(entry.value || entry.defaultValue || "ZADOVOLJAVA")}</strong></td></tr>`).join("")
+          : `<tr><td>${escapeHtml(getDocumentationSprAssessmentLabel(model))}</td><td><strong>${escapeHtml(model.resultStatus)}</strong></td></tr>`}
+      </table>
+      ${renderDocumentationSprSectionTitle(conclusionNumber, "ZAKLJUČAK")}
+      <p>${escapeHtml(getDocumentationSprConclusionLead(model))}</p>
+      <div class="documentation-spr-paper-conclusion">${escapeHtml(model.resultStatus)}</div>
+      <p>zahtjeve spomenutih propisa u pogledu navedenih ispitivanja, te se za navedeno izdaje ZAPISNIK broj:</p>
+      <p class="documentation-spr-paper-center"><strong>${escapeHtml(model.recordNumber)}</strong></p>
+      <p class="documentation-spr-paper-center">${escapeHtml(getDocumentationSprValiditySentence(model))} <strong>${escapeHtml(formatDocumentationSprDateForDocument(model.validUntil))}</strong></p>
+      <p class="documentation-spr-paper-right">U Zagrebu, <strong>${escapeHtml(formatDocumentationSprDateForDocument(model.issueDate))}</strong></p>
+      <div class="documentation-spr-paper-signature-area is-bottom">
+        <div class="documentation-spr-paper-center documentation-spr-paper-stamp"><strong>M.P.</strong></div>
+        <div>
+          ${responsiblePerson ? `
+            <span>Dokaze iz Zapisnika ocijenio:</span>
+            <strong>${escapeHtml(responsiblePerson)}</strong>
+            <span>KLASA: ${escapeHtml(model.signatureClass)}</span>
+            <span>${escapeHtml(model.signatureNumber)}</span>
+            <i aria-hidden="true"></i>
+          ` : ""}
+        </div>
+      </div>
+      ${renderDocumentationSprPaperFooter(model, pageNumber, totalPages)}
+    </section>
+  `;
+}
+
 function renderDocumentationSprPages(model) {
   const effectiveModel = applyDocumentationSprGlobalHeaderToModel(model);
   const checklistPages = renderDocumentationSprChecklistPages(effectiveModel, 3, 4);
@@ -66427,11 +66718,11 @@ function renderDocumentationSprPages(model) {
   const refreshedMeasurementPages = renderDocumentationSprMeasurementPages(effectiveModel, 3 + refreshedChecklistPages.length, totalPages);
   const conclusionPageNumber = 3 + refreshedChecklistPages.length + refreshedMeasurementPages.length;
   return [
-    renderDocumentationSprPageOne(effectiveModel, 1, totalPages),
-    renderDocumentationSprPageTwo(effectiveModel, 2, totalPages),
+    renderDocumentationSprCoverPage(effectiveModel, 1, totalPages),
+    renderDocumentationSprOpeningReportPage(effectiveModel, 2, totalPages),
     ...refreshedChecklistPages,
     ...refreshedMeasurementPages,
-    renderDocumentationSprPageFour(effectiveModel, conclusionPageNumber, totalPages),
+    renderDocumentationSprConclusionReportPage(effectiveModel, conclusionPageNumber, totalPages),
     ...renderDocumentationSprAttachmentPreviewPages(effectiveModel, conclusionPageNumber + 1, totalPages),
   ];
 }
@@ -66603,6 +66894,19 @@ function buildDocumentationSprPdfStyles() {
       background: #0f74bd;
     }
 
+    .documentation-spr-paper-first.is-cover-page {
+      padding: 14mm 15mm 16mm;
+    }
+
+    .documentation-spr-paper-first.is-cover-page::before {
+      top: 55mm;
+      bottom: 34mm;
+      left: 21mm;
+      width: 5px;
+      border-radius: 4px;
+      background: #8fc2ef;
+    }
+
     .documentation-spr-paper-header {
       display: grid;
       grid-template-columns: 170px minmax(0, 1fr) 74px;
@@ -66697,6 +67001,115 @@ function buildDocumentationSprPdfStyles() {
 
     .documentation-spr-paper-title strong {
       font-size: 12pt;
+    }
+
+    .documentation-spr-cover-content {
+      position: relative;
+      z-index: 1;
+      margin-top: 14mm;
+      padding-left: 10mm;
+    }
+
+    .documentation-spr-cover-header-placeholder {
+      min-height: 29mm;
+    }
+
+    .documentation-spr-cover-title {
+      margin-bottom: 10mm;
+      text-align: center;
+      color: #1f2a37;
+    }
+
+    .documentation-spr-cover-title h2 {
+      margin: 0;
+      font-size: 29px;
+      line-height: 1;
+      font-weight: 700;
+      letter-spacing: 6px;
+    }
+
+    .documentation-spr-cover-title strong {
+      display: block;
+      margin-top: 9px;
+      font-size: 15px;
+      line-height: 1.35;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .documentation-spr-cover-title span {
+      display: block;
+      margin-top: 14px;
+      color: #2f73b9;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .documentation-spr-cover-info {
+      width: 100%;
+      border: 1px solid #d8dde5;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    .documentation-spr-cover-info th,
+    .documentation-spr-cover-info td {
+      border: 1px solid #d8dde5;
+      vertical-align: top;
+    }
+
+    .documentation-spr-cover-info th {
+      width: 30%;
+      padding: 10px 12px;
+      background: #f2f6fa;
+      color: #222b36;
+      font-size: 9pt;
+      text-align: left;
+    }
+
+    .documentation-spr-cover-info td {
+      padding: 10px 12px;
+      background: #fcfdff;
+      color: #222b36;
+      font-size: 9.5pt;
+    }
+
+    .documentation-spr-cover-info td strong,
+    .documentation-spr-cover-info td small {
+      display: block;
+    }
+
+    .documentation-spr-cover-info td small {
+      margin-top: 3px;
+      color: #667085;
+      font-size: 8pt;
+      line-height: 1.35;
+    }
+
+    .documentation-spr-cover-info tr.is-assessment-row td {
+      background: #f3faf6;
+    }
+
+    .documentation-spr-cover-info tr.is-assessment-row td strong {
+      color: #18864b;
+    }
+
+    .documentation-spr-cover-issue {
+      display: grid;
+      justify-content: end;
+      gap: 4px;
+      margin-top: 18mm;
+      text-align: right;
+    }
+
+    .documentation-spr-cover-issue span {
+      color: #667085;
+      font-size: 8pt;
+    }
+
+    .documentation-spr-cover-issue strong {
+      color: #222b36;
+      font-size: 9.5pt;
     }
 
     .documentation-spr-paper-section-title {
