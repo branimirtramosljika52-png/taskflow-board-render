@@ -44525,6 +44525,10 @@ private fun mobileDocumentationFallbackSectionForField(field: WorkOrderDocumenta
     return when {
         field.type.equals("spr_voice", ignoreCase = true) || lookup.contains("diktat") ->
             TemplateFieldFallbackSectionSpec("voice", "Diktat i NexAI upis")
+        field.type.equals("ves_signature_rows", ignoreCase = true) || lookup.contains("potpisna lista") || lookup.contains("potpis") ->
+            TemplateFieldFallbackSectionSpec("ves-signatures", "Potpisna lista")
+        field.type.equals("ves_exercise_rows", ignoreCase = true) || lookup.contains("zborna mjesta") || lookup.contains("zborno mjesto") ->
+            TemplateFieldFallbackSectionSpec("ves-exercise", "Zborna mjesta")
         lookup.contains("uvjeren") || lookup.contains("certificate") ->
             TemplateFieldFallbackSectionSpec("certificate", "Uvjerenje")
         lookup.contains("dokumentacij") || lookup.contains("documentation") ->
@@ -44547,6 +44551,8 @@ private fun documentationTemplateFieldTypeLabel(type: String): String =
         "date" -> "Datum"
         "dropdown", "select" -> "Odabir"
         "toggle", "checkbox", "boolean" -> "Da/Ne"
+        "ves_exercise_rows" -> "Zborna mjesta"
+        "ves_signature_rows" -> "Potpisna lista"
         "textarea", "longtext", "richtext" -> "Tekst"
         "spr_voice" -> "Diktat"
         else -> "Polje"
@@ -47888,6 +47894,7 @@ private fun templateBlockIcon(type: String): ImageVector =
     when (type.lowercase(Locale.getDefault())) {
         "measurement_table" -> Icons.Rounded.Description
         "ves_exercise_rows" -> Icons.Rounded.Groups
+        "ves_signature_rows" -> Icons.Rounded.Fingerprint
         "equipment_list" -> Icons.Rounded.Work
         "legal_list" -> Icons.Rounded.Lock
         "qualified_inspectors", "inspector_signature", "authorization_holder_signature", "digital_signature" -> Icons.Rounded.Fingerprint
@@ -47902,6 +47909,11 @@ private data class DocumentationVesExerciseRow(
     val personCount: String = "",
     val evacuationTime: String = "",
     val note: String = "",
+)
+
+private data class DocumentationVesSignatureRow(
+    val name: String = "",
+    val signatureDataUrl: String = "",
 )
 
 private fun JSONObject.optCleanString(vararg keys: String): String {
@@ -47947,6 +47959,41 @@ private fun serializeDocumentationVesExerciseRows(rows: List<DocumentationVesExe
                 .put("personCount", row.personCount)
                 .put("evacuationTime", row.evacuationTime)
                 .put("note", row.note),
+        )
+    }
+    return array.toString()
+}
+
+private fun normalizeDocumentationVesSignatureRows(value: String): List<DocumentationVesSignatureRow> {
+    val raw = value.trim()
+    val parsedRows = mutableListOf<DocumentationVesSignatureRow>()
+    if (raw.isNotBlank()) {
+        runCatching {
+            val array = when {
+                raw.startsWith("[") -> JSONArray(raw)
+                raw.startsWith("{") -> JSONObject(raw).optJSONArray("rows") ?: JSONArray()
+                else -> JSONArray()
+            }
+            repeat(array.length()) { index ->
+                val item = array.optJSONObject(index) ?: return@repeat
+                parsedRows += DocumentationVesSignatureRow(
+                    name = item.optCleanString("name", "fullName", "imePrezime", "ime", "sudionik"),
+                    signatureDataUrl = item.optCleanString("signatureDataUrl", "signature", "potpis"),
+                )
+            }
+        }
+    }
+    return parsedRows.ifEmpty { listOf(DocumentationVesSignatureRow()) }
+}
+
+private fun serializeDocumentationVesSignatureRows(rows: List<DocumentationVesSignatureRow>): String {
+    val safeRows = rows.ifEmpty { listOf(DocumentationVesSignatureRow()) }
+    val array = JSONArray()
+    safeRows.forEach { row ->
+        array.put(
+            JSONObject()
+                .put("name", row.name)
+                .put("signatureDataUrl", row.signatureDataUrl),
         )
     }
     return array.toString()
@@ -48098,6 +48145,281 @@ private fun DocumentationVesExerciseRowsField(
 }
 
 @Composable
+private fun DocumentationVesSignatureDialog(
+    participantLabel: String,
+    enabled: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    val strokes = remember(participantLabel) { mutableStateListOf<List<Offset>>() }
+    var currentStroke by remember(participantLabel) { mutableStateOf<List<Offset>>(emptyList()) }
+    var canvasSize by remember(participantLabel) { mutableStateOf(IntSize.Zero) }
+    val inkColor = MaterialTheme.colorScheme.onSurface
+    val hasSignature = strokes.any { it.isNotEmpty() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Potpis", fontWeight = FontWeight.Black) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    participantLabel.ifBlank { "Sudionik" },
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    color = Color.White,
+                    tonalElevation = 1.dp,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(Color.White)
+                            .onSizeChanged { canvasSize = it }
+                            .pointerInput(enabled) {
+                                if (enabled) {
+                                    detectDragGestures(
+                                        onDragStart = { offset ->
+                                            currentStroke = listOf(offset)
+                                            strokes.add(currentStroke)
+                                        },
+                                        onDrag = { change, _ ->
+                                            change.consume()
+                                            val nextStroke = currentStroke + change.position
+                                            currentStroke = nextStroke
+                                            if (strokes.isNotEmpty()) {
+                                                strokes[strokes.lastIndex] = nextStroke
+                                            }
+                                        },
+                                        onDragEnd = { currentStroke = emptyList() },
+                                        onDragCancel = { currentStroke = emptyList() },
+                                    )
+                                }
+                            },
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            strokes.forEach { points ->
+                                when {
+                                    points.size == 1 -> drawCircle(
+                                        color = inkColor,
+                                        radius = 3.5f,
+                                        center = points.first(),
+                                    )
+                                    points.size > 1 -> {
+                                        val path = Path().apply {
+                                            moveTo(points.first().x, points.first().y)
+                                            points.drop(1).forEach { point -> lineTo(point.x, point.y) }
+                                        }
+                                        drawPath(
+                                            path = path,
+                                            color = inkColor,
+                                            style = Stroke(width = 5.5f),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (!hasSignature) {
+                            Text(
+                                "Potpis sudionika",
+                                modifier = Modifier.align(Alignment.Center),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF94A3B8),
+                            )
+                        }
+                    }
+                }
+                TextButton(
+                    onClick = {
+                        strokes.clear()
+                        currentStroke = emptyList()
+                    },
+                    enabled = enabled && hasSignature,
+                ) {
+                    Text("Obrisi potpis")
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val bytes = renderSignaturePng(
+                        strokes = strokes.map { it.toList() },
+                        widthPx = canvasSize.width,
+                        heightPx = canvasSize.height,
+                    )
+                    val encoded = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                    onConfirm("data:image/png;base64,$encoded")
+                },
+                enabled = enabled && hasSignature && canvasSize.width > 0 && canvasSize.height > 0,
+            ) {
+                Text("Spremi potpis")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Odustani")
+            }
+        },
+    )
+}
+
+@Composable
+private fun DocumentationVesSignatureRowsField(
+    label: String,
+    value: String,
+    enabled: Boolean,
+    onChange: (String) -> Unit,
+) {
+    val rows = remember(value) { normalizeDocumentationVesSignatureRows(value) }
+    var signingRowIndex by remember { mutableStateOf<Int?>(null) }
+    fun emit(nextRows: List<DocumentationVesSignatureRow>) {
+        onChange(serializeDocumentationVesSignatureRows(nextRows))
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.Fingerprint, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(19.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(label, fontWeight = FontWeight.Black)
+                    Text(
+                        "${rows.size} ${if (rows.size == 1) "sudionik" else "sudionika"}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.58f),
+                    )
+                }
+            }
+
+            rows.forEachIndexed { index, row ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "Sudionik ${index + 1}",
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Black,
+                            )
+                            IconButton(
+                                onClick = { emit(rows.filterIndexed { rowIndex, _ -> rowIndex != index }) },
+                                enabled = enabled && rows.size > 1,
+                            ) {
+                                Icon(Icons.Rounded.Delete, contentDescription = "Ukloni sudionika", tint = Color(0xFFDC2626))
+                            }
+                        }
+                        OutlinedTextField(
+                            value = row.name,
+                            onValueChange = { nextValue ->
+                                emit(rows.mapIndexed { rowIndex, item ->
+                                    if (rowIndex == index) item.copy(name = nextValue) else item
+                                })
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Ime i prezime") },
+                            singleLine = true,
+                            enabled = enabled,
+                            shape = RoundedCornerShape(14.dp),
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            OutlinedButton(
+                                onClick = { signingRowIndex = index },
+                                enabled = enabled,
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(14.dp),
+                            ) {
+                                Icon(Icons.Rounded.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(if (row.signatureDataUrl.isBlank()) "Potpisi" else "Promijeni potpis", fontWeight = FontWeight.Bold)
+                            }
+                            TextButton(
+                                onClick = {
+                                    emit(rows.mapIndexed { rowIndex, item ->
+                                        if (rowIndex == index) item.copy(signatureDataUrl = "") else item
+                                    })
+                                },
+                                enabled = enabled && row.signatureDataUrl.isNotBlank(),
+                            ) {
+                                Text("Obrisi")
+                            }
+                        }
+                        if (row.signatureDataUrl.isNotBlank()) {
+                            Text(
+                                "Potpis spremljen",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color(0xFF047857),
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+            }
+
+            OutlinedButton(
+                onClick = { emit(rows + DocumentationVesSignatureRow()) },
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Dodaj sudionika", fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+
+    val activeIndex = signingRowIndex
+    if (activeIndex != null) {
+        val activeRow = rows.getOrNull(activeIndex) ?: DocumentationVesSignatureRow()
+        DocumentationVesSignatureDialog(
+            participantLabel = activeRow.name.ifBlank { "Sudionik ${activeIndex + 1}" },
+            enabled = enabled,
+            onDismiss = { signingRowIndex = null },
+            onConfirm = { dataUrl ->
+                emit(rows.mapIndexed { rowIndex, item ->
+                    if (rowIndex == activeIndex) item.copy(signatureDataUrl = dataUrl) else item
+                })
+                signingRowIndex = null
+            },
+        )
+    }
+}
+
+@Composable
 private fun TemplateFieldGroup(
     template: WorkOrderDocumentationTemplate,
     values: Map<String, String>,
@@ -48225,6 +48547,12 @@ private fun TemplateFieldInput(
                 onOpenAiSource = onOpenAiSource,
             )
             "ves_exercise_rows" -> DocumentationVesExerciseRowsField(
+                label = label,
+                value = value.ifBlank { field.defaultValue },
+                enabled = enabled,
+                onChange = onChange,
+            )
+            "ves_signature_rows" -> DocumentationVesSignatureRowsField(
                 label = label,
                 value = value.ifBlank { field.defaultValue },
                 enabled = enabled,

@@ -465,6 +465,8 @@ const VES_DEFAULT_EXERCISE_ROWS = Object.freeze([
   }),
 ]);
 
+const VES_DEFAULT_SIGNATURE_ROWS = Object.freeze([]);
+
 const VES_DEFAULT_CONCLUSION_SENTENCE = "Vjezba evakuacije i spasavanja provedena je prema planu, a sudionici su upoznati s postupkom napustanja objekta i zbornim mjestom.";
 
 const EMM_COLUMNS = [
@@ -4601,6 +4603,7 @@ export const DOCUMENTATION_NATIVE_REPORT_PRESETS = Object.freeze({
     conclusionLead: "Temeljem provedenog opisa tijeka vjezbe moze se zakljuciti da provedena vjezba evakuacije i spasavanja",
     validitySentence: "Vjezbu evakuacije potrebno je ponoviti najkasnije do",
     vesExerciseRows: VES_DEFAULT_EXERCISE_ROWS,
+    vesSignatureRows: VES_DEFAULT_SIGNATURE_ROWS,
     conclusionSentence: VES_DEFAULT_CONCLUSION_SENTENCE,
     signatureAreas: ["elektro"],
     tables: [],
@@ -5392,6 +5395,14 @@ export function createDocumentationNativeAiFieldsForService(serviceCode = "") {
         required: false,
       },
       {
+        id: "vesSignatureRows",
+        key: "vesSignatureRows",
+        label: "Potpisna lista vjezbe evakuacije i spasavanja",
+        type: "ves_signature_rows",
+        fieldType: "ves_signature_rows",
+        required: false,
+      },
+      {
         id: "conclusionSentence",
         key: "conclusionSentence",
         label: "Zakljucna recenica",
@@ -5639,6 +5650,9 @@ export function createDocumentationReportModelDefaults(serviceCode = "") {
     vesExerciseRows: Array.isArray(preset.vesExerciseRows)
       ? preset.vesExerciseRows.map((row) => ({ ...row }))
       : [],
+    vesSignatureRows: Array.isArray(preset.vesSignatureRows)
+      ? preset.vesSignatureRows.map((row) => ({ ...row }))
+      : [],
     conclusionSentence: preset.conclusionSentence || "",
     hasCertificate: preset.hasCertificate === true,
     issueCertificate: preset.hasCertificate === true,
@@ -5676,6 +5690,9 @@ export function getDocumentationNativeTemplateSeedPresets() {
     projectDocumentation: preset.projectDocumentation || "",
     vesExerciseRows: Array.isArray(preset.vesExerciseRows)
       ? preset.vesExerciseRows.map((row) => ({ ...row }))
+      : [],
+    vesSignatureRows: Array.isArray(preset.vesSignatureRows)
+      ? preset.vesSignatureRows.map((row) => ({ ...row }))
       : [],
     conclusionSentence: preset.conclusionSentence || "",
     hasCertificate: preset.hasCertificate === true,

@@ -427,6 +427,33 @@ function normalizeVesExerciseRows(value = []) {
     .filter((row) => row.assemblyPoint || row.personCount || row.evacuationTime || row.note);
 }
 
+function normalizeVesSignatureRows(value = []) {
+  let source = value;
+  if (typeof source === "string") {
+    const trimmed = source.trim();
+    if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        source = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.rows) ? parsed.rows : []);
+      } catch {
+        source = [];
+      }
+    } else {
+      source = [];
+    }
+  }
+  return (Array.isArray(source) ? source : [])
+    .map((entry, index) => {
+      const item = entry && typeof entry === "object" ? entry : {};
+      return {
+        id: clean(item.id || `ves-signature-${index + 1}`),
+        name: clean(item.name || item.fullName || item.imePrezime || item.ime || item.sudionik || ""),
+        signatureDataUrl: clean(item.signatureDataUrl || item.signature || item.potpis || ""),
+      };
+    })
+    .filter((row) => row.name || row.signatureDataUrl);
+}
+
 function getVesConclusionSentence(model = {}) {
   return cleanMultiline(model.conclusionSentence || model.ZAKLJUCNA_RECENICA || getReportPreset(model).conclusionSentence || "Vjezba evakuacije i spasavanja provedena je prema planu.");
 }
@@ -1351,6 +1378,114 @@ function drawVesExerciseRowsTable(page, rows = [], y, fonts) {
   return cursorY - 8;
 }
 
+function chunkRows(rows = [], size = 1) {
+  const chunks = [];
+  for (let index = 0; index < rows.length; index += size) {
+    chunks.push(rows.slice(index, index + size));
+  }
+  return chunks.length ? chunks : [[]];
+}
+
+async function drawVesSignatureRowsTable(pdfDoc, page, rows = [], y, fonts) {
+  const columns = [
+    { label: "R.br.", width: 44, align: "center" },
+    { label: "Ime i prezime", width: 230, align: "left" },
+    { label: "Potpis", width: PAGE_WIDTH - (MARGIN_X * 2) - 44 - 230, align: "center" },
+  ];
+  let cursorY = y;
+  let cellX = MARGIN_X;
+  columns.forEach((column) => {
+    drawCell(page, {
+      x: cellX,
+      y: cursorY,
+      width: column.width,
+      height: 24,
+      text: column.label,
+      fonts,
+      bold: true,
+      fill: TABLE_GRAY,
+      fontSize: 7.6,
+      align: "center",
+    });
+    cellX += column.width;
+  });
+  cursorY -= 24;
+
+  const safeRows = rows.length ? rows : [{ name: "", signatureDataUrl: "" }];
+  for (const [index, row] of safeRows.slice(0, 14).entries()) {
+    const rowHeight = 46;
+    const rowValues = [String(index + 1), row.name || "", ""];
+    cellX = MARGIN_X;
+    for (const [columnIndex, column] of columns.entries()) {
+      drawCell(page, {
+        x: cellX,
+        y: cursorY,
+        width: column.width,
+        height: rowHeight,
+        text: rowValues[columnIndex],
+        fonts,
+        fontSize: 7.3,
+        align: column.align,
+      });
+      if (columnIndex === 2 && row.signatureDataUrl) {
+        const image = await embedPdfImage(pdfDoc, row.signatureDataUrl);
+        drawCenteredImage(page, image, {
+          x: cellX + 6,
+          y: cursorY - rowHeight + 7,
+          width: column.width - 12,
+          maxHeight: rowHeight - 14,
+        });
+      }
+      cellX += column.width;
+    }
+    cursorY -= rowHeight;
+  }
+  if (safeRows.length > 14) {
+    drawTextLine(page, `Prikazano 14 od ${safeRows.length} potpisa.`, {
+      x: MARGIN_X,
+      y: cursorY - 10,
+      font: fonts.regular,
+      size: 7.4,
+      color: MUTED,
+    });
+    cursorY -= 18;
+  }
+  return cursorY - 8;
+}
+
+async function appendVesSignatureAppendix(pdfDoc, model, fonts) {
+  if (!isVesReport(model)) {
+    return;
+  }
+  const sourceRows = normalizeVesSignatureRows(model.vesSignatureRows);
+  const pages = chunkRows(sourceRows.length ? sourceRows : [{ name: "", signatureDataUrl: "" }], 14);
+  for (const [pageIndex, rows] of pages.entries()) {
+    const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    let y = drawSimpleHeader(page, model, fonts);
+    y -= 14;
+    drawTextLine(page, pageIndex === 0 ? "PRILOG - POTPISNA LISTA" : `PRILOG - POTPISNA LISTA (${pageIndex + 1})`, {
+      x: MARGIN_X,
+      y,
+      width: PAGE_WIDTH - (MARGIN_X * 2),
+      align: "center",
+      font: fonts.bold,
+      size: 13,
+      color: BLUE,
+    });
+    y -= 24;
+    drawTextLine(page, "Potpisna lista vjezbe evakuacije i spasavanja", {
+      x: MARGIN_X,
+      y,
+      width: PAGE_WIDTH - (MARGIN_X * 2),
+      align: "center",
+      font: fonts.bold,
+      size: 9,
+    });
+    y -= 24;
+    await drawVesSignatureRowsTable(pdfDoc, page, rows, y, fonts);
+  }
+}
+
 function normalizePdfChecklists(model = {}) {
   const preset = getReportPreset(model);
   const source = Array.isArray(model.checklists) && model.checklists.length > 0
@@ -2257,6 +2392,37 @@ function renderNativeHtmlVesExerciseRows(model = {}) {
             <th>Broj osoba</th>
             <th>Vrijeme izlaska</th>
             <th>Napomena</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </section>
+  `;
+}
+
+function renderNativeHtmlVesSignatureRows(model = {}) {
+  const rows = normalizeVesSignatureRows(model.vesSignatureRows);
+  const body = rows.length
+    ? rows.map((row, index) => `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${escapeNativeHtml(row.name || "")}</td>
+        <td class="signature-cell">
+          ${row.signatureDataUrl ? `<img src="${escapeNativeHtml(row.signatureDataUrl)}" alt="Potpis ${index + 1}">` : ""}
+        </td>
+      </tr>
+    `).join("")
+    : `<tr><td colspan="3" class="muted">Nema upisanih potpisa.</td></tr>`;
+  return `
+    <section class="sn-ex-section ves-signature-appendix">
+      <div class="section-label">Prilog - Potpisna lista</div>
+      <p class="muted">Potpisna lista vjezbe evakuacije i spasavanja.</p>
+      <table class="ves-signature-table">
+        <thead>
+          <tr>
+            <th>R.br.</th>
+            <th>Ime i prezime</th>
+            <th>Potpis</th>
           </tr>
         </thead>
         <tbody>${body}</tbody>
@@ -3210,15 +3376,19 @@ export function buildDocumentationNativeHtml({
     .text-box table { margin: 6px 0; }
     .text-box th, .text-box td { border: 1px solid #cbd5e1; padding: 4px 5px; }
     .muted { color: #64748b; }
-    .sn-ex-table-section { page-break-before: always; break-before: page; break-inside: auto; page-break-inside: auto; }
+    .sn-ex-table-section, .ves-signature-appendix { page-break-before: always; break-before: page; break-inside: auto; page-break-inside: auto; }
     .sn-ex-table-section.landscape { page: sn-ex-landscape; }
     .table-heading { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 7px; }
     .table-heading span { color: #475569; font-weight: 700; }
-    .sn-ex-grid, .ves-exercise-table { table-layout: fixed; font-size: 7.5px; }
+    .sn-ex-grid, .ves-exercise-table, .ves-signature-table { table-layout: fixed; font-size: 7.5px; }
     .sn-ex-grid.dense { font-size: 6.2px; }
-    .sn-ex-grid thead, .ves-exercise-table thead { display: table-header-group; }
-    .sn-ex-grid th, .sn-ex-grid td, .ves-exercise-table th, .ves-exercise-table td { border: 1px solid #334155; padding: 3px 4px; vertical-align: middle; word-break: break-word; overflow-wrap: anywhere; }
-    .sn-ex-grid th, .ves-exercise-table th { background: #d9dde3; font-weight: 700; text-align: center; }
+    .sn-ex-grid thead, .ves-exercise-table thead, .ves-signature-table thead { display: table-header-group; }
+    .sn-ex-grid th, .sn-ex-grid td, .ves-exercise-table th, .ves-exercise-table td, .ves-signature-table th, .ves-signature-table td { border: 1px solid #334155; padding: 3px 4px; vertical-align: middle; word-break: break-word; overflow-wrap: anywhere; }
+    .sn-ex-grid th, .ves-exercise-table th, .ves-signature-table th { background: #d9dde3; font-weight: 700; text-align: center; }
+    .ves-signature-table td:first-child { width: 9%; text-align: center; }
+    .ves-signature-table td:nth-child(2) { width: 43%; }
+    .ves-signature-table .signature-cell { height: 38px; text-align: center; }
+    .ves-signature-table .signature-cell img { display: inline-block; max-width: 100%; max-height: 34px; object-fit: contain; }
     .sn-ex-grid .grid-subheader th, .sn-ex-grid .grid-subheader td { background: #eef2f7; font-weight: 700; }
     .status { text-align: center; font-weight: 700; }
     .status-pass { color: #166534; }
@@ -3299,6 +3469,7 @@ export function buildDocumentationNativeHtml({
     ${renderNativeHtmlMeasurementTables(model, rows)}
 
     ${renderNativeHtmlConclusionPage(model, serviceCode, { issuedText, conclusionStatus })}
+    ${vesReport ? renderNativeHtmlVesSignatureRows(model) : ""}
   </article>
 </body>
 </html>`;
@@ -4326,6 +4497,7 @@ async function appendDocumentationSprRecord(pdfDoc, model = {}, rows = [], fonts
   drawChecklistPages(pdfDoc, model, fonts);
   drawMeasurementTablePages(pdfDoc, model, safeRows, fonts);
   drawPageFour(pdfDoc, model, fonts, signatureImage);
+  await appendVesSignatureAppendix(pdfDoc, model, fonts);
   await appendAttachments(pdfDoc, model, fonts);
   const pageCount = pdfDoc.getPageCount() - startPageIndex;
   stampFooters(pdfDoc, model, fonts, { startPageIndex, pageCount });

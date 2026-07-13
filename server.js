@@ -118,7 +118,7 @@ const WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS = Math.max(
   Math.min(Number(process.env.WORK_ORDER_TEMPLATE_PDF_TIMEOUT_MS || 18000), 45000),
 );
 const MOBILE_ACCESS_TOKEN_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 90;
-const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.437.apk";
+const MOBILE_ANDROID_APK_FILE_NAME = "SafeNexus-0.1.438.apk";
 const MOBILE_ANDROID_APK_CONTENT_TYPE = "application/vnd.android.package-archive";
 const MOBILE_ANDROID_APK_PUBLIC_FILE_NAME = "SafeNexus.apk";
 const MOBILE_ANDROID_APK_VERSION_LABEL = MOBILE_ANDROID_APK_FILE_NAME.replace(/^SafeNexus-|\.apk$/g, "");
@@ -28655,6 +28655,10 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         defaultValue: JSON.stringify(reportDefaults.vesExerciseRows || []),
         helpText: "Dodaj zborno mjesto, broj osoba i vrijeme izlaska. Plus dodaje novi red.",
       }),
+      buildMobileNativeDocumentationField("vesSignatureRows", "Potpisna lista vjezbe evakuacije i spasavanja", "ves_signature_rows", {
+        defaultValue: "[]",
+        helpText: "Upisi ime i prezime sudionika te otvori okvir za potpis. Plus dodaje novu osobu.",
+      }),
       buildMobileNativeDocumentationField("conclusionSentence", "Zakljucna recenica", "textarea", {
         defaultValue: reportDefaults.conclusionSentence || "",
         helpText: "Slobodna zakljucna recenica za kraj zapisnika.",
@@ -28968,6 +28972,16 @@ function buildMobileNativeDocumentationTemplate(service = {}, serviceIndex = 0, 
         editable: true,
         summary: "Dodaj red za svako zborno mjesto.",
         helpText: "Plus dodaje novi red, a vrijednosti se spremaju uz zapisnik.",
+      }),
+      buildMobileNativeDocumentationBlock("chapter-ves-signatures", "Potpisna lista", "chapter", {
+        typeLabel: "Poglavlje",
+        summary: "Potpisna lista vjezbe evakuacije i spasavanja.",
+      }),
+      buildMobileNativeDocumentationBlock("vesSignatureRows", "Potpisna lista", "ves_signature_rows", {
+        group: "Potpisna lista",
+        editable: true,
+        summary: "Dodaj sudionika, ime i prezime i potpis.",
+        helpText: "Svaki red sadrzi ime i prezime te potpis sudionika.",
       }),
     ] : []),
     ...(includeResultsText ? [
@@ -33852,6 +33866,34 @@ function normalizeMobileVesExerciseRows(value = [], fallback = []) {
   }).filter((row) => row.assemblyPoint || row.personCount || row.evacuationTime || row.note);
 }
 
+function normalizeMobileVesSignatureRows(value = [], fallback = []) {
+  let source = value;
+  if (typeof source === "string") {
+    const trimmed = source.trim();
+    if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        source = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.rows) ? parsed.rows : []);
+      } catch {
+        source = [];
+      }
+    } else {
+      source = [];
+    }
+  }
+  if (!Array.isArray(source) || source.length === 0) {
+    source = Array.isArray(fallback) ? fallback : [];
+  }
+  return source.map((entry, index) => {
+    const item = entry && typeof entry === "object" ? entry : {};
+    return {
+      id: normalizeInputValue(item.id) || `ves-signature-${index + 1}`,
+      name: normalizeInputValue(item.name || item.fullName || item.imePrezime || item.ime || item.sudionik),
+      signatureDataUrl: normalizeInputValue(item.signatureDataUrl || item.signature || item.potpis),
+    };
+  }).filter((row) => row.name || row.signatureDataUrl);
+}
+
 function getMobileVesTimeVariationFactor(seed = "", index = 0) {
   const text = `${seed || ""}:${index + 1}`;
   let hash = 0;
@@ -34101,6 +34143,12 @@ function buildMobileDocumentationSprModel({
       || common.fieldValues?.VES_EXERCISE_ROWS
       || common.fieldValues?.ZBORNA_MJESTA,
       reportDefaults.vesExerciseRows || [],
+    ),
+    vesSignatureRows: normalizeMobileVesSignatureRows(
+      getMobileDocumentationTemplateFieldValues(common, template, ["vesSignatureRows", "VES_SIGNATURE_ROWS", "POTPISNA_LISTA"])
+      || common.fieldValues?.vesSignatureRows
+      || common.fieldValues?.VES_SIGNATURE_ROWS
+      || common.fieldValues?.POTPISNA_LISTA,
     ),
     measurementEquipmentIds: isVesNativeDocumentation ? [] : (common.selectedEquipmentIds || []),
     legalFrameworkIds: common.selectedLegalFrameworkIds || [],

@@ -243,6 +243,12 @@ test("VES native documentation uses evacuation rows without measurement equipmen
         note: "Bez zastoja",
       },
     ],
+    vesSignatureRows: [
+      {
+        name: "Ivo Ivic",
+        signatureDataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADElEQVR42mP8z8BQDwAFgwJ/lrW2qAAAAABJRU5ErkJggg==",
+      },
+    ],
     conclusionSentence: "Vjezba evakuacije i spasavanja provedena je uredno.",
   };
   const html = buildDocumentationNativeHtml({ model, rows: [] });
@@ -252,6 +258,8 @@ test("VES native documentation uses evacuation rows without measurement equipmen
   assert.match(html, /Zborno mjesto dvoriste/, "VES renders assembly point");
   assert.match(html, /2,35 min/, "VES renders evacuation time");
   assert.match(html, /Zakljucna recenica/, "VES renders free conclusion sentence");
+  assert.match(html, /Prilog - Potpisna lista/, "VES renders signature list as appendix");
+  assert.match(html, /Ivo Ivic/, "VES renders signature participant");
   assert.equal((html.match(/class="sn-ex-grid/g) || []).length, 0, "VES does not render Gridline measurement tables");
   assert.doesNotMatch(html, /Mjerna i ispitna oprema/, "VES does not render measurement equipment");
   assert.doesNotMatch(html, /Koristena dokumentacija/, "VES does not render technical documentation");
@@ -266,6 +274,8 @@ test("VES native documentation uses evacuation rows without measurement equipmen
     assert.match(text, /Zborno mjesto\s+dvoriste/, "VES PDF renders assembly point value");
     assert.match(text, /2,35 min/, "VES PDF renders evacuation time");
     assert.match(text, /ZAKLJUCNA RECENICA/, "VES PDF renders conclusion sentence section");
+    assert.match(text, /PRILOG - POTPISNA LISTA/, "VES PDF renders signature list as appendix");
+    assert.match(text, /Ivo Ivic/, "VES PDF renders signature participant");
     assert.doesNotMatch(text, /MJERNA I ISPITNA OPREMA/, "VES PDF omits measurement equipment");
     assert.doesNotMatch(text, /KORI[ŠS]TENA TEHNI/, "VES PDF omits technical documentation");
     assert.doesNotMatch(text, /Ventilacija prostora|Sustav ventilacije/, "VES PDF omits VS table");
